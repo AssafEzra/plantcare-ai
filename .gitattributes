@@ -1,0 +1,18 @@
+# Normalise line endings: the repo stores LF, Windows checkouts get CRLF for text.
+* text=auto eol=lf
+
+*.py    text eol=lf
+*.md    text eol=lf
+*.sql   text eol=lf
+*.toml  text eol=lf
+*.yml   text eol=lf
+*.yaml  text eol=lf
+*.json  text eol=lf
+*.css   text eol=lf
+.env.example text eol=lf
+
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.ico binary
