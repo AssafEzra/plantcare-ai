@@ -54,7 +54,14 @@ weekday = MONDAY | TUESDAY | WEDNESDAY | THURSDAY | FRIDAY | SATURDAY | SUNDAY
 `care_level` is explicitly excluded from MVP (see FINAL_SPECIFICATION §2, §36) and is intentionally not a column here. Do not reintroduce it without updating that decision.
 
 ### `plants`
-`id`, `user_id FK`, `name`, `species_id FK nullable`, `status`, `current_health_status`, `main_image_id nullable`, `notes`, `archived_at`, `created_at`, `updated_at`.
+`id`, `user_id FK`, `name nullable`, `species_id FK nullable`, `status`, `current_health_status`, `main_image_id nullable`, `notes`, `archived_at`, `created_at`, `updated_at`.
+
+**Amended during implementation (MVP), per FINAL §37:** `name` is nullable until confirmation —
+the Add Plant flow creates the plant before the user names it (§3 step 5 comes after confirm) —
+with a CHECK rejecting a blank string, so "not yet named" is unambiguously null. CHECK
+`plants_archived_at_matches_status` keeps `status = 'ARCHIVED'` and a non-null `archived_at` in
+agreement in both directions. `species_id` uses ON DELETE RESTRICT so a species can never vanish
+from under a user's plant. Users have no DELETE policy: archive is the normal action (§21).
 
 Plant name is the user's personal name and is independent of Species.
 
@@ -74,16 +81,53 @@ AI-used images requested for removal are hidden from the user but retained for h
 
 ## Identification
 ### `identifications`
-`id`, `user_id`, `plant_id`, `agent_request_id`, `status`, `primary_species_id`, `confidence_score`, `confidence_level`, `image_quality`, `user_description`, `request_more_photos`, `wikipedia_url`, `raw_result`, `created_at`.
+`id`, `user_id`, `plant_id`, `agent_request_id`, `status`, `method`, `primary_species_id`, `confidence_score`, `confidence_level`, `image_quality`, `user_description`, `request_more_photos`, `wikipedia_url`, `raw_result`, `created_at`.
+
+**Amended during implementation (MVP), per FINAL §37:**
+
+- `method` (`identification_method`) added. The enum was already defined but no column used it;
+  this is its natural home, distinguishing an AI result from a user confirmation or correction.
+- `confidence_score` is `numeric(4,3)`, fixing the A18 scale at 0.000-1.000. A caller emitting a
+  percentage (85 rather than 0.85) overflows the type and fails loudly instead of being silently
+  truncated. `confidence_level` is derived from the score in Python, never from model output.
+- CHECK `identifications_failure_carries_no_verdict`: a row whose `status` is not `SUCCESS`
+  cannot carry `primary_species_id` or `confidence_level`. This makes §25 ("AI failure never
+  creates an authoritative record") a database guarantee rather than a convention the
+  orchestration layer must remember.
+- CHECK `identifications_wikipedia_url_shape`: the URL must match `^https://<lang>.wikipedia.org/`,
+  so an invented or relative value is rejected outright (§8: the URL must never be invented).
+- Users have SELECT and INSERT only, no UPDATE or DELETE. Identification history is
+  append-oriented; a correction creates a new row.
 
 ### `identification_candidates`
-`id`, `identification_id`, `species_id`, `rank` (1–3), `confidence_score`, `created_at`.
+`id`, `identification_id`, `species_id nullable`, `scientific_name`, `common_name`, `rank` (1–3), `confidence_score`, `created_at`.
+
+**Amended during implementation (MVP), per FINAL §37:** `species_id` is nullable and the raw
+names are stored alongside it. Candidates come straight from model output, so materialising a
+`species` row for each would let every low-confidence hallucinated binomial permanently pollute
+the global taxonomy table. The species is created only at confirm time, from the candidate the
+user actually chose. `UNIQUE (identification_id, rank)` enforces one primary plus at most two
+alternatives.
 
 Identification Agent never directly changes `plants.species_id`; confirmation is an application/orchestration action.
 
 ## Species & Knowledge
 ### `species`
-`id`, `scientific_name UNIQUE`, `common_name`, `family`, `genus`, timestamps. MVP is Species-only; Cultivar is future.
+`id`, `scientific_name`, `normalized_name UNIQUE`, `common_name`, `family`, `genus`, timestamps. MVP is Species-only; Cultivar is future.
+
+**Amended during implementation (MVP), per FINAL §37:** uniqueness moved from `scientific_name`
+to `normalized_name` (A23). `normalize_scientific_name()` lowercases, collapses whitespace,
+strips parenthetical and trailing authorship, and preserves infraspecific ranks, so
+`Monstera deliciosa`, `monstera deliciosa` and `Monstera deliciosa Liebm.` resolve to one row
+and therefore one Knowledge lineage. Without this the "existing species reuses published
+Knowledge" journey in §34 silently forks. A trigger computes the column, so a client cannot
+supply its own value. `genus` is derived from the normalised name when not given.
+
+Direct writes are admin-only. The confirm-identification workflow runs under the *user's* JWT
+and creates species through `upsert_species(...)`, a SECURITY DEFINER function that normalises,
+deduplicates and returns the existing row when the name is known. It fills missing details but
+never overwrites existing ones. The alternative — granting authenticated users blanket INSERT
+on a global taxonomy table — would have let any client write arbitrary rows.
 
 ### `knowledge_drafts`
 `id`, `species_id`, `status`, `initiated_by`, `research_request_id`, `content jsonb`, `research_notes`, `admin_note`, timestamps.

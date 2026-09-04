@@ -137,12 +137,12 @@ Remaining implementation documentation:
 - [ ] Finalize schema
 - [-] Create migrations — 0001 foundation + 0002 corrective applied to DEV; plants/identification, knowledge, care/health/system to follow
 - [x] `profiles` — plus `notification_preferences`, which the signup trigger populates
-- [ ] `plants`
-- [ ] `plant_images`
-- [ ] `plant_environments`
-- [ ] `identifications`
-- [ ] `identification_candidates`
-- [ ] `species`
+- [x] `plants`
+- [x] `plant_images`
+- [x] `plant_environments`
+- [x] `identifications`
+- [x] `identification_candidates`
+- [x] `species` - taxonomy only; knowledge tables follow next
 - [ ] `knowledge_versions`
 - [ ] `knowledge_sources`
 - [ ] `approved_sources`
@@ -160,8 +160,8 @@ Remaining implementation documentation:
 - [ ] `agent_executions`
 - [ ] `agent_requests`
 - [ ] `system_events`
-- [ ] Define foreign keys
-- [ ] Define indexes
+- [-] Define foreign keys - done for tables created so far
+- [-] Define indexes - done for tables created so far
 - [-] Define constraints/enums — all 24 enums created; per-table constraints land with their tables
 - [-] Define RLS policies — `profiles` and `notification_preferences` done; `is_admin()` helper available to all later migrations
 - [ ] Define immutable/versioned records
