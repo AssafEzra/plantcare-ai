@@ -14,3 +14,4 @@ supabase migration new <name>   # create
 supabase db reset               # rebuild local DB from scratch + seed
 supabase db push                # apply to the linked project
 ```
+
