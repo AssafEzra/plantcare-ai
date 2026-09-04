@@ -50,6 +50,20 @@ which has no database.
 ## Known gaps
 
 - PROD project not created (Phase 17).
-- DEV Auth settings not yet configured (email confirmation, reset redirect).
-- Storage bucket `plant-images` not yet created (Phase 6).
 - `AI_API_KEY` is a placeholder; a real key is needed before Phase 8.
+- No seed data yet (Phase 2, PR 6).
+
+## Auth settings
+
+Held in `supabase/config.toml` and applied with `supabase config push --project-ref <ref>`,
+so they are reviewable and reproducible rather than clicked into a dashboard.
+
+| Setting | Value | Why |
+|---|---|---|
+| `enable_confirmations` | `true` | FINAL §22 lists email verification in MVP scope; Supabase defaults it off |
+| `minimum_password_length` | `8` | 6 is Supabase's floor and weak for an account holding personal data |
+| `otp_length` | `8` | keeps the stronger remote default rather than the CLI's 6 |
+| `max_frequency` | `60s` | 1s permits trivial mail-bombing of an inbox through repeated signup |
+| `site_url` | `http://localhost:8501` | Streamlit's port; verification and reset links resolve here |
+
+`supabase config push` reporting `auth: up_to_date` means remote matches this file exactly.

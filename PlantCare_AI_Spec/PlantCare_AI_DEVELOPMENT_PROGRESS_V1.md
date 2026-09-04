@@ -111,9 +111,9 @@ Remaining implementation documentation:
 
 - [x] Create DEV Supabase project — `plantcare-dev`, eu-central-1, org `plantcare`
 - [-] Create DEV database schema — foundation migration applied; remaining tables follow
-- [ ] Configure DEV Auth
-- [ ] Configure DEV Storage
-- [ ] Configure DEV AI credentials
+- [x] Configure DEV Auth — email confirmation on, min password length 8, OTP length 8, 60s email throttle, redirect URLs for Streamlit. Version-controlled in `supabase/config.toml` and applied with `supabase config push`
+- [x] Configure DEV Storage — private `plant-images` bucket, 10 MiB cap, JPEG/PNG/WEBP allow-list, 5 owner/admin policies (migration 0003)
+- [~] Configure DEV AI credentials — deferred by decision; `.env` holds a placeholder. Needed before Phase 8
 - [ ] Seed fake/test data
 - [x] Verify no PROD credentials are used locally — no PROD project exists yet; `.env` is git-ignored and points at DEV
 
@@ -172,18 +172,18 @@ Remaining implementation documentation:
 
 # 6. Storage
 
-- [ ] Create Supabase Storage bucket(s)
+- [x] Create Supabase Storage bucket(s) — `plant-images`, private, created by migration so PROD is identical
 - [ ] Implement image validation
-- [ ] Enforce 10 MB maximum
-- [ ] Support JPG/JPEG/PNG/WEBP
+- [-] Enforce 10 MB maximum — bucket-level cap in place; application-level validation lands in Phase 6
+- [-] Support JPG/JPEG/PNG/WEBP — bucket MIME allow-list in place; Pillow-based content validation lands in Phase 6
 - [ ] Process/resize/compress
 - [ ] Generate thumbnail
 - [ ] Store original + processed + thumbnail
-- [ ] Implement logical paths
-- [ ] Implement owner-only access
+- [x] Implement logical paths — `{user_id}/{plant_id}/{gallery|identification|health}/`, enforced by policies on the first path segment
+- [x] Implement owner-only access — select/insert/update/delete scoped to the owner; admins read-only across owners for retained AI images
 - [ ] Implement hidden retention for AI-used images
 - [ ] Implement metadata persistence
-- [ ] Test Storage RLS/access behavior
+- [x] Test Storage RLS/access behavior — 13 integration tests covering cross-user read/write denial, anonymous denial and admin read
 
 ---
 
