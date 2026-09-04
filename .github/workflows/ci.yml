@@ -15,10 +15,10 @@ jobs:
     name: lint · types · unit tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@v6
         with:
           enable-cache: true
 
@@ -45,7 +45,7 @@ jobs:
     name: no committed secrets
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Assert .env is not tracked
         run: |
           if git ls-files --error-unmatch .env 2>/dev/null; then

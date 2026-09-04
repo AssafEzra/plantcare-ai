@@ -81,10 +81,10 @@ Remaining implementation documentation:
 
 # 3. Repository & Engineering Setup
 
-- [~] Create GitHub repository — local repo initialised; remote not yet created (no `gh` CLI on the dev machine)
+- [x] Create GitHub repository — `AssafEzra/plantcare-ai` (private); default branch `dev`
 - [x] Create `main`
 - [x] Create `dev`
-- [~] Protect `main` — requires the GitHub remote to exist first
+- [~] Protect `main` — **blocked by plan**: branch protection *and* rulesets both require GitHub Pro on a private repo (HTTP 403). Mitigated locally by the `no-commit-to-branch --branch main` pre-commit hook. Resolve by upgrading to Pro or making the repo public.
 - [x] Define PR workflow — `CONTRIBUTING.md` + `.github/pull_request_template.md`
 - [x] Add README
 - [x] Add CONTRIBUTING.md
