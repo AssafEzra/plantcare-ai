@@ -22,7 +22,29 @@ notification_channel = EMAIL
 notification_delivery_status = QUEUED | SENT | FAILED | SKIPPED
 user_role = USER | ADMIN
 care_plan_version_source_type = INITIAL_PLAN | OPERATIONAL_ADJUSTMENT | ENVIRONMENT_CHANGE | HEALTH_DRIVEN | RE_IDENTIFICATION
+care_rule_action_type = WATERING | FERTILIZING | REPOTTING | PRUNING | MISTING | ROTATING | INSPECTION
+system_event_type = PLANT_CREATED | PLANT_ARCHIVED | PLANT_RESTORED | PLANT_RENAMED | ENVIRONMENT_CHANGED | MAIN_IMAGE_CHANGED | REPOTTED | MOVED | PRUNED | CUSTOM_NOTE
+image_context_type = gallery | identification | health
+location_type = INDOOR | OUTDOOR | BALCONY | GREENHOUSE
+light_level = LOW | MEDIUM | BRIGHT | DIRECT_SUN
+light_direction = NORTH | SOUTH | EAST | WEST | UNKNOWN
+weekday = MONDAY | TUESDAY | WEDNESDAY | THURSDAY | FRIDAY | SATURDAY | SUNDAY
 ```
+
+**Added during implementation (MVP), per FINAL_SPECIFICATION §37:**
+
+- `care_rule_action_type` — `care_rules.action_type` was previously untyped, yet the
+  wireframe icons, notification copy and the Care Agent's structured output all depend
+  on a fixed vocabulary. Kept minimal: `ALTER TYPE ... ADD VALUE` is cheap, removal is not.
+- `system_event_type` — `system_events.event_type` previously named only
+  `ENVIRONMENT_CHANGED` while §19 lists ~11 timeline kinds. This enum deliberately
+  **excludes** care events, health checks, identifications and care plan versions, which
+  have dedicated tables that the Plant History timeline merges; including them would
+  double-write every care action. `REPOTTED`/`MOVED`/`PRUNED`/`CUSTOM_NOTE` are
+  user-logged out-of-band actions, distinct from the same action arriving via a task.
+- `image_context_type`, `location_type`, `light_level`, `light_direction`, `weekday` —
+  vocabularies already fixed in prose by §18 and the `care_rules` note, now enforced by
+  the database rather than by convention.
 
 ## Core tables
 
@@ -140,6 +162,13 @@ Do not store chain-of-thought.
 ## Notifications
 ### `notification_preferences`
 `user_id PK`, `email_enabled`, `preferred_time_local`, `daily_digest`, timestamps.
+
+Created by the same `auth.users` insert trigger that creates `profiles`, with defaults
+`email_enabled = true`, `preferred_time_local = '08:00'`, `daily_digest = true` (matching
+the Settings wireframe). A user must never exist without a preferences row, or
+`GET /v1/notification-preferences` and the scheduler tick are undefined for a new account.
+For that reason this table is created in the foundation migration alongside `profiles`,
+not with the other notification tables.
 
 ### `notification_deliveries`
 `id`, `user_id`, `care_task_id nullable`, `channel`, `status`, `scheduled_at`, `sent_at`, `provider_message_id`, `error_message`, `created_at`.

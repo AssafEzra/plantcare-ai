@@ -135,8 +135,8 @@ Remaining implementation documentation:
 # 5. Database
 
 - [ ] Finalize schema
-- [ ] Create migrations
-- [ ] `profiles`
+- [-] Create migrations — 0001 foundation done; plants/identification, knowledge, care/health/system to follow
+- [x] `profiles` — plus `notification_preferences`, which the signup trigger populates
 - [ ] `plants`
 - [ ] `plant_images`
 - [ ] `plant_environments`
@@ -162,8 +162,8 @@ Remaining implementation documentation:
 - [ ] `system_events`
 - [ ] Define foreign keys
 - [ ] Define indexes
-- [ ] Define constraints/enums
-- [ ] Define RLS policies
+- [-] Define constraints/enums — all 24 enums created; per-table constraints land with their tables
+- [-] Define RLS policies — `profiles` and `notification_preferences` done; `is_admin()` helper available to all later migrations
 - [ ] Define immutable/versioned records
 - [ ] Define archive/anonymization behavior
 - [ ] Seed reference/test data

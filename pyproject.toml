@@ -32,6 +32,7 @@ dev = [
     "pre-commit>=4.0",
     "freezegun>=1.5",
     "respx>=0.21",
+    "pglast>=8.4",
 ]
 
 [build-system]
