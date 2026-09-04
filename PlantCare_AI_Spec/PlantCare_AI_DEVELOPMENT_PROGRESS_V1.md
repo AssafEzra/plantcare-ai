@@ -97,7 +97,9 @@ Remaining implementation documentation:
 - [x] Define dependency management — uv + `pyproject.toml`
 - [x] Add formatter/linter — ruff (format + lint), mypy
 - [x] Add pytest — with `pytest-asyncio`, `pytest-cov`, `freezegun`, `respx`
-- [x] Add CI checks — `.github/workflows/ci.yml`: ruff → format → mypy → tests, plus a tracked-`.env` guard
+- [x] Add CI checks — `.github/workflows/ci.yml`: ruff → format → mypy → tests, plus a tracked-`.env` guard. Triggers on push, PR and manual dispatch.
+
+> **Gotcha worth remembering:** a repository created with `gh repo create` can have Actions disabled while `GET /actions/permissions` still reports `enabled: true`. Symptom: zero check-suites are created for pushes and PRs, and only `workflow_dispatch` runs. Fix: `gh api -X PUT repos/<owner>/<repo>/actions/permissions -F enabled=true -f allowed_actions=all`, or click **Enable Actions** on the repository's Actions tab.
 - [x] Define logging conventions — `app/config/logging.py`, structlog JSON with secret/chain-of-thought redaction
 - [x] Define error-handling conventions — `app/common/errors.py`, `AppError` → API error envelope
 
