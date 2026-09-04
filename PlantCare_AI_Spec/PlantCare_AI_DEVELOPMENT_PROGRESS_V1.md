@@ -81,10 +81,10 @@ Remaining implementation documentation:
 
 # 3. Repository & Engineering Setup
 
-- [x] Create GitHub repository — `AssafEzra/plantcare-ai` (private); default branch `dev`
+- [x] Create GitHub repository — `AssafEzra/plantcare-ai` (public); default branch `dev`
 - [x] Create `main`
 - [x] Create `dev`
-- [~] Protect `main` — **blocked by plan**: branch protection *and* rulesets both require GitHub Pro on a private repo (HTTP 403). Mitigated locally by the `no-commit-to-branch --branch main` pre-commit hook. Resolve by upgrading to Pro or making the repo public.
+- [x] Protect `main` — PR required (0 approvals, solo project), both CI checks required and must be up to date, linear history, no force pushes, no deletion. Required the repository to be public: branch protection and rulesets are both Pro-only on private repos.
 - [x] Define PR workflow — `CONTRIBUTING.md` + `.github/pull_request_template.md`
 - [x] Add README
 - [x] Add CONTRIBUTING.md
