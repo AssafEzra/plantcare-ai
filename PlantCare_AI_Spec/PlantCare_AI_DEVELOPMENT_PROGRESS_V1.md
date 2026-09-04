@@ -143,11 +143,11 @@ Remaining implementation documentation:
 - [x] `identifications`
 - [x] `identification_candidates`
 - [x] `species` - taxonomy only; knowledge tables follow next
-- [ ] `knowledge_versions`
-- [ ] `knowledge_sources`
-- [ ] `approved_sources`
-- [ ] `knowledge_drafts`
-- [ ] `knowledge_reports`
+- [x] `knowledge_versions`
+- [x] `knowledge_sources`
+- [x] `approved_sources`
+- [x] `knowledge_drafts`
+- [x] `knowledge_reports`
 - [ ] `care_plans`
 - [ ] `care_plan_versions` (source_type covers version provenance — no separate care_plan_changes table)
 - [ ] `care_rules`
@@ -164,7 +164,7 @@ Remaining implementation documentation:
 - [-] Define indexes - done for tables created so far
 - [-] Define constraints/enums — all 24 enums created; per-table constraints land with their tables
 - [-] Define RLS policies — `profiles` and `notification_preferences` done; `is_admin()` helper available to all later migrations
-- [ ] Define immutable/versioned records
+- [-] Define immutable/versioned records - knowledge_versions (content-immutable, no delete) and knowledge_sources done; care_events, health_assessments, system_events follow
 - [ ] Define archive/anonymization behavior
 - [ ] Seed reference/test data
 

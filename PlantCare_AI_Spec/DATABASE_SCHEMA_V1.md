@@ -130,14 +130,37 @@ never overwrites existing ones. The alternative — granting authenticated users
 on a global taxonomy table — would have let any client write arbitrary rows.
 
 ### `knowledge_drafts`
-`id`, `species_id`, `status`, `initiated_by`, `research_request_id`, `content jsonb`, `research_notes`, `admin_note`, timestamps.
+`id`, `species_id`, `language`, `status`, `initiated_by`, `research_request_id`, `content jsonb`, `research_notes`, `admin_note`, timestamps.
+
+**Amended during implementation (MVP), per FINAL §37:** a partial unique index allows at most
+one *open* draft per species and language — open meaning `DRAFT`, `RESEARCHING` or
+`READY_FOR_REVIEW`. Two concurrent research runs would otherwise race to publish two versions
+of the same knowledge. `REJECTED` and `FAILED` drafts deliberately do not block a retry, which
+is what A17 needs: a rejected draft must leave the species retriable or plants stranded in
+`KNOWLEDGE_PENDING` could never be released. Drafts are admin-only; a user's visibility into
+pending research is the plant's `KNOWLEDGE_PENDING` status, not the draft.
 
 Content sections: Identification, Description, Light, Watering, Soil, Temperature, Humidity, Fertilization, Repotting, Pruning, Propagation, Common Problems, Toxicity/Safety, Sources.
 
 ### `knowledge_versions`
-`id`, `species_id`, `version_number`, `content jsonb`, `source_summary jsonb`, `is_current`, `published_by`, `published_at`, `created_at`.
+`id`, `species_id`, `language`, `version_number`, `content jsonb`, `source_summary jsonb`, `is_current`, `published_by`, `published_at`, `created_at`.
 
-Published versions are immutable. Enforce one current version per species with a partial unique index.
+Published versions are immutable. Enforce one current version per species+language with a partial unique index.
+
+**Clarified during implementation, per FINAL §37:** "immutable" means *content*-immutable, not
+row-immutable. `is_current` must be able to flip to false when a newer version is published —
+a row-immutable table could never demote its predecessor, making publication impossible. The
+trigger therefore protects `species_id`, `language`, `version_number`, `content`,
+`source_summary`, `published_by` and `published_at`, while leaving `is_current` writable.
+DELETE is refused outright for everyone, since §29 says historical published versions are never
+deleted. This is the same distinction already drawn for `care_plan_versions`.
+
+`language` added per the MVP decision to store AI content in Hebrew with a language tag, so a
+future English localisation publishes independently rather than needing a migration.
+
+RLS: users read `where is_current`; **admins additionally read every version**, which the Admin
+Panel's version-history view requires — without that policy a JWT-scoped admin client sees
+nothing but the current row.
 
 ### `approved_sources`
 `id`, `name`, `domain`, `source_type`, `reliability_level`, `notes`, `is_enabled`, `created_by`, timestamps.
@@ -147,8 +170,27 @@ Published versions are immutable. Enforce one current version per species with a
 
 Every external claim must have a real source; unsupported AI-only content is explicitly marked `AI_GENERATED_REQUIRES_VERIFICATION`.
 
+**Amended during implementation (MVP), per FINAL §37** — three CHECK constraints make the
+provenance rules unfalsifiable rather than conventional:
+
+- an `APPROVED` or `EXTERNAL_UNAPPROVED` row must carry a `url` matching `^https?://`, because
+  by definition it represents an external claim that was fetched and verified;
+- only `AI_GENERATED_REQUIRES_VERIFICATION` may lack a URL — that is what the class means;
+- an `AI_GENERATED_REQUIRES_VERIFICATION` row may not reference an `approved_source_id`, so an
+  unverified claim cannot masquerade as a cited one; and `APPROVED` *must* reference one, so
+  only a real domain match earns that classification.
+
+Rows are fully immutable (no UPDATE, no DELETE) and the parent version uses ON DELETE RESTRICT,
+so provenance can never be orphaned.
+
 ### `knowledge_reports`
 `id`, `user_id`, `plant_id nullable`, `species_id nullable`, `knowledge_version_id nullable`, `report_text`, `status`, `admin_note`, timestamps.
+
+**Amended during implementation (MVP), per FINAL §37:** `status` is constrained to
+`OPEN | REVIEWING | ACTIONED | DISMISSED`, and a CHECK requires at least one of `species_id` or
+`knowledge_version_id` — a report naming nothing is unactionable. Users may INSERT and SELECT
+their own reports but not UPDATE them: `status` and `admin_note` are the administrator's triage
+record, not something the reporter may edit after filing.
 
 ## Care
 ### `care_plans`
