@@ -109,13 +109,13 @@ Remaining implementation documentation:
 
 ## DEV
 
-- [ ] Create DEV Supabase project
-- [ ] Create DEV database schema
+- [x] Create DEV Supabase project — `plantcare-dev`, eu-central-1, org `plantcare`
+- [-] Create DEV database schema — foundation migration applied; remaining tables follow
 - [ ] Configure DEV Auth
 - [ ] Configure DEV Storage
 - [ ] Configure DEV AI credentials
 - [ ] Seed fake/test data
-- [ ] Verify no PROD credentials are used locally
+- [x] Verify no PROD credentials are used locally — no PROD project exists yet; `.env` is git-ignored and points at DEV
 
 ## PROD
 
@@ -135,7 +135,7 @@ Remaining implementation documentation:
 # 5. Database
 
 - [ ] Finalize schema
-- [-] Create migrations — 0001 foundation done; plants/identification, knowledge, care/health/system to follow
+- [-] Create migrations — 0001 foundation + 0002 corrective applied to DEV; plants/identification, knowledge, care/health/system to follow
 - [x] `profiles` — plus `notification_preferences`, which the signup trigger populates
 - [ ] `plants`
 - [ ] `plant_images`

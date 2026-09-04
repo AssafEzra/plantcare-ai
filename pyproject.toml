@@ -33,6 +33,7 @@ dev = [
     "freezegun>=1.5",
     "respx>=0.21",
     "pglast>=8.4",
+    "psycopg[binary]>=3.3.5",
 ]
 
 [build-system]

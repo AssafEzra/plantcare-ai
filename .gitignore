@@ -35,3 +35,6 @@ supabase/.temp/
 Thumbs.db
 .idea/
 .vscode/
+
+# Local DB connection string (contains the password)
+.pgdsn
