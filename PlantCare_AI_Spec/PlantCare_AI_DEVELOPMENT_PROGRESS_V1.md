@@ -353,16 +353,16 @@ Remaining implementation documentation:
 
 # 15. Notifications
 
-- [ ] Notification model
-- [ ] In-app reminders
-- [ ] EmailProvider abstraction
-- [ ] Resend provider
-- [ ] Email on/off
-- [ ] Preferred reminder time
-- [ ] Daily digest
-- [ ] Delivery logging
-- [ ] Duplicate-send prevention
-- [ ] Timezone-aware sending
+- [x] Notification model
+- [x] In-app reminders - rendered from the same task query as the dashboard, so email and screen cannot disagree
+- [x] EmailProvider abstraction - `NullProvider` is the default, so an unconfigured deployment sends nothing rather than crashing
+- [x] Resend provider - plain HTTP; the SDK would exist only to build one POST
+- [x] Email on/off - respected before a message is built, not by discarding one afterwards
+- [x] Preferred reminder time - A10: this governs when we may *write*, not when a task is due
+- [x] Daily digest - honoured as a preference; the plan's first draft chose by task count, which made the setting inert
+- [x] Delivery logging - user-visible, so "we did email you" is checkable rather than trusted
+- [x] Duplicate-send prevention - the row is reserved *before* the provider call, so a second tick dies on the unique index with nothing in flight
+- [x] Timezone-aware sending - the dedupe key carries the user's local date, so changing zone cannot produce two digests on one of their days
 
 ---
 

@@ -386,6 +386,44 @@ MVP channel is Email.
 
 `GET /v1/notification-deliveries`
 
+**Specified in PR 19, per FINAL §37**
+
+*A10 — two "preferred times", and what each governs.* A care rule has a
+`preferred_time_local` and so does a notification preference, and the specification never says
+how they relate:
+
+- the **rule's** time is when a task is *due* — "water at 08:00";
+- the **preference's** time is when we are allowed to *write* — "tell me at 07:00".
+
+They answer different questions. A user who waters in the evening still wants a morning reminder,
+and a user with six plants wants one message at a time they choose rather than six at whatever
+hours their rules happen to specify. The Settings help text says which is which, because a user
+who confuses them gets reminders they did not ask for.
+
+*The send window is a window, not an instant.* The tick runs every fifteen minutes and can be
+late; a reminder requiring the clock to land exactly on 08:00 would silently not arrive on a day
+a deploy overlapped it. Once the hour has passed the dedupe key is what stops the open window
+sending twice.
+
+*Duplicate prevention is an ordering, not a check.* The `notification_deliveries` row is inserted
+**before** the provider is called, and `dedupe_key` carries a unique index — so a second attempt
+fails on the insert and never reaches Resend. The obvious alternative (look, send, record) has a
+window in which two ticks both pass the read and the user gets two emails. The worst case here is
+a row stuck in `QUEUED`, not a duplicate message.
+
+Key formats: `digest:<user_id>:<local_date>` and `task:<care_task_id>:reminder`. The digest key
+carries the user's **local** date, so changing timezone cannot yield two digests on one of their
+days. The task key carries no date at all — a task overdue for a week belongs in the digest, not
+in a fresh email every morning, and `FINAL §14` lists missed-reminder emails as Future.
+
+*`daily_digest` is honoured as the preference it is.* `true` sends one message for the day;
+`false` sends one per task. The plan's first draft chose by task count, which made the user's
+setting inert.
+
+*A failed send is recorded, never swallowed* (`FINAL §30`), and the task is untouched — still
+outstanding, still on the dashboard. It is not retried the same day: hammering a provider that is
+refusing is a good way to lose an account, and the digest returns tomorrow.
+
 ## Admin monitoring
 Admin-only:
 ```text

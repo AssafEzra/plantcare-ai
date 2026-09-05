@@ -66,15 +66,15 @@ Target: the Definition of Done in `FINAL_SPECIFICATION §35`.
 | 16 | 10 · Care Agent | Context assembly, proposals, operational adjustment | ✅ |
 | 17 | 11 · Scheduler | Deterministic recurrence, tasks, events, `/internal/tick` | ✅ |
 | 18 | 11 · Home dashboard | The twelve `PROGRESS §9` items **[audit]** | ✅ |
-| 19 | 12 · Notifications | Resend provider, digest, `dedupe_key` idempotency | ▶ next |
-| 20 | 13 · Plant dashboard | Full view model, history timeline | ☐ |
+| 19 | 12 · Notifications | Resend provider, digest, `dedupe_key` idempotency | ✅ |
+| 20 | 13 · Plant dashboard | Full view model, history timeline | ▶ next |
 | 21 | 14 · Health Agent | Assessment, findings, sources, Python-computed trend | ☐ |
 | 22 | 15 · Admin panel | Monitoring, reports, audit log, anonymisation | ☐ |
 | 23 | 16 · Testing | Nine E2E journeys, RLS matrix, no-authoritative-record | ☐ |
 | 24 | 17 · Deployment | Railway, PROD Supabase, cron tick, alerts, runbook | ☐ |
 
-**1,071 tests** currently pass — 726 unit, API, agent and UI tests that CI runs on every
-push, plus 344 integration tests executed against the DEV Supabase project, plus one
+**1,109 tests** currently pass — 749 unit, API, agent and UI tests that CI runs on every
+push, plus 359 integration tests executed against the DEV Supabase project, plus one
 live provider test excluded from both.
 
 ---
@@ -345,7 +345,7 @@ All twelve `PROGRESS §9` items against the `UI_DESIGN_TOKENS` "Home Dashboard" 
 
 ---
 
-### Phase 12 — Notifications → **PR 19** — next
+### Phase 12 — Notifications → **PR 19** — ✅
 Covers `PROGRESS §15`, `FINAL §14, §30`.
 
 - `notifications/service.py` → `EmailProvider` protocol → `ResendProvider` + `NullProvider` (CI default; tests never send mail).
@@ -359,7 +359,7 @@ Covers `PROGRESS §15`, `FINAL §14, §30`.
 
 ---
 
-### Phase 13 — Plant Dashboard + History → **PR 20**
+### Phase 13 — Plant Dashboard + History → **PR 20** — next
 Covers `PROGRESS §17`, `FINAL §17, §19`.
 
 - `GET /v1/plants/{id}` — full view model (gallery + signed URLs, species, health, upcoming tasks, active plan, latest assessment + trend, environment).
@@ -443,7 +443,7 @@ A1–A16 from the first draft; **A17–A28 added by the audit**. **A19, A22, A23
 | ~~A7~~ | `preferred_weekday` vs non-multiple-of-7 intervals | **✅ RESOLVED in PRs 16–17** — a CHECK constraint refuses the combination at write time, the rule validator refuses it before that, and `next_due()` ignores it if one ever arrived | — |
 | ~~A8~~ | Next-due anchor after a late completion | **✅ RESOLVED in PR 17** — DONE anchors on `event_at`, SKIPPED on the original `due_at`, and MISSED on when it was written off. That third case was not in the plan and is the one that bites: anchoring a miss on its due date writes a MISSED event on every tick forever | — |
 | ~~A9~~ | What writes `MISSED`, and when overdue stops being actionable | **✅ RESOLVED in PR 17** — the overdue sweep writes it after `min(interval_days, 14)` days and cancels the task; the next recurrence is still scheduled | — |
-| A10 | Two competing "preferred time" fields | Rule = due time; preference = send time | P12 |
+| ~~A10~~ | Two competing "preferred time" fields | **✅ RESOLVED in PR 19** — the rule's time is when a task is *due*, the preference's is when we may *write*. They answer different questions, and the Settings help text says which is which | — |
 | A11 | Who computes `trend` | Python, from prior assessments | P14 |
 | A12 | Idempotency column and audit table both mandated, neither defined | Add `dedupe_key`, `admin_audit_log` | P2 |
 | A13 | `POST …/correct` has no request body | `{candidate_id?, scientific_name?, note}`; history only | P8 |
@@ -557,6 +557,10 @@ made silently. Each entry below is also recorded in the spec document it affects
 | 17 | The tick's `403` is the generic forbidden error, with no mention of the secret | An endpoint that says "wrong secret" has told a prober it found the right endpoint |
 | 18 | "All caught up" and "no plants yet" are separate states, not one empty box | One is an achievement and the other an invitation. Sharing a component would waste the single moment the product gets to say well done, and would read as though the plants had disappeared |
 | 18 | Upcoming care is collapsed rather than listed inline | FINAL §5 asks for it on the page and also says the user should understand *what needs attention today* in seconds. Inline, it pushes today's work down — the tests assert the ordering rather than mere presence |
+| 19 | The delivery row is reserved **before** the provider call, not after | Look-send-record leaves a window two ticks can both pass through, and the user gets two emails. Reserving first makes the worst case a row stuck in `QUEUED` |
+| 19 | Resend is called over plain HTTP rather than through its SDK | The API is one POST; the dependency would exist solely to build that request, and every package in the deployment is one more to keep current |
+| 19 | A task reminder's dedupe key carries no date | A task overdue for a week belongs in the digest, not in a fresh email every morning. `FINAL §14` lists missed-reminder emails as Future, and a dateless key is what keeps that promise |
+| 19 | A failed send is not retried the same day | Hammering a provider that is refusing is a good way to lose an account. The task is untouched and the digest returns tomorrow |
 
 ### Amendments to the specification
 

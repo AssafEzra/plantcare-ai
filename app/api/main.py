@@ -25,6 +25,7 @@ from app.api.routers import (
     care_tasks,
     identification,
     knowledge,
+    notifications,
     plant_images,
     plants,
     profile,
@@ -172,6 +173,7 @@ def create_app() -> FastAPI:
     app.include_router(knowledge.router, prefix="/v1")
     app.include_router(care.router, prefix="/v1")
     app.include_router(care_tasks.router, prefix="/v1")
+    app.include_router(notifications.router, prefix="/v1")
     return app
 
 

@@ -32,6 +32,7 @@ from app.config.logging import get_logger
 from app.config.settings import get_settings
 from app.domain.rules import recurrence
 from app.infrastructure.supabase.client import service_client
+from app.notifications import service as notifications
 from app.orchestration.services import scheduler
 from app.repositories.base import rows
 
@@ -92,6 +93,9 @@ class TickResponse(BaseModel):
     materialised: int
     marked_overdue: int
     missed: int
+    emails_sent: int = 0
+    emails_skipped: int = 0
+    emails_failed: int = 0
 
 
 # --- helpers ------------------------------------------------------------------
@@ -281,12 +285,17 @@ async def internal_tick(
 
     created = scheduler.materialise(admin, now_utc=now)
     swept = scheduler.sweep_overdue(admin, now_utc=now)
+    # After the sweep, so the reminders describe the state this run settled
+    # rather than the one it started from.
+    dispatched = notifications.dispatch_due(admin, now_utc=now)
 
     log.info(
         "scheduler.tick",
         materialised=created,
         marked_overdue=swept.marked_overdue,
         missed=swept.missed,
+        emails_sent=dispatched.sent,
+        emails_failed=dispatched.failed,
     )
 
     return DataEnvelope(
@@ -294,6 +303,9 @@ async def internal_tick(
             materialised=created,
             marked_overdue=swept.marked_overdue,
             missed=swept.missed,
+            emails_sent=dispatched.sent,
+            emails_skipped=dispatched.skipped,
+            emails_failed=dispatched.failed,
         ),
         request_id=request.state.request_id,
     )
