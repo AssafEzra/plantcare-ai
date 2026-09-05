@@ -1,0 +1,72 @@
+# PlantCare AI theme.
+#
+# The design tokens in UI_DESIGN_TOKENS_AND_WIREFRAMES are expressed here rather
+# than as injected CSS, because Streamlit's own theming covers nearly all of them
+# and hand-written CSS against Streamlit's internal class names breaks on upgrade.
+# The only rule that genuinely cannot be expressed here is RTL direction, which
+# lives in app/ui/styles/rtl.py and is deliberately the whole of our custom CSS.
+#
+# Only [theme] is defined - no [theme.dark]. The approved visual direction is a
+# single warm, light palette; offering a dark mode Streamlit would derive
+# automatically would introduce a second look nobody designed.
+
+[theme]
+base = "light"
+
+# --pc-primary / --pc-bg / --pc-surface / --pc-text / --pc-border
+primaryColor = "#2F6B4F"
+backgroundColor = "#F7F5EF"
+secondaryBackgroundColor = "#FFFFFF"
+textColor = "#243027"
+borderColor = "#E1E3DC"
+linkColor = "#2F6B4F"
+linkUnderline = false
+
+# Status palette. These drive st.badge and :green[...] markdown, so plant health
+# renders in the approved colours without any per-call styling.
+# --pc-success / --pc-warning / --pc-danger / --pc-neutral
+greenColor = "#3F7D55"
+greenBackgroundColor = "#E8F3EB"
+orangeColor = "#A96F24"
+orangeBackgroundColor = "#F8EEDC"
+redColor = "#A94A43"
+redBackgroundColor = "#F7E8E6"
+grayColor = "#66706A"
+grayBackgroundColor = "#ECEEEA"
+
+# Noto Sans Hebrew is the specified family and carries full Hebrew coverage.
+#
+# One font per source URL: Streamlit rejects a Google Fonts URL that requests
+# several families, and it rejects the *whole* [theme] block when it does - the
+# app then renders with default styling and reports the reason only in the server
+# log. UI_DESIGN_TOKENS lists Assistant as a fallback; the browser's generic
+# sans-serif covers that role here rather than a second family in this URL.
+font = "'Noto Sans Hebrew':https://fonts.googleapis.com/css2?family=Noto+Sans+Hebrew:wght@400;500;700&display=swap"
+
+# Body 16/400, and the heading scale from the design tokens:
+# H1 28/700, H2 22/700, H3 18/700, then the smaller steps.
+baseFontSize = 16
+baseFontWeight = 400
+headingFontSizes = ["28px", "22px", "18px", "16px", "14px", "12px"]
+headingFontWeights = [700, 700, 700, 600, 500, 500]
+
+# Radius scale is 8/12/16/24; cards are 16px and controls a little tighter.
+baseRadius = "16px"
+buttonRadius = "12px"
+showWidgetBorder = true
+showSidebarBorder = true
+
+[theme.sidebar]
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#F0EFE8"
+borderColor = "#E1E3DC"
+primaryColor = "#2F6B4F"
+
+[server]
+# Uploads are capped at 10 MB per image (FINAL §20). Streamlit's own limit is a
+# second gate in front of the API's validation, so an oversized file is rejected
+# before it is ever buffered.
+maxUploadSize = 10
+
+[browser]
+gatherUsageStats = false

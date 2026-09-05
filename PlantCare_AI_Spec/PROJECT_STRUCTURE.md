@@ -13,7 +13,7 @@ plantcare-ai/
 ├── app/
 │   ├── ui/
 │   │   ├── streamlit_app.py
-│   │   ├── pages/
+│   │   ├── app_pages/     # see §13
 │   │   │   ├── home.py
 │   │   │   ├── my_plants.py
 │   │   │   ├── add_plant.py
@@ -207,3 +207,34 @@ layout does not silently diverge from this specification.
 
 Classified: MVP. Rationale: tooling constraint, not a design preference. Recorded
 per `FINAL_SPECIFICATION §37`.
+
+## 13. UI Pages Directory — Recorded Deviation
+
+This document names `app/ui/pages/`. Streamlit reserves a `pages/` directory
+beside the entry script for its legacy auto-discovery API, which would compete
+with the explicit `st.navigation` routing the app uses. Streamlit's own guidance
+is to name the directory anything but `pages/`.
+
+**Resolution:** the directory is `app/ui/app_pages/`. Nothing else about the
+structure changes.
+
+Classified: MVP. Rationale: framework constraint, not a design preference.
+Recorded per `FINAL_SPECIFICATION §37`.
+
+## 14. UI Styling — Where It Lives
+
+`UI_DESIGN_TOKENS_AND_WIREFRAMES` expresses the visual direction as CSS custom
+properties. In implementation those live in `.streamlit/config.toml`, which
+Streamlit applies to its own components — colours, fonts, radii and the heading
+scale all map onto native theme options.
+
+Hand-written CSS is confined to `app/ui/styles/rtl.py` and covers only
+right-to-left layout, which Streamlit's theming cannot express. This is
+deliberate: CSS written against Streamlit's internal class names breaks silently
+on upgrade, so the smaller that surface, the better.
+
+One trap worth knowing: Streamlit rejects the **entire** `[theme]` block when any
+option is invalid — for instance a Google Fonts URL requesting two families — and
+reports it only in the server log. The app then renders in default styling with
+no browser-visible error. `tests/ui/test_theme_config.py` guards the cases that
+trigger it.

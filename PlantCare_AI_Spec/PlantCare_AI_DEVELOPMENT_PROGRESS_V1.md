@@ -190,11 +190,11 @@ Remaining implementation documentation:
 # 7. Authentication & Authorization
 
 - [x] Supabase Auth setup
-- [~] Email/password registration - Supabase configured; the UI flow lands with the Streamlit shell
+- [x] Email/password registration
 - [x] Email verification - enable_confirmations on, version-controlled in supabase/config.toml
-- [~] Email/password login - token consumption and verification done; the UI flow lands with the Streamlit shell
-- [~] Password reset - redirect URLs configured; the UI flow lands with the Streamlit shell
-- [~] Logout - lands with the Streamlit shell
+- [x] Email/password login
+- [x] Password reset - response is identical for known and unknown addresses
+- [x] Logout
 - [x] Session handling - JWKS-verified access tokens with clock-skew leeway
 - [x] User profile - GET and PATCH /v1/me
 - [x] Admin role - require_admin reads profiles.role server-side, never from the token
@@ -206,18 +206,18 @@ Remaining implementation documentation:
 
 # 8. Application Shell
 
-- [ ] Streamlit shell
-- [ ] RTL
-- [ ] Hebrew UI
-- [ ] Sidebar navigation
-- [ ] Shared components
-- [ ] Natural/Premium design direction
-- [ ] Responsive layout
-- [ ] Loading states
-- [ ] Error states
-- [ ] Empty states
-- [ ] Settings
-- [ ] Admin route visibility
+- [x] Streamlit shell - st.navigation, app_pages/, sign-in gate
+- [x] RTL
+- [x] Hebrew UI
+- [x] Sidebar navigation - Material Symbols icons, admin entry hidden for non-admins
+- [x] Shared components - status badges, page header, empty state, guarded loading
+- [x] Natural/Premium design direction - design tokens applied via .streamlit/config.toml
+- [-] Responsive layout - 1280px max width and native containers; card grids land with the plant list
+- [x] Loading states
+- [x] Error states - API error envelope translated to Hebrew in one place
+- [x] Empty states
+- [x] Settings - name and timezone; notification preferences pending their endpoints
+- [x] Admin route visibility
 
 ---
 
