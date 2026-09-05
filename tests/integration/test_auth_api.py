@@ -9,7 +9,6 @@ Every user created here is deleted afterwards.
 
 from __future__ import annotations
 
-import contextlib
 import os
 import uuid
 from collections.abc import Iterator
@@ -26,6 +25,7 @@ from fastapi.testclient import TestClient
 # then answers 422 instead of 401, with nothing in the traceback pointing at the
 # cause.
 from app.api.dependencies import AdminDep
+from tests.integration.conftest import delete_accounts
 
 pytestmark = pytest.mark.integration
 
@@ -87,10 +87,7 @@ def make_account(admin_sdk) -> Iterator:
 
     yield _make
 
-    for user_id in created:
-        # Cleanup must never mask a test failure.
-        with contextlib.suppress(Exception):
-            admin_sdk.auth.admin.delete_user(user_id)
+    delete_accounts(admin_sdk, created)
 
 
 @pytest.fixture

@@ -1022,6 +1022,21 @@ undo it, and remove an administrator by accident. Running it twice is harmless โ
 second call returns the already-anonymised profile rather than raising, which matters
 for something executed by hand from a ticket.
 
+**Physical deletion is not merely discouraged - it is impossible.** Discovered in
+PR 26 while cleaning the development database. Every user-owned table cascades
+from `auth.users`, but `system_events`, `care_events` and the health tables carry
+triggers that refuse DELETE outright (ยง1.5). So the cascade promises a removal the
+trigger forbids, and deleting any account that ever created a plant fails at the
+database with "Table system_events is append-only".
+
+The two rules cannot both hold and immutability is the one that wins, which is the
+right outcome: this section already says not to delete the account record. Worth
+stating plainly all the same, because the `ON DELETE CASCADE` in the schema reads
+like a promise the database will not keep, and because anything that needs rows
+genuinely gone - a development database full of test accounts - has to disable
+those triggers deliberately, as an administrative act, rather than expecting a
+cascade to do it.
+
 ### Plant deletion
 
 Normal user action is Archive, not hard delete.

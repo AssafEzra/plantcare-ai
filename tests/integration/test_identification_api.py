@@ -8,7 +8,6 @@ and neither can be checked without a real database or trusted from a live model.
 
 from __future__ import annotations
 
-import contextlib
 import io
 import os
 import uuid
@@ -25,6 +24,7 @@ from app.api.routers.identification import get_identification_agent, get_knowled
 from app.common.enums import IdentificationStatus
 from app.infrastructure.ai.gateway import AIGateway
 from app.infrastructure.ai.mock_provider import MockProvider
+from tests.integration.conftest import delete_accounts
 
 pytestmark = pytest.mark.integration
 
@@ -112,9 +112,7 @@ def account(admin_sdk) -> Iterator:
 
     yield _make
 
-    for user_id in created:
-        with contextlib.suppress(Exception):
-            admin_sdk.auth.admin.delete_user(user_id)
+    delete_accounts(admin_sdk, created)
 
 
 def photo() -> bytes:

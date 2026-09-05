@@ -36,3 +36,34 @@ def env(monkeypatch: pytest.MonkeyPatch):
     settings_module.get_settings.cache_clear()
     yield monkeypatch
     settings_module.get_settings.cache_clear()
+
+
+def pytest_terminal_summary(terminalreporter) -> None:
+    """Say what teardown could not remove.
+
+    The accounts these suites create cannot be deleted - `system_events` is
+    append-only and refuses the cascade - and the old teardown hid that inside
+    `contextlib.suppress(Exception)`. Twenty-five PRs later the DEV project held
+    1,375 orphaned accounts, a quarter of them administrators, and the Auth rate
+    limit they contributed to was being blamed on the tests that hit it last.
+
+    A silent failure that accumulates is worse than a loud one that does not, so
+    the count goes in the summary with the script that can act on it.
+    """
+    try:
+        from tests.integration.conftest import undeleted_accounts
+    except ImportError:  # pragma: no cover - unit-only runs
+        return
+
+    left = undeleted_accounts()
+    if not left:
+        return
+
+    terminalreporter.write_sep("-", "test accounts left behind")
+    terminalreporter.write_line(
+        f"{len(left)} account(s) could not be deleted: system_events is append-only, "
+        "so the cascade from auth.users is refused (FINAL 1.5)."
+    )
+    terminalreporter.write_line(
+        "Remove them with: uv run python scripts/purge_dev_test_accounts.py --delete"
+    )
