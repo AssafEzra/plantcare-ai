@@ -109,8 +109,13 @@ class AIProvider(Protocol):
         images: list[ImageInput] | None = None,
         max_tokens: int = 8000,
         effort: str = "high",
+        timeout_seconds: float | None = None,
     ) -> StructuredResult[T]:
         """Generate a response validated against `schema`.
+
+        `timeout_seconds` is per call, because the four agents do work of very
+        different sizes and a single client-wide budget sized for the smallest
+        one fails the largest.
 
         Raises :class:`SchemaValidationFailedError` when the response does not
         conform, so the gateway can decide whether to retry.

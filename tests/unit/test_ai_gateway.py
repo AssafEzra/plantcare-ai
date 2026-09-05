@@ -237,3 +237,42 @@ def test_the_prompt_text_is_sent_as_the_system_prompt(env):
     run(gateway(provider))
 
     assert provider.calls[0]["system"] == "system text"
+
+
+# --- per-agent timeouts (PR 29) -------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("agent", "expected"),
+    [
+        (AgentType.IDENTIFICATION, 90),
+        (AgentType.KNOWLEDGE, 600),
+        (AgentType.CARE, 180),
+        (AgentType.HEALTH, 180),
+    ],
+)
+def test_each_agent_gets_its_own_timeout(env, agent, expected):
+    """One budget for four agents is one that is wrong for three of them.
+
+    Knowledge writes thirteen sections of Hebrew prose; identification is a vision
+    call measured at about thirty seconds. The shared 90-second budget passed
+    every test here — a mock answers instantly — and killed the first real
+    research run at 90,354 ms, which failed the draft and left the plant with
+    nothing to approve.
+    """
+    assert gateway(MockProvider([GOOD])).timeout_for(agent) == expected
+
+
+def test_the_timeout_reaches_the_provider(env):
+    """A budget the call does not carry is a comment."""
+    provider = MockProvider([GOOD])
+
+    gateway(provider).run(
+        agent=AgentType.KNOWLEDGE,
+        request_id=uuid4(),
+        prompt=PROMPT,
+        user_content="research this",
+        schema=Answer,
+    )
+
+    assert provider.calls[0]["timeout_seconds"] == 600

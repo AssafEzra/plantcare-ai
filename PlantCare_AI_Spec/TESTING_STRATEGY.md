@@ -252,6 +252,27 @@ Use:
 
 Live AI tests may be run separately because they are slower, less deterministic, and potentially costly.
 
+**Added in PR 29 — what a mocked provider structurally cannot tell you.** The list
+above has a "timeout/error fixture" and the suite has several, and none of them
+could have found the defect that shipped: a `MockProvider` answers instantly, so a
+timeout fixture proves the *gateway* handles a timeout, never that the *budget* is
+right. One 90-second budget shared by four agents passed everything and killed the
+first real Knowledge research run, which failed the draft and left the plant with
+nothing to approve.
+
+The blind spot is not the response, which mocks model well — it is the **request**.
+Nothing in the suite looked at how the call was made, because the one component
+that makes it is the component every test replaces. Two rules follow:
+
+1. *A number chosen for a model call is not covered by a test whose model is
+   instant.* State the measurement it came from, or say plainly that it is an
+   unmeasured bound and where the real one will be recorded.
+2. *Test the request, not only the response.* `tests/unit/test_anthropic_provider.py`
+   substitutes the SDK client and asserts on what was sent — that the call is
+   streamed, that the per-agent timeout travels with it, and that reasoning is
+   never requested for display. That file is cheap, runs in CI, and covers the
+   surface the `live` test was carrying alone at a cost that keeps it out of CI.
+
 ## 13. Acceptance Gate
 
 A feature is considered complete only when:

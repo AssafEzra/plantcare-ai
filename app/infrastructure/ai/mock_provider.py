@@ -54,6 +54,7 @@ class MockProvider:
         images: list[ImageInput] | None = None,
         max_tokens: int = 8000,
         effort: str = "high",
+        timeout_seconds: float | None = None,
     ) -> StructuredResult[T]:
         self.calls.append(
             {
@@ -64,6 +65,7 @@ class MockProvider:
                 "image_count": len(images or []),
                 "max_tokens": max_tokens,
                 "effort": effort,
+                "timeout_seconds": timeout_seconds,
             }
         )
 

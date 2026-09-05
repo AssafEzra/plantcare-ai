@@ -1133,6 +1133,47 @@ HEALTH_MODEL=...
 
 Models can be swapped without rewriting Agent logic.
 
+**Amended in PR 29 (§37): timeouts are per agent, alongside the models.**
+
+```text
+IDENTIFICATION_TIMEOUT_SECONDS=90
+KNOWLEDGE_TIMEOUT_SECONDS=600
+CARE_TIMEOUT_SECONDS=180
+HEALTH_TIMEOUT_SECONDS=180
+```
+
+The gateway listed "timeouts" as one of its jobs and PR 12 implemented that as a
+single client-wide `AI_REQUEST_TIMEOUT_SECONDS=90`. The four agents do work of
+very different sizes: identification is a vision call returning three candidates,
+measured at about thirty seconds; Knowledge research writes the thirteen prose
+sections of §10 in Hebrew with source retrieval behind it. The first real research
+run in DEV was cut off at 90,354 ms with `AGENT_TIMEOUT`. A timeout is deliberately
+not retried — retrying will not make a slow response fast — so the draft went
+FAILED, the plant stayed `KNOWLEDGE_PENDING`, and the administrator had nothing to
+approve. Reported by a user as "why was no knowledge draft created?"
+
+`AI_REQUEST_TIMEOUT_SECONDS` remains, as the client default for provider calls
+that are not agent-scoped.
+
+The same species re-researched after this change took **262 seconds** and returned
+all thirteen sections with three verified sources, so the 600 is about twice an
+observed run rather than a round number. Care and Health have still never run
+against the live API; their 180 is twice the measured identification budget and
+should be replaced by a measurement the first time each one runs.
+
+**And the request is streamed.** Not to consume it incrementally — an agent needs
+a complete, schema-valid document before it can do anything — but because a
+streamed request is measured chunk to chunk rather than end to end, so a long
+generation that is visibly still producing tokens is not killed for taking a
+while. Raising the number alone would have left the same failure waiting at a
+larger size.
+
+Neither could be caught by the suite as it stood: a mock provider answers
+instantly, so every test of a timeout tests the gateway's handling of one rather
+than whether the budget is right, and no test looked at *how* the request was
+made. `tests/unit/test_anthropic_provider.py` now substitutes the SDK client and
+asserts on the request itself.
+
 ### Prompts
 
 Version prompts under:

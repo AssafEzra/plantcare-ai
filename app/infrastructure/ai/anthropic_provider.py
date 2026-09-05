@@ -12,6 +12,7 @@ import time
 from typing import Any, cast
 
 import anthropic
+from anthropic import NOT_GIVEN
 from pydantic import BaseModel, ValidationError
 
 from app.config.settings import get_settings
@@ -49,6 +50,7 @@ class AnthropicProvider:
         images: list[ImageInput] | None = None,
         max_tokens: int = 8000,
         effort: str = "high",
+        timeout_seconds: float | None = None,
     ) -> StructuredResult[T]:
         content: list[dict[str, Any]] = []
 
@@ -69,7 +71,18 @@ class AnthropicProvider:
 
         started = time.perf_counter()
         try:
-            response = self._client.messages.parse(
+            # Streamed, and then waited on. Nothing here consumes the response
+            # incrementally - the agents need a complete, schema-valid document
+            # before they can do anything with it - but a streamed request is
+            # measured chunk to chunk rather than end to end, so a long generation
+            # cannot trip a read timeout while it is visibly still producing
+            # tokens. The Knowledge Agent writes thirteen prose sections against
+            # `max_tokens=8000`; the first real research run in DEV was cut off
+            # mid-generation at ninety seconds and the draft failed.
+            #
+            # `get_final_message()` returns the same `ParsedMessage` that
+            # `messages.parse()` returned, so everything below is unchanged.
+            with self._client.messages.stream(
                 model=model,
                 max_tokens=max_tokens,
                 system=system,
@@ -81,7 +94,11 @@ class AnthropicProvider:
                 # (FINAL §23 forbids persisting chain-of-thought).
                 thinking=cast(Any, {"type": "adaptive", "display": "omitted"}),
                 output_config=cast(Any, {"effort": effort}),
-            )
+                # Per call: the client-level default is sized for the smallest of
+                # the four agents, and the gateway knows which one is calling.
+                timeout=timeout_seconds if timeout_seconds is not None else NOT_GIVEN,
+            ) as stream:
+                response = stream.get_final_message()
         except anthropic.APITimeoutError as exc:
             raise ProviderTimeoutError("הניתוח נמשך זמן רב מדי.") from exc
         except anthropic.APIStatusError as exc:
