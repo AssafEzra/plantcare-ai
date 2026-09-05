@@ -540,3 +540,42 @@ def test_a_user_cannot_upload_to_another_users_plant(api: TestClient, account):
     )
 
     assert response.status_code == 404
+
+
+# --- role must not widen a user-facing view -----------------------------------
+
+
+def test_an_admin_sees_only_their_own_plants(api, account, admin_sdk):
+    """`plants_select_admin` lets an administrator read every plant, which is
+    right for the admin panel and wrong for "My Plants".
+
+    Found by looking at the screen: an admin's own plant list showed 590 plants
+    belonging to other users, with their names. The route now scopes to the
+    caller explicitly rather than leaning on RLS, because the policy is
+    deliberately wider for this role.
+    """
+    owner_id, owner_auth = account()
+    other_id, _ = account()
+
+    mine = api.post("/v1/plants", headers=owner_auth, json={"name": "שלי"}).json()["data"]
+    theirs = (
+        admin_sdk.table("plants")
+        .insert({"user_id": other_id, "name": "של מישהו אחר"})
+        .execute()
+        .data[0]
+    )
+
+    admin_sdk.table("profiles").update({"role": "ADMIN"}).eq("id", owner_id).execute()
+
+    listed = api.get("/v1/plants", headers=owner_auth).json()["data"]
+    ids = {p["id"] for p in listed}
+
+    assert mine["id"] in ids
+    assert theirs["id"] not in ids
+
+    # And the per-plant route agrees: an admin fetching someone else's plant id
+    # through the user-facing endpoint gets the same 404 anyone else would.
+    assert api.get(f"/v1/plants/{theirs['id']}", headers=owner_auth).status_code == 404
+
+    with contextlib.suppress(Exception):
+        admin_sdk.table("plants").delete().eq("id", theirs["id"]).execute()

@@ -73,7 +73,7 @@ Target: the Definition of Done in `FINAL_SPECIFICATION §35`.
 | 23 | 16 · Testing | Nine E2E journeys, RLS matrix, no-authoritative-record | ☐ |
 | 24 | 17 · Deployment | Railway, PROD Supabase, cron tick, alerts, runbook | ☐ |
 
-**974 tests** currently pass — 654 unit, API, agent and UI tests that CI runs on every
+**980 tests** currently pass — 659 unit, API, agent and UI tests that CI runs on every
 push, plus 320 integration tests executed against the DEV Supabase project, plus one
 live provider test excluded from both.
 
@@ -585,8 +585,10 @@ Recorded because each is a pattern worth remembering, not only an incident.
 | PR 15 | PR 14's integration tests named species `Testus {hex}ensis`. `normalize_scientific_name()` strips digits, so those collapse to about a dozen values (`testus a`, `testus b`, …) — and unlike a rolled-back transaction these rows are **committed** against DEV and outlive the run. Seventeen of them silently occupied the name space an older test file drew from, and seventeen previously-green tests began failing | Running the whole integration suite rather than only the new file. `unique_species_name()` existed for exactly this and had been written in PR 6 after the same mistake |
 | PR 15 | Every admin action wrote its confirmation with `st.success()` and then called `st.rerun()`, which discards it — so approving published the version, released the plants, and showed the administrator nothing at all. The fan-out count, the part they most need confirmed, was never visible | Clicking the button in a browser. `AppTest` asserts what a run renders, not what survives the rerun a click triggers, so seven green UI tests had nothing to say about it |
 | PR 16 | The care context selected five `plant_environments` columns that do not exist — pot material, pot diameter, drainage, soil type, distance from window. Every proposal failed at the first query | The first integration run. The columns were plausible enough to write from memory and are genuinely absent from the schema, which is why the agent's `missing_context` names exactly those facts |
+| PR 16 | `list_for_user()` never filtered on `user_id`, leaning entirely on RLS — but `plants_select_admin` deliberately grants administrators read-all, so an admin's own **My Plants** page listed every user's plants, names included | Logging in as an administrator and looking at the page: 590 plants where there should have been one. Every user-facing plant read now scopes to the caller explicitly, and `owner_id` is a required argument so no call site can omit it |
+| PR 16 | `my_plants.py` rendered each card without an open action, so the plant dashboard — and with it every screen PR 16 built — was unreachable from the interface | Trying to click through to it. The component supported `on_open` and the page simply never passed it; everything worked and nothing could be got to |
 
-The pattern: **mocks confirm the shape you assumed.** Thirteen of these seventeen were only
+The pattern: **mocks confirm the shape you assumed.** Fifteen of these nineteen were only
 findable by executing against the real thing — a live database, a real browser, a
 real API — which is why each phase applies its migrations to DEV, and why one
 live provider test is kept despite costing money to run.

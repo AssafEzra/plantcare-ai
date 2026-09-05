@@ -88,6 +88,7 @@ async def list_plants(
 ) -> DataEnvelope[list[PlantResponse]]:
     found = repo.list_for_user(
         user.client,
+        owner_id=user.id,
         status=plant_status.value if plant_status else None,
         health_status=health_status.value if health_status else None,
         query=q,
@@ -102,7 +103,7 @@ async def list_plants(
 async def get_plant(
     request: Request, plant_id: UUID, user: CurrentUserDep
 ) -> DataEnvelope[PlantResponse]:
-    plant = repo.get(user.client, plant_id)
+    plant = repo.get(user.client, plant_id, owner_id=user.id)
     return DataEnvelope(
         data=PlantResponse.model_validate(plant), request_id=request.state.request_id
     )
@@ -116,7 +117,7 @@ async def update_plant(
     if not changes:
         return await get_plant(request, plant_id, user)
 
-    before = repo.get(user.client, plant_id)
+    before = repo.get(user.client, plant_id, owner_id=user.id)
     plant = repo.update(user.client, plant_id, changes)
 
     if "name" in changes and changes["name"] != before.get("name"):
@@ -138,7 +139,7 @@ async def archive_plant(
     request: Request, plant_id: UUID, user: CurrentUserDep
 ) -> DataEnvelope[PlantResponse]:
     """Archive rather than delete (FINAL §21). History is preserved."""
-    plant = repo.get(user.client, plant_id)
+    plant = repo.get(user.client, plant_id, owner_id=user.id)
     ensure_transition(PlantStatus(plant["status"]), PlantStatus.ARCHIVED)
 
     updated = repo.update(user.client, plant_id, {"status": "ARCHIVED", "archived_at": "now()"})
@@ -165,7 +166,7 @@ async def restore_plant(
     species - and a plant whose species gained published knowledge while it was
     archived comes back ACTIVE rather than waiting again.
     """
-    plant = repo.get(user.client, plant_id)
+    plant = repo.get(user.client, plant_id, owner_id=user.id)
     if PlantStatus(plant["status"]) is not PlantStatus.ARCHIVED:
         raise InvalidTransitionError("הצמח אינו בארכיון.")
 
@@ -192,7 +193,7 @@ async def restore_plant(
 async def get_environment(
     request: Request, plant_id: UUID, user: CurrentUserDep
 ) -> DataEnvelope[EnvironmentResponse]:
-    repo.get(user.client, plant_id)  # 404s if it is not the caller's plant
+    repo.get(user.client, plant_id, owner_id=user.id)  # 404s if it is not the caller's plant
     environment = repo.get_environment(user.client, plant_id) or {"plant_id": str(plant_id)}
     return DataEnvelope(
         data=EnvironmentResponse.model_validate(environment),
@@ -210,7 +211,7 @@ async def put_environment(
     `system_events` write there would be nothing for Plant History to render
     (FINAL §19). The two belong together, which is why one function does both.
     """
-    if not repo.find(user.client, plant_id):
+    if not repo.find(user.client, plant_id, owner_id=user.id):
         raise PlantNotFoundError()
 
     before = repo.get_environment(user.client, plant_id) or {}

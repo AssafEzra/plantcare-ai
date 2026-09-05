@@ -56,6 +56,8 @@ weekday = MONDAY | TUESDAY | WEDNESDAY | THURSDAY | FRIDAY | SATURDAY | SUNDAY
 ### `plants`
 `id`, `user_id FK`, `name nullable`, `species_id FK nullable`, `status`, `current_health_status`, `main_image_id nullable`, `notes`, `archived_at`, `created_at`, `updated_at`.
 
+**Clarified in PR 16, per FINAL §37:** `plants_select_admin` grants administrators SELECT on every plant, which the Admin Panel needs. It also means **RLS alone does not scope a user-facing query**: a read that leans only on the policy returns the whole table when an administrator runs it, and that is exactly what happened — an admin's own "My Plants" page listed 590 plants belonging to other users. Every user-facing plant read now filters on `user_id` explicitly, with the owner passed as a required argument so a call site cannot quietly omit it. The policy is right; the query was wrong to rely on it alone.
+
 **Amended during implementation (MVP), per FINAL §37:** `name` is nullable until confirmation —
 the Add Plant flow creates the plant before the user names it (§3 step 5 comes after confirm) —
 with a CHECK rejecting a blank string, so "not yet named" is unambiguously null. CHECK

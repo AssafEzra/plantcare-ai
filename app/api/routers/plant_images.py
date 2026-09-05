@@ -46,7 +46,7 @@ def _with_urls(client_token: str, row: dict) -> PlantImageResponse:
 async def list_images(
     request: Request, plant_id: UUID, user: CurrentUserDep
 ) -> DataEnvelope[list[PlantImageResponse]]:
-    repo.get(user.client, plant_id)
+    repo.get(user.client, plant_id, owner_id=user.id)
     found = repo.list_images(user.client, plant_id)
     return DataEnvelope(
         data=[_with_urls(user.access_token, row) for row in found],
@@ -64,7 +64,7 @@ async def upload_image(
     file: Annotated[UploadFile, File()],
     context_type: Annotated[ImageContextType, Form()] = ImageContextType.GALLERY,
 ) -> DataEnvelope[PlantImageResponse]:
-    if not repo.find(user.client, plant_id):
+    if not repo.find(user.client, plant_id, owner_id=user.id):
         raise PlantNotFoundError()
 
     if repo.count_images(user.client, plant_id, context_type) >= MAX_IMAGES_PER_CONTEXT:
@@ -114,7 +114,7 @@ async def upload_image(
 
     # The first gallery image becomes the plant's main image, so a card has
     # something to show without the user having to choose (FINAL §6).
-    plant = repo.get(user.client, plant_id)
+    plant = repo.get(user.client, plant_id, owner_id=user.id)
     if context_type is ImageContextType.GALLERY and not plant.get("main_image_id"):
         repo.update(user.client, plant_id, {"main_image_id": str(image_id)})
         repo.record_event(
@@ -146,7 +146,7 @@ async def delete_image(
     if not row or row["plant_id"] != str(plant_id):
         raise NotFoundError("התמונה לא נמצאה.")
 
-    plant = repo.get(user.client, plant_id)
+    plant = repo.get(user.client, plant_id, owner_id=user.id)
 
     if row.get("ai_used"):
         repo.hide_image(user.client, image_id, reason="user_requested_removal")

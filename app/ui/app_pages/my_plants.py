@@ -56,10 +56,22 @@ if not plants:
         st.switch_page("app_pages/add_plant.py")
     st.stop()
 
-st.caption(f"{len(plants)} צמחים")
+st.caption("צמח אחד" if len(plants) == 1 else f"{len(plants)} צמחים")
+
+
+def open_plant(plant_id: str) -> None:
+    """Open a plant's dashboard.
+
+    The grid is the only route to it: the sidebar entry lands on an empty state
+    until something has been selected. Without this the plant dashboard - and so
+    the whole care plan - was unreachable from the interface.
+    """
+    st.session_state["pc_selected_plant"] = plant_id
+    st.switch_page("app_pages/plant_dashboard.py")
+
 
 # Three per row on a wide screen; Streamlit collapses columns on narrow ones.
 for row_start in range(0, len(plants), 3):
     for column, plant in zip(st.columns(3), plants[row_start : row_start + 3], strict=False):
         with column:
-            plant_card(plant)
+            plant_card(plant, on_open=open_plant)

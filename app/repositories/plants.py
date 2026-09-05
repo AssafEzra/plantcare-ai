@@ -4,9 +4,15 @@ PROJECT_STRUCTURE §8: persistence only. Nothing here decides whether a
 transition is legal or what a restored plant's status should be — those live in
 `app/domain/rules/plant_lifecycle.py`.
 
-Every function takes the caller's client, so RLS applies to each statement. The
-`.eq("user_id", ...)` filters are redundant with the policies by design: belt and
-braces, and they keep the queries honest to read.
+Every function takes the caller's client, so RLS applies to each statement — but
+RLS is **not** sufficient here on its own, and that is worth being precise about.
+`plants_select_admin` deliberately lets an administrator read every plant, so a
+query that leans only on the policy returns the whole table when an admin runs
+it. A user-facing read must therefore say whose plants it wants.
+
+`owner_id` is required rather than optional for exactly that reason: an optional
+scope is one a call site can forget, and forgetting it showed every user's plants
+on an administrator's own "My Plants" page.
 """
 
 from __future__ import annotations
@@ -44,25 +50,45 @@ def create(client: Client, *, user_id: UUID, name: str | None, notes: str | None
     return require_row(result)
 
 
-def get(client: Client, plant_id: UUID) -> Row:
-    result = client.table("plants").select(PLANT_COLUMNS).eq("id", str(plant_id)).execute()
+def get(client: Client, plant_id: UUID, *, owner_id: UUID) -> Row:
+    """One of the owner's plants, or 404.
+
+    Scoped explicitly, so an administrator fetching another user's plant id
+    through a user-facing route gets the same 404 anyone else would.
+    """
+    result = (
+        client.table("plants")
+        .select(PLANT_COLUMNS)
+        .eq("id", str(plant_id))
+        .eq("user_id", str(owner_id))
+        .execute()
+    )
     return require_row(result, PlantNotFoundError())
 
 
-def find(client: Client, plant_id: UUID) -> Row | None:
-    result = client.table("plants").select(PLANT_COLUMNS).eq("id", str(plant_id)).execute()
+def find(client: Client, plant_id: UUID, *, owner_id: UUID) -> Row | None:
+    result = (
+        client.table("plants")
+        .select(PLANT_COLUMNS)
+        .eq("id", str(plant_id))
+        .eq("user_id", str(owner_id))
+        .execute()
+    )
     return first_row(result)
 
 
 def list_for_user(
     client: Client,
     *,
+    owner_id: UUID,
     status: str | None = None,
     health_status: str | None = None,
     query: str | None = None,
     include_archived: bool = False,
 ) -> list[Row]:
-    builder = client.table("plants").select(PLANT_COLUMNS)
+    # Not redundant with RLS: an administrator's policy admits every row, and
+    # "My Plants" means theirs whatever their role.
+    builder = client.table("plants").select(PLANT_COLUMNS).eq("user_id", str(owner_id))
 
     if status:
         builder = builder.eq("status", status)

@@ -66,7 +66,7 @@ def start(
     idempotency_key: str | None,
 ) -> requests_service.AgentRequest:
     """Validate the request and create the agent request. Does not run the agent."""
-    plant = plants_repo.find(client, plant_id)
+    plant = plants_repo.find(client, plant_id, owner_id=user_id)
     if plant is None:
         raise NotFoundError("הצמח לא נמצא.")
 
@@ -289,7 +289,7 @@ def confirm(
         raise NotFoundError("האפשרות שנבחרה לא נמצאה.")
 
     plant_id = UUID(identification["plant_id"])
-    plant = plants_repo.get(client, plant_id)
+    plant = plants_repo.get(client, plant_id, owner_id=user_id)
 
     species = require_row(
         client.rpc(
