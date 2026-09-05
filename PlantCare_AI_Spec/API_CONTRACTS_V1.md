@@ -489,6 +489,20 @@ Until this shipped, `plant_card` read a `thumbnail_url` key that nothing ever se
 so every card in My Plants rendered "no image" regardless of how many photographs
 the plant had.
 
+**And that was only half of it (PR 27, reported from real use).** `main_image_id`
+was set by the first **gallery** upload, but Add Plant uploads with context
+`identification` — the first photograph anyone takes, and for most plants the only
+one. So every plant created through the flow the product actually uses had a
+photograph and no main image, and the grid stayed empty even with `thumbnail_url`
+in place. Opening the card worked, because the plant dashboard lists images
+regardless of context, which is what made the bug look like a grid problem.
+
+An identification photograph now becomes the main image. Health photographs still
+do not: a health check is usually a close-up of a damaged leaf, which is evidence
+rather than a portrait. And the listing falls back to the plant's newest visible
+photograph when no main image is set, because rows in that state already exist and
+no migration can guess a main image for them.
+
 ## Knowledge reads
 
 `GET /v1/species/{species_id}/knowledge` renders the current published version.
