@@ -15,6 +15,8 @@ RLS entirely and would make every policy test vacuously pass.
 from __future__ import annotations
 
 import os
+import random
+import string
 import uuid
 from collections.abc import Iterator
 
@@ -106,3 +108,32 @@ def as_user(conn: psycopg.Connection, user_id: uuid.UUID) -> None:
 
 def as_postgres(conn: psycopg.Connection) -> None:
     conn.execute("reset role")
+
+
+# --- unique fixture data ------------------------------------------------------
+#
+# These tests run against a shared DEV database that also holds seed data, so a
+# test must never assume a name is unused or that a table contains only its own
+# rows. Both assumptions held until the seed fixtures landed, and then nine tests
+# failed at once. Generate names; scope assertions.
+
+
+def unique_species_name() -> str:
+    """A unique binomial made only of letters.
+
+    Letters only, deliberately: normalize_scientific_name() strips digits, so a
+    hex-based epithet like "a1b2c3" collapses to "a" and collides with every other
+    such name. Real botanical names contain no digits, so the function is correct
+    and the generator has to match it.
+    """
+    epithet = "".join(random.choices(string.ascii_lowercase, k=14))
+    return f"Testus {epithet}"
+
+
+def unique_domain() -> str:
+    return f"test-{uuid.uuid4().hex[:12]}.example.org"
+
+
+def unique_epithet(name: str) -> str:
+    """The lowercase epithet of a name from unique_species_name()."""
+    return name.split()[1].lower()

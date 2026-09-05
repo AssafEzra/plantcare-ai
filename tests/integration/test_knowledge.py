@@ -13,7 +13,7 @@ import uuid
 import psycopg
 import pytest
 
-from tests.integration.conftest import as_postgres, as_user
+from tests.integration.conftest import as_postgres, as_user, unique_domain
 
 pytestmark = pytest.mark.integration
 
@@ -259,8 +259,8 @@ def test_ai_generated_claim_cannot_borrow_an_approved_source(db: psycopg.Connect
     species_id = _species(db)
     version_id = _version(db, species_id)
     approved_id = db.execute(
-        "insert into public.approved_sources (name, domain) values ('RHS', 'rhs.org.uk') "
-        "returning id"
+        "insert into public.approved_sources (name, domain) values ('RHS', %s) returning id",
+        (unique_domain(),),
     ).fetchone()[0]
 
     with pytest.raises(psycopg.errors.CheckViolation):
@@ -367,7 +367,11 @@ def test_user_cannot_see_drafts(db: psycopg.Connection, make_user):
 
 
 def test_user_cannot_see_approved_sources(db: psycopg.Connection, make_user):
-    db.execute("insert into public.approved_sources (name, domain) values ('RHS', 'rhs.org.uk')")
+    """FINAL §29 puts Approved Sources under Admin. The assertion covers every row,
+    not just this test's, because a user must see none of them at all."""
+    db.execute(
+        "insert into public.approved_sources (name, domain) values ('RHS', %s)", (unique_domain(),)
+    )
 
     user_id = make_user()
     as_user(db, user_id)
@@ -379,9 +383,12 @@ def test_admin_manages_approved_sources(db: psycopg.Connection, make_user):
     _make_admin(db, admin)
     as_user(db, admin)
 
-    db.execute("insert into public.approved_sources (name, domain) values ('RHS', 'rhs.org.uk')")
-    rows = db.execute("select name from public.approved_sources").fetchall()
-    assert ("RHS",) in rows
+    domain = unique_domain()
+    db.execute("insert into public.approved_sources (name, domain) values ('RHS', %s)", (domain,))
+    rows = db.execute(
+        "select name from public.approved_sources where domain = %s", (domain,)
+    ).fetchall()
+    assert rows == [("RHS",)]
 
 
 def test_user_reads_sources_of_the_current_version_only(db: psycopg.Connection, make_user):
@@ -396,7 +403,14 @@ def test_user_reads_sources_of_the_current_version_only(db: psycopg.Connection, 
 
     user_id = make_user()
     as_user(db, user_id)
-    assert db.execute("select id from public.knowledge_sources").fetchall() == []
+    # Scoped to this test's own version: seeded knowledge has sources of its own,
+    # which the user legitimately can see because those versions are current.
+    assert (
+        db.execute(
+            "select id from public.knowledge_sources where knowledge_version_id = %s", (v1,)
+        ).fetchall()
+        == []
+    )
 
 
 # --- knowledge reports --------------------------------------------------------

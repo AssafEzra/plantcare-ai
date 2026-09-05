@@ -17,7 +17,7 @@ import uuid
 import psycopg
 import pytest
 
-from tests.integration.conftest import as_postgres, as_user
+from tests.integration.conftest import as_postgres, as_user, unique_species_name
 
 pytestmark = pytest.mark.integration
 
@@ -82,24 +82,28 @@ def test_normalisation_of_unusable_input_is_null(db: psycopg.Connection):
 
 
 def test_species_normalized_name_is_set_by_trigger(db: psycopg.Connection):
+    epithet = unique_species_name().split()[1]
+    raw = f"Testus {epithet} Liebm."
     db.execute(
         "insert into public.species (scientific_name, normalized_name) values (%s, %s)",
-        ("Monstera deliciosa Liebm.", "deliberately-wrong"),
+        (raw, "deliberately-wrong"),
     )
     value = db.execute(
-        "select normalized_name from public.species where scientific_name = %s",
-        ("Monstera deliciosa Liebm.",),
+        "select normalized_name from public.species where scientific_name = %s", (raw,)
     ).fetchone()[0]
-    assert value == "monstera deliciosa", "a client-supplied normalized_name must be overwritten"
+    assert value == f"testus {epithet}", "a client-supplied normalized_name must be overwritten"
 
 
 def test_species_variants_collide_on_one_row(db: psycopg.Connection):
     """The whole point of A23: three spellings must not become three lineages."""
-    db.execute("insert into public.species (scientific_name) values ('Monstera deliciosa')")
+    name = unique_species_name()
+    genus, epithet = name.split()
+    db.execute("insert into public.species (scientific_name) values (%s)", (name,))
 
     with pytest.raises(psycopg.errors.UniqueViolation):
         db.execute(
-            "insert into public.species (scientific_name) values ('monstera  deliciosa Liebm.')"
+            "insert into public.species (scientific_name) values (%s)",
+            (f"{genus.lower()}  {epithet} Liebm.",),
         )
 
 
@@ -118,9 +122,11 @@ def test_upsert_species_deduplicates(db: psycopg.Connection, make_user):
     user_id = make_user()
     as_user(db, user_id)
 
-    first = db.execute("select id from public.upsert_species('Monstera deliciosa')").fetchone()[0]
+    name = unique_species_name()
+    genus, epithet = name.split()
+    first = db.execute("select id from public.upsert_species(%s)", (name,)).fetchone()[0]
     second = db.execute(
-        "select id from public.upsert_species('  monstera deliciosa Liebm. ')"
+        "select id from public.upsert_species(%s)", (f"  {genus.lower()} {epithet} Liebm. ",)
     ).fetchone()[0]
 
     assert first == second, "the confirm flow would have forked the species lineage"
@@ -130,10 +136,11 @@ def test_upsert_species_fills_gaps_without_overwriting(db: psycopg.Connection, m
     user_id = make_user()
     as_user(db, user_id)
 
-    db.execute("select public.upsert_species('Monstera deliciosa', 'Swiss Cheese Plant')")
+    name = unique_species_name()
+    db.execute("select public.upsert_species(%s, 'Swiss Cheese Plant')", (name,))
     row = db.execute(
-        "select common_name, family from public.upsert_species("
-        "'Monstera deliciosa', 'Something Else', 'Araceae')"
+        "select common_name, family from public.upsert_species(%s, 'Something Else', 'Araceae')",
+        (name,),
     ).fetchone()
 
     assert row[0] == "Swiss Cheese Plant", "an existing common_name must not be overwritten"
@@ -152,17 +159,20 @@ def test_user_cannot_insert_species_directly(db: psycopg.Connection, make_user):
     as_user(db, user_id)
 
     with pytest.raises(psycopg.errors.InsufficientPrivilege):
-        db.execute("insert into public.species (scientific_name) values ('Fakus inventus')")
+        db.execute(
+            "insert into public.species (scientific_name) values (%s)", (unique_species_name(),)
+        )
 
 
 def test_any_authenticated_user_can_read_species(db: psycopg.Connection, make_user):
     as_postgres(db)
-    db.execute("insert into public.species (scientific_name) values ('Ficus lyrata')")
+    name = unique_species_name()
+    db.execute("insert into public.species (scientific_name) values (%s)", (name,))
 
     user_id = make_user()
     as_user(db, user_id)
     rows = db.execute(
-        "select id from public.species where normalized_name = 'ficus lyrata'"
+        "select id from public.species where normalized_name = %s", (name.lower(),)
     ).fetchall()
     assert len(rows) == 1
 
@@ -444,7 +454,8 @@ def test_failed_identification_cannot_carry_a_species(db: psycopg.Connection, ma
     user_id = make_user()
     as_postgres(db)
     species_id = db.execute(
-        "insert into public.species (scientific_name) values ('Monstera deliciosa') returning id"
+        "insert into public.species (scientific_name) values (%s) returning id",
+        (unique_species_name(),),
     ).fetchone()[0]
     plant_id = _make_plant(db, user_id)
 
@@ -692,7 +703,8 @@ def test_species_with_plants_cannot_be_deleted(db: psycopg.Connection, make_user
     user_id = make_user()
     as_postgres(db)
     species_id = db.execute(
-        "insert into public.species (scientific_name) values ('Ficus benjamina') returning id"
+        "insert into public.species (scientific_name) values (%s) returning id",
+        (unique_species_name(),),
     ).fetchone()[0]
     db.execute(
         "insert into public.plants (user_id, species_id, status) values (%s, %s, 'ACTIVE')",

@@ -67,3 +67,16 @@ so they are reviewable and reproducible rather than clicked into a dashboard.
 | `site_url` | `http://localhost:8501` | Streamlit's port; verification and reset links resolve here |
 
 `supabase config push` reporting `auth: up_to_date` means remote matches this file exactly.
+
+## Operational note: clock skew and authentication
+
+Access tokens are verified locally against Supabase's JWKS. Verification allows
+**60 seconds of clock skew**, which is not cosmetic: without it, a token issued
+moments ago is rejected as "not yet valid" whenever the API host's clock trails
+Supabase's auth server, producing intermittent 401s for valid sessions on a machine
+whose clock looks fine. This was hit for real on the development machine.
+
+If authentication starts failing intermittently in any environment, check NTP on the
+API host before suspecting the tokens. `UNAUTHENTICATED` with the message
+"Token is not yet valid; the server clock may be out of sync" is that failure,
+distinguished from other verification failures precisely so the logs point at the clock.

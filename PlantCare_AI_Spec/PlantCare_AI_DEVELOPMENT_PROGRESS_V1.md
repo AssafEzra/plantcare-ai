@@ -189,18 +189,18 @@ Remaining implementation documentation:
 
 # 7. Authentication & Authorization
 
-- [ ] Supabase Auth setup
-- [ ] Email/password registration
-- [ ] Email verification
-- [ ] Email/password login
-- [ ] Password reset
-- [ ] Logout
-- [ ] Session handling
-- [ ] User profile
-- [ ] Admin role
-- [ ] RLS policies
-- [ ] Authorization tests
-- [ ] Auth error states
+- [x] Supabase Auth setup
+- [~] Email/password registration - Supabase configured; the UI flow lands with the Streamlit shell
+- [x] Email verification - enable_confirmations on, version-controlled in supabase/config.toml
+- [~] Email/password login - token consumption and verification done; the UI flow lands with the Streamlit shell
+- [~] Password reset - redirect URLs configured; the UI flow lands with the Streamlit shell
+- [~] Logout - lands with the Streamlit shell
+- [x] Session handling - JWKS-verified access tokens with clock-skew leeway
+- [x] User profile - GET and PATCH /v1/me
+- [x] Admin role - require_admin reads profiles.role server-side, never from the token
+- [x] RLS policies - proven end to end: a client built from the caller's JWT is scoped by RLS
+- [x] Authorization tests - 17 live tests plus 20 cryptographic token tests
+- [x] Auth error states - 401/403/422 envelopes, no internal detail leaked
 
 ---
 
