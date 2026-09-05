@@ -232,6 +232,21 @@ Security incidents require immediate credential rotation where applicable.
 
 Supabase backup and recovery capabilities should be enabled according to the selected production plan.
 
+**The selected plan is Free (decided before PR 24).** That is a deliberate cost
+decision with two consequences this document has to state plainly rather than
+leave implied:
+
+- **There is no point-in-time recovery.** "Confirm a recent recoverable backup"
+  below cannot be satisfied the way it reads. Until the project is upgraded, the
+  recovery position before a high-risk migration is the migration being reversible
+  by a forward fix, plus whatever the free tier retains - not a restore.
+- **A free project pauses after inactivity.** A paused project is indistinguishable
+  from an outage to a user, and the first request after it wakes is slow.
+
+Neither is a reason not to ship an MVP with no real users yet. Both become
+release-checklist items the moment there are: **upgrade to a paid plan before real
+user data exists**, alongside the `auth.jwt_expiry` divergence in §4a.
+
 Before high-risk migrations:
 
 - confirm a recent recoverable backup;

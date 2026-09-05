@@ -119,6 +119,12 @@ Remaining implementation documentation:
 
 ## PROD
 
+Not started, deliberately: an empty production project is a live set of credentials
+nobody is watching, so it is created at the start of PR 24 rather than held open
+through the build. Decided before PR 24: org `plantcare`, region `eu-central-1` to
+match DEV, **Free plan** - see `DEPLOYMENT_AND_OPERATIONS §13` for what that costs
+in recoverability, and the release-checklist item it creates.
+
 - [ ] Create PROD Supabase project
 - [ ] Create PROD database schema
 - [ ] Configure PROD Auth
