@@ -296,6 +296,8 @@ which is the likelier bug.
 ### `health_assessment_images`
 Composite PK `(health_assessment_id, plant_image_id)`, plus `display_order`, `created_at`. MVP: 1–4 images.
 
+**Noted in PR 20, per FINAL §37:** the 1–4 image constraint is `DEFERRABLE INITIALLY DEFERRED`, so it is checked at **commit**. PostgREST gives every call its own transaction, which means an assessment and its images can never be written through two REST calls — the first commits with zero images and fails. **The Health Agent (PR 21) must therefore write the assessment, its images, observations, issues, recommendations and sources through a single RPC**, which is what the plan already asks for. Recorded here because the constraint is the thing that will enforce it, and discovering that while building PR 21 would have looked like a bug in the constraint rather than a requirement of the design.
+
 ### `health_observations`
 `id`, `health_assessment_id`, `observation_text`, `confidence_level`, `created_at`.
 

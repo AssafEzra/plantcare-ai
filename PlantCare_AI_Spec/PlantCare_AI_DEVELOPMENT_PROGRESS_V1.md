@@ -393,23 +393,23 @@ Remaining implementation documentation:
 
 # 17. Plant Dashboard & History
 
-- [ ] Overview
-- [ ] Species
-- [ ] Personal name
-- [ ] Health status
-- [ ] Environment
-- [ ] Care summary
-- [ ] Gallery
-- [ ] Care section
-- [ ] Schedule section
+- [x] Overview - one `GET /v1/plants/{id}/dashboard`; the §17 sections would otherwise be eight round trips
+- [x] Species
+- [x] Personal name
+- [x] Health status - with trend, from the latest assessment
+- [x] Environment
+- [x] Care summary
+- [x] Gallery - signed as the caller, short-lived; the bucket stays private
+- [x] Care section
+- [x] Schedule section
 - [ ] Health section
-- [ ] History section
-- [ ] Health Check CTA
-- [ ] Environment update
-- [ ] Knowledge error report
-- [ ] Archive/restore
-- [ ] Manual history event
-- [ ] Timeline UI
+- [x] History section - merged from five tables on read, so the timeline cannot drift from the data
+- [~] Health Check CTA - the button is present and says the check is coming; the check itself is PR 21
+- [x] Environment update - shown, with a note that it proposes rather than rewrites (FINAL §12)
+- [x] Knowledge error report - report, never edit (FINAL §10)
+- [x] Archive/restore - history survives both
+- [x] Manual history event - the four user-created kinds only; the rest are written by the actions that cause them
+- [x] Timeline UI - one shape per entry whatever table it came from
 
 ---
 

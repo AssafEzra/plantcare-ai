@@ -26,6 +26,7 @@ from app.api.routers import (
     identification,
     knowledge,
     notifications,
+    plant_detail,
     plant_images,
     plants,
     profile,
@@ -167,6 +168,7 @@ def create_app() -> FastAPI:
 
     app.include_router(profile.router, prefix="/v1")
     app.include_router(plants.router, prefix="/v1")
+    app.include_router(plant_detail.router, prefix="/v1")
     app.include_router(plant_images.router, prefix="/v1")
     app.include_router(agent_requests.router, prefix="/v1")
     app.include_router(identification.router, prefix="/v1")

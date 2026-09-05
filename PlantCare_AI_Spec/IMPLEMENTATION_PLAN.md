@@ -67,14 +67,14 @@ Target: the Definition of Done in `FINAL_SPECIFICATION §35`.
 | 17 | 11 · Scheduler | Deterministic recurrence, tasks, events, `/internal/tick` | ✅ |
 | 18 | 11 · Home dashboard | The twelve `PROGRESS §9` items **[audit]** | ✅ |
 | 19 | 12 · Notifications | Resend provider, digest, `dedupe_key` idempotency | ✅ |
-| 20 | 13 · Plant dashboard | Full view model, history timeline | ▶ next |
-| 21 | 14 · Health Agent | Assessment, findings, sources, Python-computed trend | ☐ |
+| 20 | 13 · Plant dashboard | Full view model, history timeline | ✅ |
+| 21 | 14 · Health Agent | Assessment, findings, sources, Python-computed trend | ▶ next |
 | 22 | 15 · Admin panel | Monitoring, reports, audit log, anonymisation | ☐ |
 | 23 | 16 · Testing | Nine E2E journeys, RLS matrix, no-authoritative-record | ☐ |
 | 24 | 17 · Deployment | Railway, PROD Supabase, cron tick, alerts, runbook | ☐ |
 
-**1,109 tests** currently pass — 749 unit, API, agent and UI tests that CI runs on every
-push, plus 359 integration tests executed against the DEV Supabase project, plus one
+**1,131 tests** currently pass — 754 unit, API, agent and UI tests that CI runs on every
+push, plus 376 integration tests executed against the DEV Supabase project, plus one
 live provider test excluded from both.
 
 ---
@@ -359,7 +359,7 @@ Covers `PROGRESS §15`, `FINAL §14, §30`.
 
 ---
 
-### Phase 13 — Plant Dashboard + History → **PR 20** — next
+### Phase 13 — Plant Dashboard + History → **PR 20** — ✅
 Covers `PROGRESS §17`, `FINAL §17, §19`.
 
 - `GET /v1/plants/{id}` — full view model (gallery + signed URLs, species, health, upcoming tasks, active plan, latest assessment + trend, environment).
@@ -371,7 +371,7 @@ Covers `PROGRESS §17`, `FINAL §17, §19`.
 
 ---
 
-### Phase 14 — Health Agent → **PR 21**
+### Phase 14 — Health Agent → **PR 21** — next
 Covers `PROGRESS §16`, `FINAL §16`.
 
 - `HealthAgent.assess()`; **1–4 images enforced server-side**, ≥1 required, images must belong to the plant/user.
@@ -561,6 +561,10 @@ made silently. Each entry below is also recorded in the spec document it affects
 | 19 | Resend is called over plain HTTP rather than through its SDK | The API is one POST; the dependency would exist solely to build that request, and every package in the deployment is one more to keep current |
 | 19 | A task reminder's dedupe key carries no date | A task overdue for a week belongs in the digest, not in a fresh email every morning. `FINAL §14` lists missed-reminder emails as Future, and a dateless key is what keeps that promise |
 | 19 | A failed send is not retried the same day | Hammering a provider that is refusing is a good way to lose an account. The task is untouched and the digest returns tomorrow |
+| 20 | The timeline is merged on **read** from five tables rather than mirrored into `system_events` | Mirroring means two writes per action across one transaction boundary, and eventually a care event with no timeline entry or an entry for a care event that never happened. Five queries cannot drift |
+| 20 | History pages on a timestamp cursor, not an offset | An append-only timeline grows at the head, so offset page-two drifts as entries arrive and the user sees an entry twice or not at all |
+| 20 | The dashboard is its own route, not a fatter `GET /v1/plants/{id}` | That endpoint serves the grid, the scheduler and the workflows, none of which want a gallery, a plan and a timeline attached. A view model is for a view |
+| 20 | A user may log only `REPOTTED`, `MOVED`, `PRUNED` and `CUSTOM_NOTE` | The rest are written by the actions that cause them. Letting a client pick any `system_event_type` would make the timeline a place where anything can be claimed |
 
 ### Amendments to the specification
 
@@ -600,6 +604,7 @@ Recorded because each is a pattern worth remembering, not only an incident.
 | PR 17 | A missed task was anchored on its own due date, so the next occurrence landed in the past, was retired as expired too, and the scheduler wrote a **MISSED event on every tick** — junk history for as long as the cron kept firing | An integration test asserting FINAL §13's "the next recurrence remains scheduled", which found zero pending tasks. The unit tests could not have caught it: the arithmetic was individually correct, and the loop only exists once materialisation and the sweep run against each other |
 | PR 18 | An expired session left the user on a signed-in-looking page with a red banner and no way forward but guessing to reload. `ApiError.is_auth_error` had existed since PR 9 and nothing acted on it | Leaving a browser tab open for two hours while testing. The sequencing is the bug: `access_token()` does clear the session when a refresh fails, but the shell has already routed for that run, so only a rerun sends the next pass to sign-in |
 | PR 18 | Upcoming care omitted the action type, so three rules on one plant rendered three word-for-word identical lines — "the monstera · tomorrow at 08:00", three times | Looking at the expanded section in the browser. Every assertion about upcoming care passed: the data was right, the line just did not say which of the three it was |
+| PR 20 | **Found before it could bite:** an assessment and its images cannot be written through two PostgREST calls. The 1–4 image constraint is `DEFERRABLE INITIALLY DEFERRED` and therefore checked at commit, and every REST call is its own transaction — so the first commits with zero images and fails. PR 21's Health Agent must use a single RPC | Building a history fixture that needed a health assessment. Recorded in `DATABASE_SCHEMA`, because meeting this while building PR 21 would have looked like a broken constraint rather than a requirement of the design |
 
 The pattern: **mocks confirm the shape you assumed.** Eighteen of these twenty-two were only
 findable by executing against the real thing — a live database, a real browser, a

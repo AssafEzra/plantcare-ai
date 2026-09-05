@@ -65,6 +65,13 @@ def version(**overrides: Any) -> dict[str, Any]:
 
 @pytest.fixture
 def page(monkeypatch: pytest.MonkeyPatch):
+    """The plant dashboard with its API stubbed.
+
+    PR 20 moved the page onto a single `GET /v1/plants/{id}/dashboard` view model,
+    so the stub serves that shape. The assertions below are unchanged: they are
+    about what the card lets a user do, which is a product rule rather than a
+    transport detail.
+    """
     for key, value in REQUIRED_ENV.items():
         monkeypatch.setenv(key, value)
     monkeypatch.setenv("APP_ENV", "test")
@@ -78,13 +85,26 @@ def page(monkeypatch: pytest.MonkeyPatch):
         from app.ui.state import api_client
 
         def fake_get(path: str, **kwargs: Any) -> Any:
+            if path.endswith("/dashboard"):
+                return {
+                    "id": "plant-1",
+                    "name": "מונסטרה",
+                    "status": "ACTIVE",
+                    "created_at": "2026-09-01T08:00:00Z",
+                    "species": None,
+                    "main_image": None,
+                    "gallery": [],
+                    "environment": None,
+                    "health": {"current_status": "HEALTHY"},
+                    "upcoming_tasks": [],
+                    "care_plan": plan,
+                    "open_proposals": len(proposals or []),
+                }
             if path.endswith("/care-plan/proposals"):
                 return proposals or []
-            if path.endswith("/care-plan"):
-                if plan is None:
-                    raise api_client.ApiError("NOT_FOUND", "אין תוכנית", status=404)
-                return plan
-            return {"id": "plant-1", "name": "מונסטרה"}
+            if path.endswith("/history"):
+                return []
+            return {}
 
         monkeypatch.setattr(api_client, "get", fake_get)
 
