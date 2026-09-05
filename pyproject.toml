@@ -16,7 +16,6 @@ dependencies = [
     "structlog>=24.4",
     "anthropic>=0.40",
     "resend>=2.5",
-    "slowapi>=0.1.9",
     "pyjwt[crypto]>=2.9",
     # Required for zoneinfo on Windows — the scheduler depends on IANA tz data.
     "tzdata>=2024.2",

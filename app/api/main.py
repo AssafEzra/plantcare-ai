@@ -8,6 +8,7 @@ are already the versions those will build on.
 
 from __future__ import annotations
 
+import time
 import uuid
 from collections.abc import Awaitable, Callable
 from contextlib import asynccontextmanager
@@ -22,6 +23,7 @@ from app.api.routers import profile
 from app.common.errors import AppError, NotFoundError, ValidationFailedError
 from app.config.logging import configure_logging, get_logger
 from app.config.settings import get_settings
+from app.infrastructure.supabase.client import anon_client
 
 log = get_logger(__name__)
 
@@ -53,6 +55,7 @@ def create_app() -> FastAPI:
     ):
         request_id = request.headers.get("X-Request-ID") or str(uuid.uuid4())
         request.state.request_id = request_id
+        started = time.perf_counter()
 
         structlog.contextvars.bind_contextvars(request_id=request_id)
         try:
@@ -60,15 +63,36 @@ def create_app() -> FastAPI:
         finally:
             structlog.contextvars.unbind_contextvars("request_id")
 
+        duration_ms = int((time.perf_counter() - started) * 1000)
         response.headers["X-Request-ID"] = request_id
+
+        # DEPLOYMENT §9 names duration among the fields worth logging. The path is
+        # the route template rather than the raw URL, so ids do not end up in logs
+        # and the lines stay aggregatable.
+        route = request.scope.get("route")
+        log.info(
+            "request.complete",
+            method=request.method,
+            path=getattr(route, "path", request.url.path),
+            status=response.status_code,
+            duration=duration_ms,
+        )
         return response
 
     def _envelope(request: Request, error: AppError) -> JSONResponse:
         request_id = getattr(request.state, "request_id", "unknown")
+        headers = {"X-Request-ID": request_id}
+
+        # A 429 without Retry-After tells a client it was throttled but not for how
+        # long, which invites an immediate retry and makes the problem worse.
+        retry_after = error.details.get("retry_after_seconds")
+        if error.http_status == 429 and retry_after:
+            headers["Retry-After"] = str(retry_after)
+
         return JSONResponse(
             status_code=error.http_status,
             content=error.to_envelope(request_id),
-            headers={"X-Request-ID": request_id},
+            headers=headers,
         )
 
     @app.exception_handler(AppError)
@@ -105,7 +129,31 @@ def create_app() -> FastAPI:
 
     @app.get("/health", include_in_schema=False)
     async def health() -> dict[str, str]:
+        """Liveness: is the process up? Deliberately checks nothing else.
+
+        A liveness probe that touches the database restarts a healthy container
+        during a database blip, which turns a partial outage into a total one.
+        """
         return {"status": "ok"}
+
+    @app.get("/ready", include_in_schema=False)
+    async def ready() -> JSONResponse:
+        """Readiness: can this instance actually serve traffic?
+
+        Runs a trivial query so a broken or unreachable database takes the
+        instance out of rotation rather than letting it accept requests it cannot
+        answer. Anonymous by design - it proves connectivity, not authorisation,
+        and RLS means it reads nothing.
+        """
+        try:
+            anon_client().table("species").select("id").limit(1).execute()
+        except Exception as exc:
+            log.warning("readiness.failed", error_type=type(exc).__name__)
+            return JSONResponse(
+                status_code=503,
+                content={"status": "unavailable", "checks": {"database": "failed"}},
+            )
+        return JSONResponse(status_code=200, content={"status": "ok", "checks": {"database": "ok"}})
 
     app.include_router(profile.router, prefix="/v1")
     return app

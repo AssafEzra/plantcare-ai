@@ -80,3 +80,24 @@ If authentication starts failing intermittently in any environment, check NTP on
 API host before suspecting the tokens. `UNAUTHENTICATED` with the message
 "Token is not yet valid; the server clock may be out of sync" is that failure,
 distinguished from other verification failures precisely so the logs point at the clock.
+
+## Operational note: rate limiting is per process
+
+AI-endpoint throttling (`AI_RATE_LIMIT_PER_HOUR`, `AI_RATE_LIMIT_PER_MINUTE`) keeps its
+counters **in the API process's memory**. That is correct for a single container and
+wrong the moment there are two: N replicas permit N times the configured limit.
+
+Before scaling the API beyond one instance, replace the limiter's storage with a shared
+backend. The interface in `app/api/rate_limit.py` is deliberately narrow for that reason;
+call sites do not change.
+
+## Probes
+
+| Path | Meaning | Use for |
+|---|---|---|
+| `/health` | process is up; **checks nothing else** | liveness |
+| `/ready` | database answered a trivial query | readiness / load-balancer rotation |
+
+Point liveness at `/health` and readiness at `/ready`, not both at `/ready`. A liveness
+probe that touches the database restarts healthy containers during a database blip and
+turns a partial outage into a total one.

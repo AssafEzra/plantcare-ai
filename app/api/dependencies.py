@@ -13,8 +13,10 @@ from uuid import UUID
 
 from fastapi import Depends, Request
 
+from app.api.rate_limit import ai_limiter
 from app.common.enums import UserRole
 from app.common.errors import AdminRequiredError, ForbiddenError, UnauthenticatedError
+from app.config.settings import get_settings
 from app.infrastructure.supabase.client import user_client
 from app.infrastructure.supabase.jwt import user_id_from_claims, verify_access_token
 from app.repositories.base import first_row
@@ -104,3 +106,26 @@ async def require_admin(user: CurrentUserDep, role: RoleDep) -> CurrentUser:
 
 
 AdminDep = Annotated[CurrentUser, Depends(require_admin)]
+
+
+async def enforce_ai_rate_limit(user: CurrentUserDep) -> None:
+    """Gate an AI-triggering endpoint (API_CONTRACTS §Security, A14).
+
+    Keyed on the verified user id rather than the client address: AI endpoints are
+    authenticated, and keying on IP would punish everyone behind one NAT while
+    letting a single user spread their spend across addresses.
+
+    Runs after authentication by construction, since it depends on it - so an
+    unauthenticated caller is refused before consuming any allowance.
+    """
+    settings = get_settings()
+    ai_limiter.check(
+        f"ai:{user.id}",
+        rules=[
+            (settings.ai_rate_limit_per_minute, 60),
+            (settings.ai_rate_limit_per_hour, 3600),
+        ],
+    )
+
+
+AIRateLimitDep = Annotated[None, Depends(enforce_ai_rate_limit)]
