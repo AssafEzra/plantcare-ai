@@ -84,8 +84,9 @@ plantcare-ai/
 │   ├── integration/
 │   ├── api/
 │   ├── agents/
-│   ├── security/
-│   └── e2e/
+│   ├── ui/              # AppTest; added in PR 9, absent from this tree until PR 23
+│   ├── security/        # the RLS matrix (PR 23)
+│   └── e2e/             # the nine journeys (PR 23)
 │
 ├── docs/
 ├── scripts/

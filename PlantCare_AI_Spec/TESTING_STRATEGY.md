@@ -284,3 +284,69 @@ green tests in an unrelated file.
 
 The rule: **any integration test that commits must generate names that cannot collide**, and must
 assume the rows it leaves behind are permanent.
+
+## The journey suite, the RLS matrix, and what they are for
+
+**Added in PR 23, per FINAL_SPECIFICATION §37.**
+
+`tests/e2e/` holds the nine journeys of `PROGRESS §20` plus the knowledge-error
+journey from §9 above. Each drives the HTTP API against DEV, start to finish, with
+a scripted provider per agent. `tests/security/test_rls_matrix.py` walks every
+user-owned table against five axes at the database itself.
+
+The two are deliberately different instruments and neither replaces the other. The
+matrix proves the policies; the journeys prove the application does not route around
+them. Both failure modes have happened in this codebase — a table shipped without an
+INSERT policy, and a repository that relied on a policy which grants administrators
+read-all and so listed other users' plants.
+
+**What a journey is for.** Not endpoint coverage — the integration suite already has
+that. A journey exists to walk a seam between phases, because that is where every
+serious defect in this build has been. The first run of these nine found two more, in
+code that had been green for weeks:
+
+- `GET /v1/agent-requests/{id}` did not return `output_summary`, so a client
+  polling until COMPLETE could not reach the identification it had just paid for.
+  Every unit test passed because none of them was the client.
+- `GET /v1/species/{id}/knowledge` returned 500 whenever `source_summary` was NULL,
+  which is every version not created by the publication RPC — the seed included.
+
+**Three rules for a journey.**
+
+1. *Walk the client's path.* Read the identification the way the UI reads it, not
+   through a service-role query that no browser can make. The first defect above was
+   invisible until the test stopped taking a shortcut.
+2. *Script the model, never the database.* `TESTING §9`: no test depends on a live
+   LLM. An unscripted `MockProvider` raises rather than returning something
+   plausible, so a missing dependency override fails loudly instead of making a real
+   billable call.
+3. *Build fixtures the product could have built.* A knowledge version with five of
+   thirteen sections and a null `published_at` is a row publication cannot produce;
+   asserting against it tests nothing and hides what it does find behind a 500.
+
+**Two harness concessions, both deliberate.** Journeys drive the scheduler scoped to
+one user rather than `POST /v1/internal/tick`, which is global by design and takes
+about twenty-five seconds against a DEV database holding a thousand plants; and they
+raise A14's rate limit, because a journey compresses days of user actions into
+seconds. The tick route's authentication and idempotency, and the limiter's counting,
+each have their own tests.
+
+### Two shared quotas the suite runs into
+
+**Added in PR 23.**
+
+**Supabase Auth rate limiting.** Every integration and journey test creates real
+accounts through the Auth admin API, which the project rate-limits. One full run is
+comfortably inside the budget; iterating on the journeys locally is not, and the
+failure surfaces as `AuthApiError: Request rate limit reached` in whichever test was
+running when the ceiling was hit — usually not the one that spent the quota. The
+journey harness backs off through a burst, which is all backoff can do; a sustained
+limit is a wait, not a bug. CI runs the suite once per merge to `dev`.
+
+**The tick is global and the DEV database keeps growing.** `POST /v1/internal/tick`
+materialises and sweeps across every user, at roughly four round trips per active
+rule. Against DEV — nine hundred plants and a hundred rules as of PR 23 — one call
+takes about twenty-five seconds, and the scheduler tests call it repeatedly. That
+cost is a property of the endpoint, not of the tests: PR 24 schedules it every
+fifteen minutes, so it is worth watching as real plants accumulate. Journeys drive
+the scheduler scoped to one user for this reason.

@@ -97,6 +97,19 @@ Returns `202` with `agent_request_id`.
 Suggested UI stages:
 `IMAGES_RECEIVED → CONTEXT_LOADED → ANALYZING → PREPARING_RESULT → COMPLETE`.
 
+It also returns **`output_summary`** — where the result landed (added in PR 23).
+A client that polls until `SUCCEEDED` holds an `agent_request_id` and nothing
+else, and there is no route from a plant to its identification, so without this
+field the confirmation screen is unreachable. It shipped without it and the Add
+Plant flow dead-ended at "the identification was not found"; a journey test walking
+the client's own path is what found it.
+
+The column holds identifiers and statuses only — each workflow writes a small
+explicit dict (`identification_id`, `care_plan_version_id`, `health_assessment_id`,
+version numbers, an overall status). No prompt and no reasoning reaches it, which
+is why exposing it to the request's owner does not weaken the rule that keeps
+`agent_executions` admin-only.
+
 `GET /v1/identifications/{identification_id}` returns primary candidate, up to two alternatives, confidence, image quality, request-more-photos flag and verified Wikipedia URL when available.
 
 `POST /v1/identifications/{identification_id}/confirm`
@@ -456,6 +469,16 @@ operation does and why the audit entry records none of what it erased.
 
 `/audit-log` reads a table that refuses UPDATE and DELETE for every role. Append-only is
 a property of the table, not a convention of the endpoint.
+
+## Knowledge reads
+
+`GET /v1/species/{species_id}/knowledge` renders the current published version.
+
+`source_summary` is nullable in the schema and every version created outside the
+publication RPC — the seed included — leaves it NULL. The response coerces a NULL
+to `{}` (PR 23): the provenance of a version lives in `knowledge_sources`, and a
+missing convenience summary is not a reason to refuse to render the article. Before
+that coercion the endpoint returned 500 for 131 of the 238 current versions in DEV.
 
 ## AI failure contract
 Structured output is schema-validated. Invalid output gets up to 2 automatic retries, then a failed execution is recorded and no authoritative record is created.

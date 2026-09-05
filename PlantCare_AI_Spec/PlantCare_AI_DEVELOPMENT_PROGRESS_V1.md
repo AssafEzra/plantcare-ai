@@ -460,41 +460,60 @@ Remaining implementation documentation:
 
 ## Unit
 
-- [ ] Schedule recurrence
-- [ ] Overdue calculation
-- [ ] Care Rule validation
-- [ ] Health status
-- [ ] Versioning
-- [ ] Permissions
-- [ ] Image validation
-- [ ] AI schema validation
+- [x] Schedule recurrence - table-driven, including an Asia/Jerusalem DST crossing both ways
+- [x] Overdue calculation
+- [x] Care Rule validation
+- [x] Health status - trend, and the UNKNOWN path
+- [x] Versioning - content immutability, and the status transitions it must still permit
+- [x] Permissions - JWT verification, role re-read server-side, admin dependency
+- [x] Image validation
+- [x] AI schema validation - two retries, then a graceful failure
 
 ## Integration
 
-- [ ] Authentication
-- [ ] Add Plant
-- [ ] Identification
-- [ ] Knowledge lookup
-- [ ] Knowledge Draft
-- [ ] Care Plan
-- [ ] Schedule
-- [ ] Health Check
-- [ ] Care adjustment
-- [ ] Notifications
-- [ ] Admin workflow
+- [x] Authentication
+- [x] Add Plant
+- [x] Identification
+- [x] Knowledge lookup
+- [x] Knowledge Draft
+- [x] Care Plan
+- [x] Schedule
+- [x] Health Check
+- [x] Care adjustment
+- [x] Notifications
+- [x] Admin workflow
 
 ## E2E
 
-- [ ] New user → Add Plant → Confirm ID → Knowledge → Care Plan → Schedule
-- [ ] Existing species → reuse published Knowledge
-- [ ] New species → Draft → Admin approval → Active plant
-- [ ] Health Check → status update
-- [ ] Health Check → Care proposal → approval
-- [ ] Overdue task → completion → history
-- [ ] User isolation / RLS
-- [ ] AI failure → no authoritative record
+Nine journeys, driven through the HTTP API against DEV with a scripted model per
+agent. `tests/e2e/`. The ninth - a user reporting a knowledge error and an
+administrator acting on it - comes from `TESTING_STRATEGY §9`, which lists it as a
+scenario while this section omits it.
+
+
+- [x] New user → Add Plant → Confirm ID → Knowledge → Care Plan → Schedule
+- [x] Existing species → reuse published Knowledge - no second draft, no second version
+- [x] New species → Draft → Admin approval → Active plant - the A4 fan-out, from the user's side
+- [x] Health Check → status update
+- [x] Health Check → Care proposal → approval - and the plan is untouched in between
+- [x] Overdue task → completion → history - and the next recurrence stays scheduled
+- [x] User isolation / RLS - through the API, plus a table-by-table matrix at the database
+- [x] AI failure → no authoritative record - one case per agent
 
 ---
+
+
+## What the journeys found
+
+Two defects that every unit test passed over, both in seams between phases:
+
+- `GET /v1/agent-requests/{id}` did not return `output_summary`, so a client that
+  polled until COMPLETE had no way to reach the identification it had just paid
+  for. The Add Plant flow dead-ended at "not found".
+- `GET /v1/species/{id}/knowledge` returned 500 whenever `source_summary` was
+  NULL - 131 of the 238 current versions in DEV, the seed included.
+
+Both are recorded in `API_CONTRACTS_V1.md`.
 
 # 21. Deployment
 
