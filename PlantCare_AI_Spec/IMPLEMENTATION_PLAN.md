@@ -69,12 +69,12 @@ Target: the Definition of Done in `FINAL_SPECIFICATION §35`.
 | 19 | 12 · Notifications | Resend provider, digest, `dedupe_key` idempotency | ✅ |
 | 20 | 13 · Plant dashboard | Full view model, history timeline | ✅ |
 | 21 | 14 · Health Agent | Assessment, findings, sources, Python-computed trend | ✅ |
-| 22 | 15 · Admin panel | Monitoring, reports, audit log, anonymisation | ▶ next |
-| 23 | 16 · Testing | Nine E2E journeys, RLS matrix, no-authoritative-record | ☐ |
+| 22 | 15 · Admin panel | Monitoring, reports, audit log, anonymisation | ✅ |
+| 23 | 16 · Testing | Nine E2E journeys, RLS matrix, no-authoritative-record | ▶ next |
 | 24 | 17 · Deployment | Railway, PROD Supabase, cron tick, alerts, runbook | ☐ |
 
-**1,254 tests** currently pass — 856 unit, API, agent and UI tests that CI runs on every
-push, plus 398 integration tests executed against the DEV Supabase project, plus one
+**1,304 tests** currently pass — 864 unit, API, agent and UI tests that CI runs on every
+push, plus 440 integration tests executed against the DEV Supabase project, plus one
 live provider test excluded from both.
 
 ---
@@ -389,7 +389,7 @@ Covers `PROGRESS §16`, `FINAL §16`.
 
 ---
 
-### Phase 15 — Admin Panel completion → **PR 22** — next
+### Phase 15 — Admin Panel completion → **PR 22** — ✅
 Covers `PROGRESS §18`, `FINAL §29`.
 
 - Admin dashboard; AI monitoring over `agent_executions`/`agent_requests` exposing model, prompt version, duration, tokens, cost — **never chain-of-thought**; `knowledge-reports` review → trigger draft; `notification-deliveries`; audit-log view.
@@ -401,7 +401,7 @@ Covers `PROGRESS §18`, `FINAL §29`.
 
 ---
 
-### Phase 16 — Integration & E2E testing → **PR 23**
+### Phase 16 — Integration & E2E testing → **PR 23** — next
 Covers `PROGRESS §20`, `TESTING`.
 
 - `tests/e2e/` for the eight journeys in `PROGRESS §20` **plus the Knowledge-error reporting journey from `TESTING_STRATEGY §9` [audit]** (user reports → admin sees → draft/research → new published version) — nine total, driven through the API with `MockProvider` fixtures (valid, malformed, timeout, schema-invalid). **No test depends on a live LLM.**
@@ -459,7 +459,7 @@ A1–A16 from the first draft; **A17–A28 added by the audit**. **A19, A22, A23
 | ~~A23~~ | `species` upsert has no normalization rule | **✅ RESOLVED** — `normalize_scientific_name()` + `normalized_name` index, see Schema additions | — |
 | **A24** | Repeated `Idempotency-Key` behavior undefined though `TESTING §8` demands tests | Identical payload replays the original 202; differing payload → 409 | P8 |
 | ~~A25~~ | Health image-quality gate undefined in kind and threshold | **✅ RESOLVED in PR 21** — decoded dimensions, contrast and a focus score, all measured rather than guessed. It **warns and never blocks**: §16 already defines `UNKNOWN` as the outcome for weak evidence, and refusing the upload would put it out of reach | — |
-| **A26** | Account anonymization has no initiating path from the user | Out-of-band admin-executed request; record in `FINAL §21` | P15 |
+| ~~A26~~ | Account anonymization has no initiating path from the user | **✅ RESOLVED in PR 22** — an out-of-band request an administrator carries out, which is why the reason is required: it is the only record of why the account was closed | — |
 | ~~A27~~ | No `notification_preferences` row created for a new user | **✅ RESOLVED** — signup trigger writes it, see Schema additions | — |
 | ~~A28~~ | `FINAL §16` flow diagram contradicts its own prose on when an assessment is saved | **✅ RESOLVED in PR 21** — the prose wins and the diagram is corrected in the spec. The original order would have recorded a check only when the user agreed to a care change, and never when they declined one | — |
 
@@ -569,6 +569,10 @@ made silently. Each entry below is also recorded in the spec document it affects
 | 21 | An `UNKNOWN` does not overwrite the plant's status | It records that we could not tell, not that the plant declined. Overwriting a real finding with an absence of one loses information the user already had |
 | 21 | The blur threshold was measured, not chosen | The first guess (40) passed a heavily blurred image at 62. Measuring also exposed that `FIND_EDGES` paints a border artefact which made a *flat grey rectangle* score higher than a blurred photograph — the measure was non-monotonic, and a threshold on it meant nothing |
 | 21 | A trend shown beside an `UNKNOWN` verdict says where it came from | The trend is computed from earlier *readable* checks and survives an inconclusive one, which is right — but placed next to "we could not tell" it reads as this check's own conclusion. Found by looking at the two badges side by side |
+| 22 | Anonymisation is one SQL function, not a sequence of updates | Half of it is worse than none: an account with its email cleared but access still enabled is a user locked out of a login they can still perform, and one disabled but not anonymised is a deletion request that did nothing |
+| 22 | The anonymisation audit entry records no email and no display name | An audit trail that preserved what was erased would defeat the operation it describes |
+| 22 | Triaging a knowledge report does not itself start research | Acting on a report is the retry route, which may already be in flight. Coupling them would let a status imply a research run that never happened |
+| 22 | An administrator cannot anonymise their own account | It would revoke the role needed to undo it, and remove an administrator by accident |
 
 ### Amendments to the specification
 

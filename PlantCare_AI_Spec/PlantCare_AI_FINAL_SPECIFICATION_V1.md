@@ -989,6 +989,39 @@ Instead:
 - preserve anonymized history/data where required,
 - restrict access to the anonymized account data to Admin.
 
+**How it is initiated (A26, resolved in PR 22).** The MVP has no self-service deletion
+control. A deletion is an out-of-band request — support ticket, email — that an
+administrator carries out from the Accounts tab of the admin panel. That is why the
+`reason` is required rather than optional: it is the only record of why the account
+was closed, and without it the audit entry cannot be understood a year later. A
+self-service path is Future work; it needs a confirmation flow and a grace period,
+neither of which is specified.
+
+**What it does, in one transaction.** `anonymize_account(user_id, reason)`:
+clears `email` and `display_name`, sets `is_active = false`, stamps `anonymized_at`,
+nulls the names and notes the user chose for their plants, and writes one
+`admin_audit_log` entry. Half of that is worse than none — an account with its email
+cleared but access still enabled is a user locked out of a login they can still
+perform — so it is a single SQL function, not a sequence of updates.
+
+The audit entry deliberately records **no email and no display name**, only the reason
+and the number of plants retained. An audit trail that preserved what was erased would
+defeat the operation it describes.
+
+The `auth.users` credential is revoked separately through Supabase's own admin API.
+Anonymisation owns the public schema; putting a second, partial copy of credential
+revocation in SQL would be worse than leaving it to the system that owns it.
+
+Plants, care history, health assessments and knowledge contributions survive, per
+"preserve anonymized history" above — and because a published knowledge version cannot
+be deleted at all (§29) and care events are immutable by trigger (§1.5). What changes is
+that nothing in the account identifies a person any more.
+
+An administrator cannot anonymise their own account: it would revoke the role needed to
+undo it, and remove an administrator by accident. Running it twice is harmless — the
+second call returns the already-anonymised profile rather than raising, which matters
+for something executed by hand from a ticket.
+
 ### Plant deletion
 
 Normal user action is Archive, not hard delete.

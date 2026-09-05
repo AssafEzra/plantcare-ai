@@ -80,9 +80,55 @@ def show_flash() -> None:
     {"success": st.success, "info": st.info, "warning": st.warning}[kind](message, icon=icon)
 
 
-drafts_tab, published_tab, sources_tab, reports_tab, monitoring_tab = st.tabs(
-    ["טיוטות ידע", "ידע מפורסם", "מקורות מאושרים", "דיווחי משתמשים", "ניטור סוכנים"]
+overview_tab, drafts_tab, published_tab, sources_tab, reports_tab, monitoring_tab, accounts_tab = (
+    st.tabs(
+        [
+            "סקירה",
+            "טיוטות ידע",
+            "ידע מפורסם",
+            "מקורות מאושרים",
+            "דיווחי משתמשים",
+            "ניטור סוכנים",
+            "חשבונות",
+        ]
+    )
 )
+
+
+# --- overview -------------------------------------------------------------------
+
+with overview_tab:
+    show_flash()
+    overview = guarded(lambda: get("/v1/admin/overview"))
+
+    if overview is not None:
+        # Ordered by what would make someone act: failures first, then things
+        # waiting on a person, then volume.
+        a, b, c, d = st.columns(4)
+        a.metric("בקשות AI שנכשלו", overview.get("failed_agent_requests", 0))
+        b.metric("תזכורות שנכשלו", overview.get("failed_notifications", 0))
+        c.metric("טיוטות לבדיקה", overview.get("drafts_awaiting_review", 0))
+        d.metric("דיווחים פתוחים", overview.get("open_knowledge_reports", 0))
+
+        st.caption(f"נתוני {overview.get('window_days', 7)} הימים האחרונים")
+
+        stats = overview.get("agent_stats") or []
+        if stats:
+            st.markdown("**שימוש בסוכנים**")
+            for stat in stats:
+                with st.container(border=True):
+                    failed = stat.get("failed", 0)
+                    line = f"**{stat['agent_type']}** · {stat['total']} הרצות"
+                    if failed:
+                        line += f" · {failed} נכשלו"
+                    st.markdown(line)
+                    st.caption(
+                        f"עלות מוערכת ${stat['estimated_cost']:.4f} · "
+                        f"משך ממוצע {stat['average_latency_ms']}ms"
+                    )
+            st.caption(f'סה"כ עלות מוערכת: ${overview.get("total_estimated_cost", 0):.4f}')
+        else:
+            st.caption("לא נרשמו הרצות בחלון הזמן הזה.")
 
 
 def status_badge(status: str) -> None:
@@ -359,7 +405,126 @@ with sources_tab:
                         show_error(exc)
 
 
+# --- user reports ----------------------------------------------------------------
+
 with reports_tab:
-    st.caption("דיווחי משתמשים על שגיאות במידע.")
+    show_flash()
+    st.caption(
+        "דיווחי משתמשים על שגיאות במידע. אישור דיווח אינו מפעיל מחקר — לשם כך יש לחקור מחדש בלשונית הטיוטות."
+    )
+
+    reports = guarded(lambda: get("/v1/admin/knowledge-reports", params={"status": "OPEN"}))
+    if reports is not None:
+        if not reports:
+            st.caption("אין דיווחים פתוחים.")
+        for report in reports:
+            with st.container(border=True):
+                st.write(report["report_text"])
+                st.caption(
+                    f"מין: {(report.get('species_id') or '—')[:8]} · {report['created_at'][:16]}"
+                )
+
+                decision = st.container(horizontal=True)
+                with decision:
+                    for status, label in (
+                        ("ACTIONED", "טופל"),
+                        ("REVIEWING", "בבדיקה"),
+                        ("DISMISSED", "נדחה"),
+                    ):
+                        if st.button(label, key=f"report_{status}_{report['id']}"):
+                            try:
+                                post(
+                                    f"/v1/admin/knowledge-reports/{report['id']}/review",
+                                    json={"status": status},
+                                )
+                                flash("הדיווח עודכן.")
+                                st.rerun()
+                            except ApiError as exc:
+                                show_error(exc)
+
+
+# --- agent monitoring -------------------------------------------------------------
+
 with monitoring_tab:
-    st.caption("הרצות של סוכני ה-AI: מודל, גרסת פרומפט, משך ועלות.")
+    st.caption(
+        "הרצות של סוכני ה-AI: מודל, גרסת פרומפט, משך ועלות. "
+        "תוכן הפרומפטים והתשובות אינו נשמר ואינו ניתן לצפייה."
+    )
+
+    only_failures = st.toggle("רק כשלים", key="admin_only_failures")
+    execution_params: dict[str, Any] = {"limit": 50}
+    if only_failures:
+        execution_params["status"] = "FAILED"
+
+    executions = guarded(lambda: get("/v1/admin/agent-executions", params=execution_params))
+    if executions is not None:
+        if not executions:
+            st.caption("אין הרצות להצגה.")
+        for execution in executions:
+            with st.container(border=True):
+                if execution["status"] == "FAILED":
+                    st.badge("נכשל", color="red")
+                st.markdown(f"**{execution['agent_type']}** · {execution['model']}")
+                st.caption(
+                    f"פרומפט {execution['prompt_version']} · ניסיון {execution['attempt']} · "
+                    f"{execution['latency_ms']}ms · "
+                    f"{execution['input_tokens']}+{execution['output_tokens']} טוקנים · "
+                    f"${execution['estimated_cost']:.4f}"
+                )
+                if execution.get("error_code"):
+                    st.caption(f"שגיאה: {execution['error_code']}")
+
+
+# --- accounts ---------------------------------------------------------------------
+
+with accounts_tab:
+    show_flash()
+    st.caption(
+        "חשבונות אינם נמחקים פיזית. אנונימיזציה מוחקת פרטים מזהים, חוסמת גישה "
+        "ומשמרת את ההיסטוריה (FINAL §21)."
+    )
+
+    search = st.text_input("חיפוש לפי אימייל", key="admin_account_search")
+    accounts = guarded(
+        lambda: get("/v1/admin/accounts", params={"q": search.strip()} if search.strip() else {})
+    )
+
+    if accounts is not None:
+        if not accounts:
+            st.caption("לא נמצאו חשבונות.")
+        for profile in accounts[:25]:
+            with st.container(border=True):
+                st.markdown(f"**{profile.get('email') or '(אנונימי)'}**")
+                st.caption(f"{profile['role']} · נוצר {profile['created_at'][:10]}")
+
+                if profile.get("anonymized_at"):
+                    st.badge("אנונימי", color="gray")
+                    continue
+                if not profile.get("is_active"):
+                    st.badge("מושבת", color="gray")
+
+                reason = st.text_input(
+                    "סיבה",
+                    key=f"anon_reason_{profile['id']}",
+                    placeholder="למשל: בקשת מחיקה מהמשתמש",
+                )
+                if st.button(
+                    "אנונימיזציה",
+                    key=f"anon_{profile['id']}",
+                    # A26: the reason is the only record of why an account was
+                    # closed, so the action is unavailable without one.
+                    disabled=not reason.strip(),
+                ):
+                    try:
+                        post(
+                            f"/v1/admin/accounts/{profile['id']}/anonymize",
+                            json={"reason": reason.strip()},
+                        )
+                        flash(
+                            "החשבון עבר אנונימיזציה. ההיסטוריה נשמרה.",
+                            kind="info",
+                            icon=":material/info:",
+                        )
+                        st.rerun()
+                    except ApiError as exc:
+                        show_error(exc)

@@ -402,9 +402,9 @@ Remaining implementation documentation:
 - [x] Gallery - signed as the caller, short-lived; the bucket stays private
 - [x] Care section
 - [x] Schedule section
-- [ ] Health section
+- [x] Health section - findings, evidence, and the UNKNOWN path (PR 21)
 - [x] History section - merged from five tables on read, so the timeline cannot drift from the data
-- [~] Health Check CTA - the button is present and says the check is coming; the check itself is PR 21
+- [x] Health Check CTA - opens the check inline; images from the plant's own gallery
 - [x] Environment update - shown, with a note that it proposes rather than rewrites (FINAL §12)
 - [x] Knowledge error report - report, never edit (FINAL §10)
 - [x] Archive/restore - history survives both
@@ -415,22 +415,22 @@ Remaining implementation documentation:
 
 # 18. Admin
 
-- [ ] Admin authentication/role
-- [ ] Admin dashboard
-- [ ] Knowledge Drafts
-- [ ] Draft sources
-- [ ] Approve/reject
-- [ ] Admin notes
-- [ ] Published Knowledge
-- [ ] Version history
-- [ ] Approved Sources
-- [ ] Reported Errors
-- [ ] AI/Agent Monitoring
-- [ ] Agent execution logs
-- [ ] Audit Log
-- [ ] Admin action logging
-- [ ] Appropriate access to retained AI-used images
-- [ ] Anonymized-account administration
+- [x] Admin authentication/role - read from the database per request, never from the token
+- [x] Admin dashboard - ordered by what would make someone act: failures, then queues, then volume
+- [x] Knowledge Drafts
+- [x] Draft sources - unverified citations shown first, above the approve button
+- [x] Approve/reject
+- [x] Admin notes
+- [x] Published Knowledge
+- [x] Version history
+- [x] Approved Sources
+- [x] Reported Errors - triage is recorded; acting on one is the separate retry route, so a status cannot imply research that never ran
+- [x] AI/Agent Monitoring - model, prompt version, duration, tokens, cost
+- [x] Agent execution logs - no column exists for prompts or reasoning, so the view cannot leak them however it is queried
+- [x] Audit Log - append-only; the table refuses UPDATE and DELETE for everyone
+- [x] Admin action logging - one entry per consequential action, asserted per action
+- [~] Appropriate access to retained AI-used images - the rows are retained and flagged `ai_used`; the admin gallery view is Future, since nothing in the MVP needs to look at them
+- [x] Anonymized-account administration - FINAL §21 in one transaction: identity cleared, access disabled, history kept, action audited without recording what was erased
 
 ---
 
