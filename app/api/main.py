@@ -31,6 +31,7 @@ from app.api.routers import (
     plants,
     profile,
 )
+from app.api.routers import health as health_router
 from app.common.errors import AppError, NotFoundError, ValidationFailedError
 from app.config.logging import configure_logging, get_logger
 from app.config.settings import get_settings
@@ -175,6 +176,7 @@ def create_app() -> FastAPI:
     app.include_router(knowledge.router, prefix="/v1")
     app.include_router(care.router, prefix="/v1")
     app.include_router(care_tasks.router, prefix="/v1")
+    app.include_router(health_router.router, prefix="/v1")
     app.include_router(notifications.router, prefix="/v1")
     return app
 

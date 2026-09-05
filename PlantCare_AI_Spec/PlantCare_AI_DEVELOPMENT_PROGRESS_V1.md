@@ -368,26 +368,26 @@ Remaining implementation documentation:
 
 # 16. Health Agent
 
-- [ ] Health Agent contract
+- [x] Health Agent contract
 - [ ] 1–4 image input
-- [ ] Image quality validation
-- [ ] Optional note
-- [ ] Context assembly
-- [ ] Structured HealthAssessment
-- [ ] Overall status
-- [ ] Observations
-- [ ] Possible issues
-- [ ] Severity
-- [ ] Confidence
-- [ ] Recommendations
-- [ ] Sources
-- [ ] UNKNOWN handling
-- [ ] Update Plant current status
-- [ ] Immutable assessment history
-- [ ] Basic trend
-- [ ] Care adjustment proposal
-- [ ] Health disclaimer
-- [ ] Follow-up questions where necessary
+- [x] Image quality validation - A25: warns, never blocks, so the UNKNOWN outcome stays reachable
+- [x] Optional note - framed to the model as the user's description, not a finding
+- [x] Context assembly - the seven §16 inputs; the agent reaches no database
+- [x] Structured HealthAssessment
+- [x] Overall status
+- [x] Observations - kept separate from issues, because one is far more reliable than the other
+- [x] Possible issues - each must carry the evidence it rests on; there is no field for a diagnosis
+- [x] Severity - separate from overall status, as §16 requires
+- [x] Confidence - forbidden on an UNKNOWN, by schema and by CHECK constraint
+- [x] Recommendations
+- [x] Sources - the table and the write path exist; the agent is not yet asked to cite
+- [x] UNKNOWN handling - saved with its reason, stripped of findings, and does not overwrite a real status
+- [x] Update Plant current status - inside the same transaction as the assessment
+- [x] Immutable assessment history - the trigger refuses even the service role
+- [x] Basic trend - A11: computed in Python, skipping UNKNOWN rather than counting it as a decline
+- [x] Care adjustment proposal - a HEALTH_DRIVEN proposal the user approves; the agent cannot touch the plan
+- [x] Health disclaimer - findings are presented as possibilities in the interface, not only in the prompt
+- [~] Follow-up questions where necessary - same scoping as A20: no status, table or endpoint can carry a question, so the agent says what would help and produces a result anyway
 
 ---
 

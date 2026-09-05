@@ -756,7 +756,7 @@ Health Check
    ↓
 Upload 1–4 images
    ↓
-Image quality validation
+Image quality validation   (warns; never blocks — see below)
    ↓
 Optional note
    ↓
@@ -766,14 +766,52 @@ Health Agent
    ↓
 Structured result
    ↓
+Immutable Health Assessment saved      ← always, including UNKNOWN
+   ↓
 User sees findings
    ↓
 Optional Care adjustment proposal
    ↓
 User approval
    ↓
-Immutable Health Assessment saved
+New Care Plan Version
 ```
+
+**Diagram corrected in PR 21, per §37 (A28).** The original placed "Immutable Health Assessment
+saved" *after* "User approval", which contradicted this section's own prose — "Every successful
+Health Check updates the Plant's current health status" — and would have meant a check was
+recorded only when the user agreed to a care change, and never when they declined one. The prose
+is authoritative and is what is implemented: the assessment is saved as soon as it exists, and a
+care proposal is raised afterwards from the saved row.
+
+**Specified during implementation (PR 21), per §37**
+
+*Image quality warns; it never rejects (A25).* The gate measures decoded dimensions, contrast and
+a focus score before the model call, and passes what it finds to the agent as context. It does
+not block the upload: this section already defines the outcome for weak evidence — an `UNKNOWN`
+assessment saved with its reason — and refusing the upload would put that outcome out of reach,
+telling a worried user to go away and photograph their plant again instead of looking at what
+they sent. A model *told* the photographs are poor returns `UNKNOWN` honestly far more often than
+one left to discover it.
+
+*An UNKNOWN carries no findings.* A verdict that could not tell what it was looking at cannot
+also list what might be wrong, so issues and recommendations are dropped from an `UNKNOWN` result
+— showing both would let a user act on findings the verdict itself disowns. Observations survive:
+"the lower leaves are yellow" stays true even when what it means is not. Two CHECK constraints
+enforce the rest — an `UNKNOWN` must carry a reason and must not carry a confidence level.
+
+*An UNKNOWN does not overwrite a real status.* It is a record that we could not tell, not evidence
+the plant declined, so the plant keeps the status its last readable check gave it.
+
+*Everything a check produces is written in one transaction.* The 1–4 image constraint is
+`DEFERRABLE INITIALLY DEFERRED` and therefore checked at commit, and PostgREST gives every call
+its own transaction — so the assessment, its images, observations, issues, recommendations and
+sources go through a single RPC (`save_health_assessment`, migration 0014). A failure leaves no
+row at all.
+
+*The trend is computed in Python (A11)* by comparing the new status with the previous readable
+one. `UNKNOWN` assessments are skipped rather than counted as a low point, or every blurred
+photograph would report a decline.
 
 Every successful Health Check updates the Plant's current health status.
 

@@ -68,13 +68,13 @@ Target: the Definition of Done in `FINAL_SPECIFICATION §35`.
 | 18 | 11 · Home dashboard | The twelve `PROGRESS §9` items **[audit]** | ✅ |
 | 19 | 12 · Notifications | Resend provider, digest, `dedupe_key` idempotency | ✅ |
 | 20 | 13 · Plant dashboard | Full view model, history timeline | ✅ |
-| 21 | 14 · Health Agent | Assessment, findings, sources, Python-computed trend | ▶ next |
-| 22 | 15 · Admin panel | Monitoring, reports, audit log, anonymisation | ☐ |
+| 21 | 14 · Health Agent | Assessment, findings, sources, Python-computed trend | ✅ |
+| 22 | 15 · Admin panel | Monitoring, reports, audit log, anonymisation | ▶ next |
 | 23 | 16 · Testing | Nine E2E journeys, RLS matrix, no-authoritative-record | ☐ |
 | 24 | 17 · Deployment | Railway, PROD Supabase, cron tick, alerts, runbook | ☐ |
 
-**1,157 tests** currently pass — 778 unit, API, agent and UI tests that CI runs on every
-push, plus 378 integration tests executed against the DEV Supabase project, plus one
+**1,254 tests** currently pass — 856 unit, API, agent and UI tests that CI runs on every
+push, plus 398 integration tests executed against the DEV Supabase project, plus one
 live provider test excluded from both.
 
 ---
@@ -371,7 +371,7 @@ Covers `PROGRESS §17`, `FINAL §17, §19`.
 
 ---
 
-### Phase 14 — Health Agent → **PR 21** — next
+### Phase 14 — Health Agent → **PR 21** — ✅
 Covers `PROGRESS §16`, `FINAL §16`.
 
 - `HealthAgent.assess()`; **1–4 images enforced server-side**, ≥1 required, images must belong to the plant/user.
@@ -389,7 +389,7 @@ Covers `PROGRESS §16`, `FINAL §16`.
 
 ---
 
-### Phase 15 — Admin Panel completion → **PR 22**
+### Phase 15 — Admin Panel completion → **PR 22** — next
 Covers `PROGRESS §18`, `FINAL §29`.
 
 - Admin dashboard; AI monitoring over `agent_executions`/`agent_requests` exposing model, prompt version, duration, tokens, cost — **never chain-of-thought**; `knowledge-reports` review → trigger draft; `notification-deliveries`; audit-log view.
@@ -444,7 +444,7 @@ A1–A16 from the first draft; **A17–A28 added by the audit**. **A19, A22, A23
 | ~~A8~~ | Next-due anchor after a late completion | **✅ RESOLVED in PR 17** — DONE anchors on `event_at`, SKIPPED on the original `due_at`, and MISSED on when it was written off. That third case was not in the plan and is the one that bites: anchoring a miss on its due date writes a MISSED event on every tick forever | — |
 | ~~A9~~ | What writes `MISSED`, and when overdue stops being actionable | **✅ RESOLVED in PR 17** — the overdue sweep writes it after `min(interval_days, 14)` days and cancels the task; the next recurrence is still scheduled | — |
 | ~~A10~~ | Two competing "preferred time" fields | **✅ RESOLVED in PR 19** — the rule's time is when a task is *due*, the preference's is when we may *write*. They answer different questions, and the Settings help text says which is which | — |
-| A11 | Who computes `trend` | Python, from prior assessments | P14 |
+| ~~A11~~ | Who computes `trend` | **✅ RESOLVED in PR 21** — Python, comparing the new status with the previous *readable* one. `UNKNOWN` assessments are skipped rather than counted as a low point, or every blurred photograph would report a decline | — |
 | A12 | Idempotency column and audit table both mandated, neither defined | Add `dedupe_key`, `admin_audit_log` | P2 |
 | A13 | `POST …/correct` has no request body | `{candidate_id?, scientific_name?, note}`; history only | P8 |
 | ~~A14~~ | "Rate-limit AI endpoints" with no numbers | **✅ RESOLVED in PR 8** — 10/user/hour, 3/min, configurable; keyed on the *verified* user id via a dependency rather than slowapi, whose decorator resolves its key before auth runs and would have keyed on an unverified `sub` | — |
@@ -458,10 +458,10 @@ A1–A16 from the first draft; **A17–A28 added by the audit**. **A19, A22, A23
 | ~~A22~~ | `system_events.event_type` names one value | **✅ RESOLVED** — closed enum excluding dedicated-table kinds, see Schema additions | — |
 | ~~A23~~ | `species` upsert has no normalization rule | **✅ RESOLVED** — `normalize_scientific_name()` + `normalized_name` index, see Schema additions | — |
 | **A24** | Repeated `Idempotency-Key` behavior undefined though `TESTING §8` demands tests | Identical payload replays the original 202; differing payload → 409 | P8 |
-| **A25** | Health image-quality gate undefined in kind and threshold | Deterministic dimension + blur floor that **warns**, preserving the `UNKNOWN` path | P14 |
+| ~~A25~~ | Health image-quality gate undefined in kind and threshold | **✅ RESOLVED in PR 21** — decoded dimensions, contrast and a focus score, all measured rather than guessed. It **warns and never blocks**: §16 already defines `UNKNOWN` as the outcome for weak evidence, and refusing the upload would put it out of reach | — |
 | **A26** | Account anonymization has no initiating path from the user | Out-of-band admin-executed request; record in `FINAL §21` | P15 |
 | ~~A27~~ | No `notification_preferences` row created for a new user | **✅ RESOLVED** — signup trigger writes it, see Schema additions | — |
-| **A28** | `FINAL §16` flow diagram contradicts its own prose on when an assessment is saved | Follow the prose (always save on success); correct the diagram | P14 |
+| ~~A28~~ | `FINAL §16` flow diagram contradicts its own prose on when an assessment is saved | **✅ RESOLVED in PR 21** — the prose wins and the diagram is corrected in the spec. The original order would have recorded a check only when the user agreed to a care change, and never when they declined one | — |
 
 ---
 
@@ -565,6 +565,9 @@ made silently. Each entry below is also recorded in the spec document it affects
 | 20 | History pages on a timestamp cursor, not an offset | An append-only timeline grows at the head, so offset page-two drifts as entries arrive and the user sees an entry twice or not at all |
 | 20 | The dashboard is its own route, not a fatter `GET /v1/plants/{id}` | That endpoint serves the grid, the scheduler and the workflows, none of which want a gallery, a plan and a timeline attached. A view model is for a view |
 | 20 | A user may log only `REPOTTED`, `MOVED`, `PRUNED` and `CUSTOM_NOTE` | The rest are written by the actions that cause them. Letting a client pick any `system_event_type` would make the timeline a place where anything can be claimed |
+| 21 | An `UNKNOWN` result is stripped of its issues and recommendations | A verdict that could not tell what it was looking at cannot also list what might be wrong. Showing both would let a user act on findings the verdict itself disowns. Observations survive — "the lower leaves are yellow" stays true even when what it means is not |
+| 21 | An `UNKNOWN` does not overwrite the plant's status | It records that we could not tell, not that the plant declined. Overwriting a real finding with an absence of one loses information the user already had |
+| 21 | The blur threshold was measured, not chosen | The first guess (40) passed a heavily blurred image at 62. Measuring also exposed that `FIND_EDGES` paints a border artefact which made a *flat grey rectangle* score higher than a blurred photograph — the measure was non-monotonic, and a threshold on it meant nothing |
 
 ### Amendments to the specification
 

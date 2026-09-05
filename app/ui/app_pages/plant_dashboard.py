@@ -16,6 +16,7 @@ import streamlit as st
 
 from app.ui.components.care_plan import active_plan_card, proposal_card
 from app.ui.components.care_task_card import care_task_card, due_text
+from app.ui.components.health_card import render_assessment, render_history
 from app.ui.components.layout import empty_state, guarded, page_header, show_error
 from app.ui.components.status import status_badge, trend_badge
 from app.ui.components.timeline import render_timeline
@@ -24,6 +25,7 @@ from app.ui.state.api_client import ApiError, get, post
 SELECTED = "pc_selected_plant"
 FLASH = "plant_flash"
 HISTORY_SHOWN = "plant_history_shown"
+HEALTH_OPEN = "plant_health_open"
 
 ENVIRONMENT_LABELS: dict[str, str] = {
     "location_type": "מיקום",
@@ -152,9 +154,7 @@ with facts:
     actions = st.container(horizontal=True)
     with actions:
         if st.button("בדיקת בריאות", icon=":material/health_and_safety:", key="pd_health"):
-            # PR 21 builds the check itself. Saying so beats a button that
-            # silently does nothing.
-            st.toast("בדיקת הבריאות תיפתח בקרוב.")
+            st.session_state[HEALTH_OPEN] = True
 
         if data.get("status") == "ARCHIVED":
             if st.button("שחזור", type="primary", icon=":material/unarchive:", key="pd_restore"):
@@ -250,6 +250,101 @@ elif not data.get("open_proposals") and empty_state(
         st.rerun()
     except ApiError as exc:
         show_error(exc)
+
+
+# --- health ---------------------------------------------------------------------
+
+
+def request_care_adjustment(assessment_id: str) -> None:
+    """A health finding asks for the plan to be revisited (FINAL §16).
+
+    The Health Agent cannot touch the plan; this raises a HEALTH_DRIVEN proposal
+    the user then approves, which is the only route from a finding to a schedule.
+    """
+    try:
+        post(
+            f"/v1/plants/{plant_id}/care-plan/adjustment-proposals",
+            json={
+                "health_assessment_id": assessment_id,
+                "reason": "ממצאי בדיקת הבריאות מצביעים על צורך בהתאמת התדירות.",
+            },
+        )
+        flash(
+            "מכינים הצעה לעדכון התוכנית. היא תופיע כאן לאישור.",
+            kind="info",
+            icon=":material/pending_actions:",
+        )
+        st.rerun()
+    except ApiError as exc:
+        show_error(exc)
+
+
+def run_health_check(image_ids: list[str], note: str | None) -> None:
+    try:
+        with st.spinner("בודקים את הצמח…"):
+            post(
+                f"/v1/plants/{plant_id}/health-checks",
+                json={"image_ids": image_ids, "user_note": note},
+            )
+        st.session_state.pop(HEALTH_OPEN, None)
+        flash(
+            "הבדיקה יצאה לדרך. התוצאות יופיעו כאן בעוד רגע.",
+            kind="info",
+            icon=":material/hourglass_top:",
+        )
+        st.rerun()
+    except ApiError as exc:
+        show_error(exc)
+
+
+st.subheader("בריאות הצמח", anchor=False)
+
+if st.session_state.get(HEALTH_OPEN):
+    with st.container(border=True):
+        st.markdown("**בדיקת בריאות חדשה**")
+        st.caption("בוחרים עד ארבע תמונות מהגלריה של הצמח. תמונות חדות באור יום עוזרות מאוד.")
+
+        if not gallery:
+            st.info("צריך להעלות תמונה של הצמח לפני בדיקת בריאות.", icon=":material/info:")
+        else:
+            options = {image["id"]: str(image.get("created_at", ""))[:10] for image in gallery}
+            chosen = st.multiselect(
+                "תמונות לבדיקה",
+                options=list(options),
+                format_func=lambda key: f"תמונה מ-{options[key]}",
+                max_selections=4,
+                key="pd_health_images",
+            )
+            note = st.text_input(
+                "מה מטריד אותך? (אופציונלי)",
+                key="pd_health_note",
+                placeholder="למשל: העלים התחתונים מצהיבים כבר שבועיים",
+            )
+            actions = st.container(horizontal=True)
+            with actions:
+                if st.button(
+                    "שליחה לבדיקה",
+                    type="primary",
+                    disabled=not chosen,
+                    key="pd_health_submit",
+                ):
+                    run_health_check(list(chosen), note.strip() or None)
+                if st.button("ביטול", key="pd_health_cancel"):
+                    st.session_state.pop(HEALTH_OPEN, None)
+                    st.rerun()
+
+latest_id = health.get("latest_assessment_id")
+if latest_id:
+    latest = guarded(lambda: get(f"/v1/health-assessments/{latest_id}"))
+    if latest:
+        render_assessment(latest, on_adjust_plan=request_care_adjustment)
+
+    with st.expander("בדיקות קודמות", icon=":material/history:"):
+        render_history(guarded(lambda: get(f"/v1/plants/{plant_id}/health-history")) or [])
+elif not st.session_state.get(HEALTH_OPEN):
+    st.caption("עדיין לא בוצעה בדיקת בריאות לצמח הזה.")
+
+st.divider()
 
 
 # --- environment ---------------------------------------------------------------
