@@ -439,20 +439,20 @@ Remaining implementation documentation:
 - [x] Wikipedia-link verification mechanism — resolved: Wikipedia's own public REST API, no vendor decision needed
 - [x] `retrieve_source()` mechanism for Knowledge Agent research — resolved: provider-native search/grounding (Claude/GPT/Gemini all support it), no separate search-API vendor for MVP
 - [ ] Implement deterministic source-verification step (fetch URL, check HTTP 200 + relevance, classify APPROVED/EXTERNAL_UNAPPROVED by domain match against `approved_sources`) before any `knowledge_sources` row is persisted
-- [ ] AIProvider interface
-- [ ] AI Gateway
-- [ ] Provider configuration
-- [ ] Per-Agent model configuration
-- [ ] Structured output validation
-- [ ] Retry policy (max 2)
-- [ ] Timeout policy
-- [ ] Error handling
-- [ ] Prompt versioning
-- [ ] Agent execution logging
-- [ ] Token/cost metadata
-- [ ] Latency metadata
-- [ ] No chain-of-thought persistence
-- [ ] Async/background-compatible architecture
+- [x] AIProvider interface
+- [x] AI Gateway
+- [x] Provider configuration
+- [x] Per-Agent model configuration
+- [x] Structured output validation - schema-validated via messages.parse
+- [x] Retry policy (max 2) - only schema failures retried; ceiling asserted in config, tests and a CHECK constraint
+- [x] Timeout policy - configurable; a timeout is not retried
+- [x] Error handling
+- [x] Prompt versioning - prompts/<agent>/<name>.vNNN.md, version recorded per execution
+- [x] Agent execution logging
+- [x] Token/cost metadata
+- [x] Latency metadata
+- [x] No chain-of-thought persistence - the execution record has no field that could hold it
+- [x] Async/background-compatible architecture - AgentExecutor seam; swapping in a worker changes one file
 
 ---
 
