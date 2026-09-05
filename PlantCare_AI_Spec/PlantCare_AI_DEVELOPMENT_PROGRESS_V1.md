@@ -332,22 +332,22 @@ Remaining implementation documentation:
 
 # 14. Schedule & Care Tasks
 
-- [ ] Schedule domain model
-- [ ] Recurring Rule schema
-- [ ] Care Task schema
-- [ ] Care Event schema
-- [ ] Deterministic recurrence engine
-- [ ] Upcoming task calculation
-- [ ] Completed state
-- [ ] Skipped state
-- [ ] Overdue state
-- [ ] Overdue summary
-- [ ] Next recurrence handling
-- [ ] Avoid infinite backlog
-- [ ] Schedule UI
-- [ ] Done/Skip actions
-- [ ] Care History integration
-- [ ] User timezone handling
+- [x] Schedule domain model - `domain/rules/recurrence.py`, pure: no clock, no database, no model
+- [x] Recurring Rule schema
+- [x] Care Task schema
+- [x] Care Event schema
+- [x] Deterministic recurrence engine - day arithmetic in the user's zone, so DST cannot move a reminder
+- [x] Upcoming task calculation - 14-day horizon, at most one PENDING task per rule
+- [x] Completed state - immutable event; next occurrence anchored on when it actually happened (A8)
+- [x] Skipped state - anchored on the original due date, so repeated skipping cannot push the schedule out
+- [x] Overdue state
+- [x] Overdue summary - one line per plant, most overdue first (FINAL §13)
+- [x] Next recurrence handling - still scheduled after a miss, and anchored so it lands in the future
+- [x] Avoid infinite backlog - A9 expiry, the one-PENDING-per-rule index, and `catch_up()` against stale occurrences
+- [~] Schedule UI - the Home dashboard is PR 18; `GET /v1/dashboard` and `GET /v1/care-tasks` are ready for it
+- [x] Done/Skip actions - duplicates refused with 409 by a unique index, not a read-then-check
+- [~] Care History integration - events are written; the merged timeline is PR 20
+- [x] User timezone handling - "today" is the user's calendar day; an unknown zone degrades to UTC rather than failing the tick
 
 ---
 

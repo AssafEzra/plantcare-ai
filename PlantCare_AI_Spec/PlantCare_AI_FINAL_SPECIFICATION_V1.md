@@ -639,6 +639,32 @@ The next recurrence remains scheduled.
 
 Multiple overdue items can be summarized.
 
+**Specified during implementation (PR 17), per §37**
+
+*Scheduling is day arithmetic in the user's timezone,* not seconds added to a UTC instant. A
+reminder set for 08:00 means 08:00 where the user is, on the day it lands. The naive
+implementation passes every test except a DST boundary and then moves every reminder by an hour
+twice a year — Israel changes its clocks, and Asia/Jerusalem is the MVP default.
+
+*A newly approved plan reminds today or tomorrow,* not after a full interval. A nine-day watering
+plan that says nothing for nine days reads as an app that did not work.
+
+*What the next occurrence counts from:* a completion anchors on when it actually happened, a skip
+on the original due date, and a miss on the moment it was written off. The third is the subtle
+one — anchoring a miss on its long-past due date puts the next occurrence in the past too, the
+sweep retires that as expired as well, and a MISSED event is written on every scheduler run
+indefinitely.
+
+*"Do not create an infinite backlog" is enforced three ways,* because it is the requirement most
+easily lost to a small bug: an overdue task expires after `min(interval_days, 14)` days and
+becomes history; a partial unique index permits at most one pending task per rule; and any
+occurrence computed into the past is advanced to the next one still worth doing before it is
+written.
+
+*An archived plant is not scheduled.* Reminding someone to water a plant they have put away is
+the clearest possible sign the application is not paying attention. Its plan and history survive
+intact for when it is restored.
+
 ---
 
 # 14. Notifications

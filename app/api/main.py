@@ -22,6 +22,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from app.api.routers import (
     agent_requests,
     care,
+    care_tasks,
     identification,
     knowledge,
     plant_images,
@@ -170,6 +171,7 @@ def create_app() -> FastAPI:
     app.include_router(identification.router, prefix="/v1")
     app.include_router(knowledge.router, prefix="/v1")
     app.include_router(care.router, prefix="/v1")
+    app.include_router(care_tasks.router, prefix="/v1")
     return app
 
 

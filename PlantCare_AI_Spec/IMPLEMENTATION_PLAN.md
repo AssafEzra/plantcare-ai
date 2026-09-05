@@ -64,8 +64,8 @@ Target: the Definition of Done in `FINAL_SPECIFICATION §35`.
 | 14 | 9 · Knowledge Agent | Research, deterministic source verification | ✅ |
 | 15 | 9 · Knowledge admin | Review, publication, fan-out to pending plants | ✅ |
 | 16 | 10 · Care Agent | Context assembly, proposals, operational adjustment | ✅ |
-| 17 | 11 · Scheduler | Deterministic recurrence, tasks, events, `/internal/tick` | ▶ next |
-| 18 | 11 · Home dashboard | The twelve `PROGRESS §9` items **[audit]** | ☐ |
+| 17 | 11 · Scheduler | Deterministic recurrence, tasks, events, `/internal/tick` | ✅ |
+| 18 | 11 · Home dashboard | The twelve `PROGRESS §9` items **[audit]** | ▶ next |
 | 19 | 12 · Notifications | Resend provider, digest, `dedupe_key` idempotency | ☐ |
 | 20 | 13 · Plant dashboard | Full view model, history timeline | ☐ |
 | 21 | 14 · Health Agent | Assessment, findings, sources, Python-computed trend | ☐ |
@@ -73,8 +73,8 @@ Target: the Definition of Done in `FINAL_SPECIFICATION §35`.
 | 23 | 16 · Testing | Nine E2E journeys, RLS matrix, no-authoritative-record | ☐ |
 | 24 | 17 · Deployment | Railway, PROD Supabase, cron tick, alerts, runbook | ☐ |
 
-**980 tests** currently pass — 659 unit, API, agent and UI tests that CI runs on every
-push, plus 320 integration tests executed against the DEV Supabase project, plus one
+**1,048 tests** currently pass — 706 unit, API, agent and UI tests that CI runs on every
+push, plus 342 integration tests executed against the DEV Supabase project, plus one
 live provider test excluded from both.
 
 ---
@@ -324,7 +324,7 @@ Covers `PROGRESS §13`.
 
 ---
 
-### Phase 11 — Scheduler, Care Tasks & Home Dashboard → **PRs 17–18** — next
+### Phase 11 — Scheduler, Care Tasks & Home Dashboard → **PRs 17–18** — PR 17 ✅, PR 18 next
 Covers `PROGRESS §14` and **`§9` [audit — the Home Dashboard was absent from the first draft entirely]**.
 
 **PR 17 — Deterministic scheduling**
@@ -440,9 +440,9 @@ A1–A16 from the first draft; **A17–A28 added by the audit**. **A19, A22, A23
 | ~~A4~~ | Fate of `KNOWLEDGE_PENDING` plants on publish | **✅ RESOLVED in PR 15** — publication moves every `KNOWLEDGE_PENDING` plant of that species to `ACTIVE`, inside the publishing transaction. `ARCHIVED` and already-`ACTIVE` plants are deliberately untouched. The care proposal follows in PR 16 | — |
 | ~~A5~~ | Outstanding `PENDING` tasks when a version supersedes | **✅ RESOLVED in PR 16** — cancelled inside the activation transaction. DONE, SKIPPED and OVERDUE are untouched: they record what happened, and a new plan does not change the past | — |
 | A6 | Processed/thumbnail dimensions unspecified | 1600px @ q85; 400px thumb | P6 |
-| A7 | `preferred_weekday` vs non-multiple-of-7 intervals | Honor only when `interval_days % 7 == 0` | P11 |
-| A8 | Next-due anchor after a late completion | DONE → `event_at`; SKIP → original `due_at` | P11 |
-| A9 | What writes `MISSED`, and when overdue stops being actionable | After `min(interval_days, 14)` days | P11 |
+| ~~A7~~ | `preferred_weekday` vs non-multiple-of-7 intervals | **✅ RESOLVED in PRs 16–17** — a CHECK constraint refuses the combination at write time, the rule validator refuses it before that, and `next_due()` ignores it if one ever arrived | — |
+| ~~A8~~ | Next-due anchor after a late completion | **✅ RESOLVED in PR 17** — DONE anchors on `event_at`, SKIPPED on the original `due_at`, and MISSED on when it was written off. That third case was not in the plan and is the one that bites: anchoring a miss on its due date writes a MISSED event on every tick forever | — |
+| ~~A9~~ | What writes `MISSED`, and when overdue stops being actionable | **✅ RESOLVED in PR 17** — the overdue sweep writes it after `min(interval_days, 14)` days and cancels the task; the next recurrence is still scheduled | — |
 | A10 | Two competing "preferred time" fields | Rule = due time; preference = send time | P12 |
 | A11 | Who computes `trend` | Python, from prior assessments | P14 |
 | A12 | Idempotency column and audit table both mandated, neither defined | Add `dedupe_key`, `admin_audit_log` | P2 |
@@ -551,6 +551,10 @@ made silently. Each entry below is also recorded in the spec document it affects
 | 16 | An adjustment produces a PROPOSED version the user must still approve | The version chain is the audit trail. Letting an operational tweak be the one way to change the active plan without saying yes to it would put a hole in it |
 | 16 | Only one open proposal per plant | Two is a choice the user did not ask to make, and approving one would silently orphan the other |
 | 16 | `activate_care_plan_version()` is SECURITY **INVOKER**, unlike the knowledge publisher | Everything it touches belongs to the calling user, so RLS should apply in full. A definer function would bypass exactly the checks that make it safe — the knowledge one is a definer precisely because it writes *other* users' rows |
+| 17 | Recurrence does day arithmetic in the user's timezone rather than adding seconds to a UTC instant | The obvious implementation passes every test except the two DST ones, and then silently moves every reminder by an hour twice a year. Israel changes its clocks, and Asia/Jerusalem is the MVP default |
+| 17 | A newly activated rule uses `first_due()`, not `next_due()` from activation | A user who approves a nine-day watering plan should not wait nine days to hear anything — an approved plan that says nothing reads as broken |
+| 17 | `catch_up()` advances any stale occurrence before it is materialised | A safety net, not the main path: materialising something the sweep retires on sight is a loop that writes junk history on every tick. Advancing by whole intervals rather than to "now plus one" keeps a Monday-morning watering on Monday morning |
+| 17 | The tick's `403` is the generic forbidden error, with no mention of the secret | An endpoint that says "wrong secret" has told a prober it found the right endpoint |
 
 ### Amendments to the specification
 
@@ -587,8 +591,9 @@ Recorded because each is a pattern worth remembering, not only an incident.
 | PR 16 | The care context selected five `plant_environments` columns that do not exist — pot material, pot diameter, drainage, soil type, distance from window. Every proposal failed at the first query | The first integration run. The columns were plausible enough to write from memory and are genuinely absent from the schema, which is why the agent's `missing_context` names exactly those facts |
 | PR 16 | `list_for_user()` never filtered on `user_id`, leaning entirely on RLS — but `plants_select_admin` deliberately grants administrators read-all, so an admin's own **My Plants** page listed every user's plants, names included | Logging in as an administrator and looking at the page: 590 plants where there should have been one. Every user-facing plant read now scopes to the caller explicitly, and `owner_id` is a required argument so no call site can omit it |
 | PR 16 | `my_plants.py` rendered each card without an open action, so the plant dashboard — and with it every screen PR 16 built — was unreachable from the interface | Trying to click through to it. The component supported `on_open` and the page simply never passed it; everything worked and nothing could be got to |
+| PR 17 | A missed task was anchored on its own due date, so the next occurrence landed in the past, was retired as expired too, and the scheduler wrote a **MISSED event on every tick** — junk history for as long as the cron kept firing | An integration test asserting FINAL §13's "the next recurrence remains scheduled", which found zero pending tasks. The unit tests could not have caught it: the arithmetic was individually correct, and the loop only exists once materialisation and the sweep run against each other |
 
-The pattern: **mocks confirm the shape you assumed.** Fifteen of these nineteen were only
+The pattern: **mocks confirm the shape you assumed.** Sixteen of these twenty were only
 findable by executing against the real thing — a live database, a real browser, a
 real API — which is why each phase applies its migrations to DEV, and why one
 live provider test is kept despite costing money to run.

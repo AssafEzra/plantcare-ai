@@ -303,6 +303,46 @@ promise a conversation that cannot happen. The plan is produced regardless.
 
 Done/Skip creates an immutable Care Event and advances scheduling. Duplicate action events are rejected.
 
+**Specified in PR 17, per FINAL §37**
+
+*`date=today` means the **user's** today.* Jerusalem is ahead of UTC, so reading the UTC date
+would show yesterday's work for the first three hours of every morning. Overdue tasks from
+earlier days stay on today's list — they are what the user still has to do, and filtering them
+out by date is how a task gets quietly forgotten.
+
+*The 409 comes from a unique index,* not a read-then-check: `care_events_one_action_per_task`
+admits one DONE or SKIPPED per task, so two taps on a slow connection cannot both succeed.
+
+*What the next occurrence counts from (A8)* — the specification does not say, and the answers
+behave differently enough that either guess would be a bug:
+
+| Event | Anchor | Why |
+|---|---|---|
+| `DONE` | when it actually happened | Watered on Thursday, next watering seven days from Thursday. Anchoring on the due date compounds lateness into a schedule the user never agreed to |
+| `SKIPPED` | the original due date | Skipping says "not this time", not "restart the clock". Otherwise a user could postpone indefinitely and the rhythm would drift |
+| `MISSED` | when it was written off | **Not** its long-past due date: that puts the next occurrence in the past too, the sweep retires it as expired as well, and the scheduler writes a MISSED event on every tick forever |
+
+*Overdue and its end (A9).* A past-due task becomes `OVERDUE`. After
+`min(interval_days, 14)` days it stops being actionable: a `MISSED` event records the history and
+the task is `CANCELLED`, so the next recurrence can be scheduled. Bounding by the rule's own
+interval keeps the window proportional — a daily task a fortnight late is meaningless, a monthly
+one at a week is still worth doing.
+
+## Internal
+
+`POST /v1/internal/tick`
+
+The only route with no user behind it. A cron job authenticates with the
+`X-Internal-Secret` header, compared with `hmac.compare_digest`, and a wrong or missing secret
+gets the same `403` as any other forbidden request — an endpoint that says "wrong secret" tells a
+prober it found the right endpoint. It runs under the service role because it works across every
+user's plants.
+
+**Idempotent by construction.** Materialisation skips any rule that already has a pending task,
+and a partial unique index refuses a second one regardless, so running the tick three times in a
+minute leaves exactly the state one run would. That is the difference between a reminder and a
+duplicate reminder, and it is asserted directly rather than assumed.
+
 ## Health
 `POST /v1/plants/{plant_id}/health-assessments`
 ```json
