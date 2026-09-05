@@ -262,3 +262,25 @@ A feature is considered complete only when:
 - critical UI flow works;
 - error states are covered;
 - no authoritative record is created from a failed AI operation.
+
+## Integration tests write to a shared, persistent DEV database
+
+**Added in PR 15, per FINAL_SPECIFICATION §37.** Two properties of the DEV project make a class
+of test bug possible that a throwaway database would not:
+
+- **Rows committed through the service role outlive the run.** Tests that use the direct
+  `psycopg` connection are rolled back; tests that go through PostgREST are not. Anything the
+  second kind creates is still there for the next run, and for every other test file.
+- **Some rows can never be removed.** A published `knowledge_version` is undeletable by design
+  (FINAL §29), and `knowledge_sources` references it `ON DELETE RESTRICT`, so the `species` row
+  underneath it is undeletable too. Test data can therefore be permanent.
+
+Together those mean a generator that produces colliding names does not merely fail its own test —
+it poisons every later one. `unique_species_name()` in `tests/integration/conftest.py` is the
+required generator for species: letters only, because `normalize_scientific_name()` strips digits
+and a hex epithet collapses to one or two letters, giving the whole generator a name space of
+about a dozen values. Seventeen such rows accumulated in PR 14 and broke seventeen previously
+green tests in an unrelated file.
+
+The rule: **any integration test that commits must generate names that cannot collide**, and must
+assume the rows it leaves behind are permanent.

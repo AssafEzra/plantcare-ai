@@ -185,6 +185,50 @@ POST /v1/admin/approved-sources/{source_id}/disable
 
 Approval creates an immutable Published Knowledge Version.
 
+**Specified in PR 15, per FINAL §37**
+
+*Approval is one database transaction*, not six API calls. It demotes the previous current
+version, inserts the new one at `max(version_number) + 1`, writes its `knowledge_sources` rows,
+marks the draft `APPROVED`, releases the plants waiting on it, and writes the audit entry — all
+or none. The ordering is forced by the partial unique index on `(species_id, language) where
+is_current`: demote-then-insert is the only sequence it permits, and a failure between the two
+would leave a species with **no** current version, so every plant of that species would suddenly
+be unable to find its knowledge. The function is `publish_knowledge_draft()` (migration 0012).
+
+```jsonc
+// POST /v1/admin/knowledge-drafts/{draft_id}/approve
+{"admin_note": "optional"}
+// -> {"version_id", "species_id", "language", "version_number",
+//     "source_summary": {"total", "approved", "unapproved", "unverified"},
+//     "active_plants"}
+```
+
+*Rejection requires a reason.* `POST .../reject` takes `{"admin_note": "..."}` and the note is
+mandatory: without one the retry has nothing to address and the audit entry records only that
+somebody said no. Rejection changes **no plant** — they stay `KNOWLEDGE_PENDING` and the species
+stays retriable, which is A17.
+
+*Retry* (`POST .../retry`, optional `{"reason": "..."}`) returns `202` with an
+`agent_request_id`. The reason is passed to the agent, so a retry after a rejection can address
+the objection rather than reproduce it.
+
+*The fan-out (A4).* Publication moves every plant of that species from `KNOWLEDGE_PENDING` to
+`ACTIVE`. Restricted to that status on purpose: an `ARCHIVED` plant is not silently revived, and
+an already-`ACTIVE` one (A21 re-identification) is not disturbed. The queued `INITIAL_PLAN` care
+proposal that A3 calls for is **not** created here — the Care Agent arrives in PR 16, and a
+`QUEUED` request nothing can execute would be worse than none. PR 16 adds it at this same point
+and backfills plants released before it existed.
+
+*Disabling an approved source does not rewrite history.* It stops the domain conferring
+`APPROVED` on future research; existing `knowledge_sources` rows are untouched, because they
+record what was true when a version was published. For the same reason a source's `domain` is
+not editable — changing it would silently reclassify every immutable row pointing at it. A
+different domain is a different source: add it, and disable the old one.
+
+*Every admin route is refused to a regular user with `403`,* and every admin table also carries
+an `is_admin()` RLS policy. The dependency produces the clean error; the policy is what makes a
+forgotten dependency a non-event rather than a breach.
+
 ## Care Plans
 `GET /v1/plants/{plant_id}/care-plan`
 

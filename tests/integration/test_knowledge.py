@@ -13,13 +13,16 @@ import uuid
 import psycopg
 import pytest
 
-from tests.integration.conftest import as_postgres, as_user, unique_domain
+from tests.integration.conftest import as_postgres, as_user, unique_domain, unique_species_name
 
 pytestmark = pytest.mark.integration
 
 
 def _species(conn: psycopg.Connection, name: str | None = None) -> uuid.UUID:
-    name = name or f"Testus {uuid.uuid4().hex[:10]}"
+    # Letters only: normalize_scientific_name() strips digits, so a hex epithet
+    # collapses to one or two letters and every such name competes for the same
+    # dozen normalized values.
+    name = name or unique_species_name()
     return conn.execute(
         "insert into public.species (scientific_name) values (%s) returning id", (name,)
     ).fetchone()[0]

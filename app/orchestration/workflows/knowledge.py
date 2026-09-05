@@ -22,19 +22,15 @@ from uuid import UUID
 
 from app.agents.knowledge.agent import KnowledgeAgent
 from app.agents.knowledge.contract import KnowledgeContent, KnowledgeRequest, ProposedSource
-from app.common.enums import (
-    AgentStage,
-    AgentType,
-    KnowledgeDraftStatus,
-)
-from app.common.errors import NotFoundError
+from app.common.enums import AgentStage, AgentType, KnowledgeDraftStatus, PlantStatus
+from app.common.errors import NotFoundError, ValidationFailedError
 from app.config.logging import get_logger
 from app.config.settings import get_settings
-from app.domain.rules.knowledge_lifecycle import ensure_transition
+from app.domain.rules.knowledge_lifecycle import ensure_transition, is_publishable
 from app.domain.services import source_verification as verification
 from app.infrastructure.supabase.client import service_client
 from app.orchestration.services import agent_requests as requests_service
-from app.repositories.base import Row, first_row, rows
+from app.repositories.base import Row, first_row, require_row, rows
 from supabase import Client
 
 log = get_logger(__name__)
@@ -337,3 +333,135 @@ def get_draft(client: Client, draft_id: UUID) -> Row:
     if found is None:
         raise NotFoundError("הטיוטה לא נמצאה.")
     return found
+
+
+# --- admin review and publication ----------------------------------------------
+
+
+def list_drafts(client: Client, *, status: str | None = None, limit: int = 50) -> list[Row]:
+    """Drafts awaiting attention, newest activity first.
+
+    Ordered by `updated_at` rather than `created_at`: a draft that has just
+    finished researching is the one an administrator wants to see, and it may have
+    been created days earlier by whoever first confirmed that species.
+    """
+    query = client.table("knowledge_drafts").select(DRAFT_COLUMNS)
+    if status:
+        query = query.eq("status", status)
+    return rows(query.order("updated_at", desc=True).limit(limit).execute())
+
+
+def publish(client: Client, *, draft_id: UUID, admin_note: str | None = None) -> dict[str, Any]:
+    """Approve a reviewed draft and release the plants waiting on it.
+
+    One RPC, one transaction. The demote-then-insert ordering the partial unique
+    index forces, the source rows, the draft status, the fan-out and the audit
+    entry either all happen or none do — from Python they would be six round trips
+    with a window in the middle where a species has no current version at all.
+
+    The lifecycle rule is asserted here as well as in SQL. The database check is
+    the one that cannot be bypassed; this one produces a Hebrew error the user
+    interface can show, instead of a Postgres exception.
+    """
+    draft = get_draft(client, draft_id)
+    status = KnowledgeDraftStatus(draft["status"])
+    if not is_publishable(status):
+        raise ValidationFailedError("רק טיוטה שנבדקה ומוכנה לאישור ניתנת לפרסום.")
+
+    version = require_row(
+        client.rpc(
+            "publish_knowledge_draft",
+            {"p_draft_id": str(draft_id), "p_admin_note": admin_note},
+        ).execute()
+    )
+
+    released = rows(
+        client.table("plants")
+        .select("id", count=None)
+        .eq("species_id", version["species_id"])
+        .eq("status", PlantStatus.ACTIVE.value)
+        .execute()
+    )
+
+    log.info(
+        "knowledge.published",
+        draft_id=str(draft_id),
+        version_id=version["id"],
+        version_number=version["version_number"],
+    )
+
+    return {
+        "version_id": version["id"],
+        "species_id": version["species_id"],
+        "language": version["language"],
+        "version_number": version["version_number"],
+        "source_summary": version.get("source_summary") or {},
+        # Informational: how many plants of this species are now active. Read
+        # after the fact through the caller's own client, so it reflects what RLS
+        # lets an administrator see rather than what the transaction did.
+        "active_plants": len(released),
+    }
+
+
+def reject(client: Client, *, draft_id: UUID, admin_note: str) -> Row:
+    """Reject a draft, leaving the species retriable (A17).
+
+    Plants stay in `KNOWLEDGE_PENDING` and nothing about them changes. A rejection
+    is a verdict on the draft, not on the plants — stranding them is the failure
+    A17 exists to prevent, and the lifecycle table keeps `REJECTED → RESEARCHING`
+    open so the next attempt can still release them.
+    """
+    if not admin_note.strip():
+        raise ValidationFailedError("יש לציין סיבה לדחייה.")
+
+    draft = get_draft(client, draft_id)
+    ensure_transition(KnowledgeDraftStatus(draft["status"]), KnowledgeDraftStatus.REJECTED)
+
+    return require_row(
+        client.rpc(
+            "reject_knowledge_draft",
+            {"p_draft_id": str(draft_id), "p_admin_note": admin_note.strip()},
+        ).execute()
+    )
+
+
+def published_version(
+    client: Client, *, species_id: UUID, language: str | None = None
+) -> Row | None:
+    """The current published version of a species' knowledge, or None.
+
+    RLS gives regular users `where is_current`, so this is the same query for
+    everyone — an administrator simply also has a policy that lets them read the
+    history through :func:`version_history`.
+    """
+    settings = get_settings()
+    return first_row(
+        client.table("knowledge_versions")
+        .select("id, species_id, language, version_number, content, source_summary, published_at")
+        .eq("species_id", str(species_id))
+        .eq("language", language or settings.default_content_language)
+        .eq("is_current", True)
+        .limit(1)
+        .execute()
+    )
+
+
+def version_history(client: Client, *, species_id: UUID) -> list[Row]:
+    """Every version of a species' knowledge, newest first. Admin-only by RLS."""
+    return rows(
+        client.table("knowledge_versions")
+        .select("id, species_id, language, version_number, is_current, published_by, published_at")
+        .eq("species_id", str(species_id))
+        .order("version_number", desc=True)
+        .execute()
+    )
+
+
+def version_sources(client: Client, *, version_id: UUID) -> list[Row]:
+    return rows(
+        client.table("knowledge_sources")
+        .select("id, source_class, title, url, publisher, retrieved_at, notes, approved_source_id")
+        .eq("knowledge_version_id", str(version_id))
+        .order("source_class")
+        .execute()
+    )

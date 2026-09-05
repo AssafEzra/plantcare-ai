@@ -37,6 +37,7 @@ from app.common.errors import AgentSchemaError
 from app.domain.services import source_verification as verification
 from app.infrastructure.ai.gateway import AIGateway
 from app.infrastructure.ai.mock_provider import MockProvider
+from tests.integration.conftest import unique_species_name
 
 pytestmark = pytest.mark.integration
 
@@ -94,8 +95,17 @@ def species(admin_sdk) -> Iterator[dict]:
     A fresh binomial per test, because the partial unique index allows one open
     draft per species — reusing a seeded species would make tests interfere.
     """
-    name = f"Testus {uuid.uuid4().hex[:8]}ensis"
-    row = admin_sdk.table("species").insert({"scientific_name": name}).execute().data[0]
+    # unique_species_name(), never a hex string: normalize_scientific_name() strips
+    # digits, so "Testus a1b2c3d4ensis" collapses to "testus a" and the whole
+    # generator has a name space of about a dozen values. These rows are committed
+    # against DEV and outlive the run, so a collision-prone generator does not fail
+    # its own test - it poisons every later one.
+    row = (
+        admin_sdk.table("species")
+        .insert({"scientific_name": unique_species_name()})
+        .execute()
+        .data[0]
+    )
     yield row
     with contextlib.suppress(Exception):
         admin_sdk.table("knowledge_drafts").delete().eq("species_id", row["id"]).execute()

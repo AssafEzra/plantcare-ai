@@ -22,6 +22,7 @@ from pydantic import BaseModel, Field
 from app.agents.identification.agent import IdentificationAgent
 from app.agents.knowledge.agent import KnowledgeAgent
 from app.api.dependencies import AIRateLimitDep, CurrentUserDep
+from app.api.routers.knowledge import get_knowledge_agent
 from app.api.schemas.common import DataEnvelope
 from app.common.enums import ConfidenceLevel, IdentificationMethod, IdentificationStatus
 from app.common.errors import NotFoundError, ValidationFailedError
@@ -50,11 +51,9 @@ def get_identification_agent() -> IdentificationAgent:
 AgentDep = Annotated[IdentificationAgent, Depends(get_identification_agent)]
 
 
-def get_knowledge_agent() -> KnowledgeAgent:
-    """The Knowledge Agent, for the research run confirmation may start."""
-    return KnowledgeAgent(AIGateway(AnthropicProvider()))
-
-
+# Imported rather than redefined. Two dependency functions returning the same
+# agent would need two overrides in every test, and forgetting one would make a
+# real billable research call from a test suite.
 KnowledgeAgentDep = Annotated[KnowledgeAgent, Depends(get_knowledge_agent)]
 
 

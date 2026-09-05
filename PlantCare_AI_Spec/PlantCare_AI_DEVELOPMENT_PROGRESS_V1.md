@@ -295,14 +295,14 @@ Remaining implementation documentation:
 - [x] Source provenance - class, URL and publisher recorded per source, decided by Python not by the model
 - [x] External/unapproved source marking - permitted, marked, and flagged for extra admin attention
 - [x] Draft retry - a rejected or failed draft stays retriable (A17); an approved one is terminal
-- [ ] Admin review
-- [ ] Approve/reject
-- [ ] Publish Knowledge Version
-- [ ] User read-only access
-- [ ] User error report
-- [ ] Approved Sources management
-- [ ] Version history
-- [ ] Admin audit logging
+- [x] Admin review - weak sections surfaced first, unverified sources shown before approval
+- [x] Approve/reject - a rejection must carry a reason, and leaves the species retriable (A17)
+- [x] Publish Knowledge Version - one transaction: demote, insert, sources, draft, fan-out, audit
+- [x] User read-only access - current version only; writes refused by RLS, not only by the API
+- [x] User error report - records the version being complained about, so it stays legible later
+- [x] Approved Sources management - add, edit, disable; the domain itself is not editable
+- [x] Version history - admin-only, via the read-all policy added in migration 0006
+- [x] Admin audit logging - publication and rejection audit inside their own transaction
 
 ---
 

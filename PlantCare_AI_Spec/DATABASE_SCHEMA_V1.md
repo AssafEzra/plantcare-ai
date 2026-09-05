@@ -378,7 +378,17 @@ changing timezone cannot produce two sends on one local day. A duplicate fails o
 any provider call, so re-running the scheduler tick is safe.
 
 ### `admin_audit_log`
-`id`, `admin_user_id`, `action`, `target_table`, `target_id`, `payload jsonb`, `created_at`.
+`id`, `admin_user_id`, `action`, `target_table`, `target_id`, `payload jsonb`, `created_at`
+
+**Corrected in PR 15, per FINAL §37 (migration `0012`):** the table was created with an admin
+**read** policy and no INSERT policy, on the assumption that only the service role would ever
+write it — the same gap `agent_requests` had in PR 13, and found the same way, by an
+administrator's own client trying to record an action. Publication and rejection are unaffected
+(their functions are `SECURITY DEFINER` and bypass RLS), but every other consequential admin
+action is an ordinary write through the administrator's client. INSERT is now permitted when the
+caller is an administrator **and** attributes the entry to themselves. There is still no UPDATE
+and no DELETE policy: the immutability trigger already refuses both, and an audit trail an
+administrator can edit is not an audit trail..
 
 **Added during implementation (MVP), per FINAL §37:** §27 said "audit records as required" and
 §29 requires consequential admin actions to be audited, but no table was defined (A12). `action`
