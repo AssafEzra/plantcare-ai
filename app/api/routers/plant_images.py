@@ -112,17 +112,28 @@ async def upload_image(
         storage.remove(user.access_token, paths)
         raise
 
-    # The first gallery image becomes the plant's main image, so a card has
-    # something to show without the user having to choose (FINAL §6).
+    # The first photograph of the whole plant becomes its main image, so a card
+    # has something to show without the user having to choose (FINAL §6).
+    #
+    # Identification counts, and originally did not. Add Plant uploads with
+    # context `identification` - it is the first photograph anyone takes, and for
+    # most plants the only one - so restricting this to `gallery` meant every
+    # plant created through the normal flow had no main image at all, and My
+    # Plants was a grid of grey placeholders. Reported from real use.
+    #
+    # Health is deliberately still excluded: a health check is usually a close-up
+    # of a damaged leaf, which is evidence, not a portrait. A plant whose only
+    # photographs are health close-ups falls back on the read side instead.
     plant = repo.get(user.client, plant_id, owner_id=user.id)
-    if context_type is ImageContextType.GALLERY and not plant.get("main_image_id"):
+    depicts_the_plant = context_type in (ImageContextType.GALLERY, ImageContextType.IDENTIFICATION)
+    if depicts_the_plant and not plant.get("main_image_id"):
         repo.update(user.client, plant_id, {"main_image_id": str(image_id)})
         repo.record_event(
             user.client,
             user_id=user.id,
             plant_id=plant_id,
             event_type=SystemEventType.MAIN_IMAGE_CHANGED,
-            payload={"image_id": str(image_id), "reason": "first_gallery_image"},
+            payload={"image_id": str(image_id), "reason": f"first_{context_type.value}_image"},
         )
 
     return DataEnvelope(

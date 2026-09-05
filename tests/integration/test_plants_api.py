@@ -724,3 +724,74 @@ def _plant_with_rules(admin_sdk, user_id: str) -> tuple[dict, dict]:
         .data[0]
     )
     return plant, version
+
+
+def test_an_identification_photo_becomes_the_main_image(api: TestClient, account):
+    """Reported from real use: a plant added the normal way showed no image.
+
+    Add Plant uploads with context `identification`, and only a `gallery` upload
+    could become the main image - so every plant created through the flow the
+    product actually uses had a photograph and no `main_image_id`, and My Plants
+    was a grid of grey placeholders. Opening the card worked, because the plant
+    dashboard lists images regardless of context.
+    """
+    _, auth = account()
+    plant = create_plant(api, auth)
+
+    uploaded = api.post(
+        f"/v1/plants/{plant['id']}/images",
+        headers=auth,
+        files={
+            "file": ("leaf.jpg", photo(), "image/jpeg"),
+            "context_type": (None, "identification"),
+        },
+    ).json()["data"]
+
+    fetched = api.get(f"/v1/plants/{plant['id']}", headers=auth).json()["data"]
+    assert fetched["main_image_id"] == uploaded["id"]
+
+    listed = api.get("/v1/plants", headers=auth).json()["data"]
+    assert next(p for p in listed if p["id"] == plant["id"])["thumbnail_url"]
+
+
+def test_a_health_photograph_does_not_become_the_main_image(api: TestClient, account):
+    """A health check is usually a close-up of a damaged leaf. That is evidence,
+    not the plant's portrait, and it should not become the face of the card."""
+    _, auth = account()
+    plant = create_plant(api, auth)
+
+    api.post(
+        f"/v1/plants/{plant['id']}/images",
+        headers=auth,
+        files={"file": ("sick.jpg", photo(), "image/jpeg"), "context_type": (None, "health")},
+    )
+
+    assert (
+        api.get(f"/v1/plants/{plant['id']}", headers=auth).json()["data"]["main_image_id"] is None
+    )
+
+
+def test_the_grid_falls_back_to_the_newest_photograph(api: TestClient, account, admin_sdk):
+    """Plants created before PR 27 have photographs and no main image.
+
+    No migration can guess a main image for them, and a card with no picture when
+    pictures exist is worse than the fallback. Simulated by clearing the column,
+    which is exactly the state those rows are in.
+    """
+    _, auth = account()
+    plant = create_plant(api, auth)
+    api.post(
+        f"/v1/plants/{plant['id']}/images",
+        headers=auth,
+        files={
+            "file": ("leaf.jpg", photo(), "image/jpeg"),
+            "context_type": (None, "identification"),
+        },
+    )
+    admin_sdk.table("plants").update({"main_image_id": None}).eq("id", plant["id"]).execute()
+
+    listed = api.get("/v1/plants", headers=auth).json()["data"]
+    mine = next(p for p in listed if p["id"] == plant["id"])
+
+    assert mine["main_image_id"] is None
+    assert mine["thumbnail_url"], "a plant with a photograph and no main image showed nothing"

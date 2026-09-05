@@ -95,25 +95,47 @@ def _decorate_for_grid(client, access_token: str, plants: list[dict]) -> list[di
     if not plants:
         return []
 
-    image_ids = [str(p["main_image_id"]) for p in plants if p.get("main_image_id")]
     species_ids = [str(p["species_id"]) for p in plants if p.get("species_id")]
     plant_ids = [str(p["id"]) for p in plants]
 
-    thumbnails: dict[str, str] = {}
-    if image_ids:
-        images = {
-            row["id"]: row.get("storage_path_thumbnail") or row.get("storage_path_processed")
-            for row in rows(
-                client.table("plant_images")
-                .select("id, storage_path_thumbnail, storage_path_processed")
-                .in_("id", image_ids)
-                .execute()
-            )
-        }
-        signed = storage.signed_urls(access_token, [p for p in images.values() if p])
-        thumbnails = {
-            image_id: signed[path] for image_id, path in images.items() if path and path in signed
-        }
+    # One query for every candidate image: the plants' main images, plus the
+    # newest visible photograph of each plant as a fallback.
+    #
+    # The fallback is not belt-and-braces. Until PR 27 only a `gallery` upload
+    # could become a main image, and the Add Plant flow uploads with context
+    # `identification`, so every plant created through the normal flow has a
+    # photograph and no `main_image_id`. Those rows are already in the database
+    # and no migration is going to guess a main image for them; showing the
+    # newest photograph is both correct and what the user expects to see.
+    candidates = rows(
+        client.table("plant_images")
+        .select("id, plant_id, storage_path_thumbnail, storage_path_processed, created_at")
+        .in_("plant_id", plant_ids)
+        .eq("user_visible", True)
+        .order("created_at", desc=True)
+        .execute()
+    )
+    by_id = {row["id"]: row for row in candidates}
+    newest_for_plant: dict[str, dict] = {}
+    for row in candidates:
+        newest_for_plant.setdefault(str(row["plant_id"]), row)
+
+    def _path(row: dict | None) -> str | None:
+        if not row:
+            return None
+        return row.get("storage_path_thumbnail") or row.get("storage_path_processed")
+
+    chosen: dict[str, str] = {}
+    for plant in plants:
+        picked = by_id.get(str(plant.get("main_image_id"))) or newest_for_plant.get(
+            str(plant["id"])
+        )
+        path = _path(picked)
+        if path:
+            chosen[str(plant["id"])] = path
+
+    signed = storage.signed_urls(access_token, list(chosen.values()))
+    thumbnails = {plant_id: signed[path] for plant_id, path in chosen.items() if path in signed}
 
     species: dict[str, str] = {}
     if species_ids:
@@ -164,7 +186,7 @@ def _decorate_for_grid(client, access_token: str, plants: list[dict]) -> list[di
     return [
         {
             **plant,
-            "thumbnail_url": thumbnails.get(str(plant.get("main_image_id"))),
+            "thumbnail_url": thumbnails.get(str(plant["id"])),
             "species_name": species.get(str(plant.get("species_id"))),
             "next_task": next_tasks.get(str(plant["id"])),
         }
