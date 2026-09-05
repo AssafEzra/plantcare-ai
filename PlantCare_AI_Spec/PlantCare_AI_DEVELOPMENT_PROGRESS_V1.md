@@ -91,8 +91,8 @@ Remaining implementation documentation:
 - [x] Add issue templates — bug report + spec ambiguity
 - [x] Add `.gitignore`
 - [x] Add `.env.example`
-- [~] Create local `.env` — blocked until the DEV Supabase project exists (§4)
-- [-] Document environment variables — `.env.example` + README done; `docs/ENVIRONMENTS.md` lands with §4
+- [x] Create local `.env` — git-ignored, points at DEV only
+- [x] Document environment variables — `.env.example`, README and `docs/ENVIRONMENTS.md`
 - [x] Define Python version — 3.12+, pinned to 3.13 via uv
 - [x] Define dependency management — uv + `pyproject.toml`
 - [x] Add formatter/linter — ruff (format + lint), mypy
@@ -110,10 +110,10 @@ Remaining implementation documentation:
 ## DEV
 
 - [x] Create DEV Supabase project — `plantcare-dev`, eu-central-1, org `plantcare`
-- [-] Create DEV database schema — foundation migration applied; remaining tables follow
+- [x] Create DEV database schema — fifteen migrations applied to DEV
 - [x] Configure DEV Auth — email confirmation on, min password length 8, OTP length 8, 60s email throttle, redirect URLs for Streamlit. Version-controlled in `supabase/config.toml` and applied with `supabase config push`
 - [x] Configure DEV Storage — private `plant-images` bucket, 10 MiB cap, JPEG/PNG/WEBP allow-list, 5 owner/admin policies (migration 0003)
-- [~] Configure DEV AI credentials — deferred by decision; `.env` holds a placeholder. Needed before Phase 8
+- [x] Configure DEV AI credentials — a live key is configured; one live provider test exercises it, excluded from CI
 - [x] Seed fake/test data
 - [x] Verify no PROD credentials are used locally — no PROD project exists yet; `.env` is git-ignored and points at DEV
 
@@ -141,7 +141,7 @@ in recoverability, and the release-checklist item it creates.
 # 5. Database
 
 - [x] Finalize schema
-- [-] Create migrations — 0001 foundation + 0002 corrective applied to DEV; plants/identification, knowledge, care/health/system to follow
+- [x] Create migrations — 0001 through 0015, all applied to DEV
 - [x] `profiles` — plus `notification_preferences`, which the signup trigger populates
 - [x] `plants`
 - [x] `plant_images`
@@ -155,7 +155,7 @@ in recoverability, and the release-checklist item it creates.
 - [x] `knowledge_drafts`
 - [x] `knowledge_reports`
 - [x] `care_plans`
-- [ ] `care_plan_versions` (source_type covers version provenance — no separate care_plan_changes table)
+- [x] `care_plan_versions` (source_type covers version provenance — no separate care_plan_changes table) - migration 0007
 - [x] `care_rules`
 - [x] `care_tasks`
 - [x] `care_events`
@@ -168,10 +168,10 @@ in recoverability, and the release-checklist item it creates.
 - [x] `system_events` - plus admin_audit_log and notification_deliveries
 - [x] Define foreign keys
 - [x] Define indexes
-- [-] Define constraints/enums — all 24 enums created; per-table constraints land with their tables
-- [-] Define RLS policies — `profiles` and `notification_preferences` done; `is_admin()` helper available to all later migrations
+- [x] Define constraints/enums — all enums and per-table constraints
+- [x] Define RLS policies — every user-owned table, proved table by table by the PR 23 matrix
 - [x] Define immutable/versioned records
-- [-] Define archive/anonymization behavior - archive constraints in place; anonymisation lands with the admin panel
+- [x] Define archive/anonymization behavior - archive constraints, and `anonymize_account()` in migration 0015
 - [x] Seed reference/test data - 6 approved sources, 3 species, 2 published Hebrew versions, 1 species left bare for the draft workflow
 
 ---
@@ -180,8 +180,8 @@ in recoverability, and the release-checklist item it creates.
 
 - [x] Create Supabase Storage bucket(s) — `plant-images`, private, created by migration so PROD is identical
 - [x] Implement image validation - decodes with Pillow; declared type and extension are never trusted
-- [-] Enforce 10 MB maximum — bucket-level cap in place; application-level validation lands in Phase 6
-- [-] Support JPG/JPEG/PNG/WEBP — bucket MIME allow-list in place; Pillow-based content validation lands in Phase 6
+- [x] Enforce 10 MB maximum — bucket cap and application validation
+- [x] Support JPG/JPEG/PNG/WEBP — bucket allow-list, plus Pillow decoding so the bytes decide, not the declared type
 - [x] Process/resize/compress - 1600px long edge at q85
 - [x] Generate thumbnail - 400px long edge
 - [x] Store original + processed + thumbnail - original byte-for-byte, derivatives EXIF-free
@@ -218,7 +218,7 @@ in recoverability, and the release-checklist item it creates.
 - [x] Sidebar navigation - Material Symbols icons, admin entry hidden for non-admins
 - [x] Shared components - status badges, page header, empty state, guarded loading
 - [x] Natural/Premium design direction - design tokens applied via .streamlit/config.toml
-- [-] Responsive layout - 1280px max width and native containers; card grids land with the plant list
+- [x] Responsive layout - 1280px max width, native containers, and the card grid
 - [x] Loading states
 - [x] Error states - API error envelope translated to Hebrew in one place
 - [x] Empty states
@@ -237,7 +237,7 @@ in recoverability, and the release-checklist item it creates.
 - [x] Done/Skip - both always offered; the schedule treats a skip differently from silence
 - [x] Upcoming care - collapsed, so it never competes with today's work
 - [x] Plants Needing Attention
-- [~] Quick Health Check - the button is on Home and routes to the plant; the check itself is the Health Agent (PR 21)
+- [x] Quick Health Check - routes to the plant, where the check runs (PR 21)
 - [x] My Plants preview
 - [x] Add Plant CTA
 - [x] All-caught-up state - distinct from "no plants yet": one is an achievement, the other an invitation
@@ -250,13 +250,13 @@ in recoverability, and the release-checklist item it creates.
 - [x] Plant card
 - [x] Main image - first gallery upload becomes the main image
 - [x] Plant Name
-- [ ] Species
+- [x] Species - common name where there is one, the binomial otherwise (PR 25)
 - [x] Health status
-- [ ] Nearest task
-- [ ] Attention indicator
+- [x] Nearest task - the earliest open task, in the same words the task card uses (PR 25)
+- [x] Attention indicator - the health badge, plus an explicit caption while a plant waits for identification or knowledge
 - [x] Search - pattern syntax neutralised so a wildcard cannot match everything
-- [-] Basic sort/filter - health filter done; sort follows with the scheduler
-- [ ] Click → Plant Dashboard
+- [~] Basic sort/filter - status and health filters and search are done; **sort is still not built**
+- [x] Click → Plant Dashboard - delivered in PR 16; the checkbox was missed
 - [x] Empty state - distinguishes an empty search from an empty account
 - [x] Loading state
 
@@ -350,9 +350,9 @@ in recoverability, and the release-checklist item it creates.
 - [x] Overdue summary - one line per plant, most overdue first (FINAL §13)
 - [x] Next recurrence handling - still scheduled after a miss, and anchored so it lands in the future
 - [x] Avoid infinite backlog - A9 expiry, the one-PENDING-per-rule index, and `catch_up()` against stale occurrences
-- [~] Schedule UI - the Home dashboard is PR 18; `GET /v1/dashboard` and `GET /v1/care-tasks` are ready for it
+- [x] Schedule UI - the Home dashboard (PR 18)
 - [x] Done/Skip actions - duplicates refused with 409 by a unique index, not a read-then-check
-- [~] Care History integration - events are written; the merged timeline is PR 20
+- [x] Care History integration - events are written and the merged timeline renders them (PR 20)
 - [x] User timezone handling - "today" is the user's calendar day; an unknown zone degrades to UTC rather than failing the tick
 
 ---
@@ -375,7 +375,7 @@ in recoverability, and the release-checklist item it creates.
 # 16. Health Agent
 
 - [x] Health Agent contract
-- [ ] 1–4 image input
+- [x] 1–4 image input - bounded in the request model and re-checked in the workflow; delivered in PR 21
 - [x] Image quality validation - A25: warns, never blocks, so the UNKNOWN outcome stays reachable
 - [x] Optional note - framed to the model as the user's description, not a finding
 - [x] Context assembly - the seven §16 inputs; the agent reaches no database
@@ -444,7 +444,7 @@ in recoverability, and the release-checklist item it creates.
 
 - [x] Wikipedia-link verification mechanism — resolved: Wikipedia's own public REST API, no vendor decision needed
 - [x] `retrieve_source()` mechanism for Knowledge Agent research — resolved: provider-native search/grounding (Claude/GPT/Gemini all support it), no separate search-API vendor for MVP
-- [ ] Implement deterministic source-verification step (fetch URL, check HTTP 200 + relevance, classify APPROVED/EXTERNAL_UNAPPROVED by domain match against `approved_sources`) before any `knowledge_sources` row is persisted
+- [x] Implement deterministic source-verification step (fetch URL, check HTTP 200 + relevance, classify APPROVED/EXTERNAL_UNAPPROVED by domain match against `approved_sources`) before any `knowledge_sources` row is persisted - `app/domain/services/source_verification.py`, delivered in PR 14
 - [x] AIProvider interface
 - [x] AI Gateway
 - [x] Provider configuration

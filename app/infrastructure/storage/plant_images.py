@@ -119,6 +119,37 @@ def signed_url(access_token: str, path: str, *, ttl: int = SIGNED_URL_TTL_SECOND
     return result.get("signedURL") or result.get("signedUrl")
 
 
+def signed_urls(
+    access_token: str, paths: list[str], *, ttl: int = SIGNED_URL_TTL_SECONDS
+) -> dict[str, str]:
+    """Sign many objects in one request, keyed by path.
+
+    The plant grid needs a URL per card. Signing them one at a time is one HTTP
+    round trip per plant, which is what a listing endpoint must not do - and the
+    grid shipped with no images at all, so the cost was never noticed.
+
+    Paths that cannot be signed are simply absent from the result, for the same
+    reason `signed_url` returns None: a grid should render the images it can.
+    """
+    if not paths:
+        return {}
+
+    client = user_client(access_token)
+    bucket = client.storage.from_(get_settings().supabase_storage_bucket)
+    try:
+        results = bucket.create_signed_urls(list(dict.fromkeys(paths)), ttl)
+    except Exception:
+        return {}
+
+    signed: dict[str, str] = {}
+    for row in results or []:
+        path = row.get("path")
+        url = row.get("signedURL") or row.get("signedUrl")
+        if path and url and not row.get("error"):
+            signed[path] = url
+    return signed
+
+
 def remove(access_token: str, paths: StoredPaths) -> None:
     """Delete all three variants.
 

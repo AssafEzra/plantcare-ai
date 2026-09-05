@@ -8,6 +8,8 @@ from uuid import UUID
 from pydantic import BaseModel, Field, field_validator
 
 from app.common.enums import (
+    CareRuleActionType,
+    CareTaskStatus,
     HealthStatus,
     ImageContextType,
     LightDirection,
@@ -57,6 +59,15 @@ class PlantUpdateRequest(BaseModel):
     _normalise = field_validator("name", "notes")(_clean)
 
 
+class NextTask(BaseModel):
+    """The nearest outstanding care action, for the grid (`PROGRESS §10`)."""
+
+    id: UUID
+    action_type: CareRuleActionType
+    due_at_utc: datetime
+    status: CareTaskStatus
+
+
 class PlantResponse(BaseModel):
     id: UUID
     name: str | None = None
@@ -68,6 +79,18 @@ class PlantResponse(BaseModel):
     archived_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
+
+    # The three fields `PROGRESS §10` asks the card to show. All optional and all
+    # absent from a single-plant read: they are filled in by the list endpoint,
+    # which can batch the lookups across every plant at once. A detail view has
+    # richer sources for the same facts.
+    #
+    # `thumbnail_url` in particular was missing entirely until PR 25, so every
+    # card in My Plants rendered "no image" no matter how many photographs the
+    # plant had. The card was reading a key nothing ever set.
+    thumbnail_url: str | None = None
+    species_name: str | None = None
+    next_task: NextTask | None = None
 
 
 # --- environment --------------------------------------------------------------
