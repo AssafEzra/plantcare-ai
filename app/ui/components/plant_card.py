@@ -45,7 +45,14 @@ def plant_card(plant: dict, *, on_open: Callable[[str], None] | None = None) -> 
         status_badge(plant.get("current_health_status", "UNKNOWN"))
 
         if plant.get("status") == "PENDING_IDENTIFICATION":
-            st.caption(":material/pending: ממתין לזיהוי")
+            # Waiting on the model and waiting on the user are different states
+            # wearing the same status. A plant identified an hour ago that still
+            # says "ממתין לזיהוי" reads as a failure, and the user has no reason
+            # to open it — which is how two identified plants sat unconfirmed.
+            if plant.get("awaiting_confirmation"):
+                st.caption(":material/how_to_reg: הזיהוי הושלם — ממתין לאישור שלך")
+            else:
+                st.caption(":material/pending: ממתין לזיהוי")
         elif plant.get("status") == "KNOWLEDGE_PENDING":
             st.caption(":material/hourglass_top: מכינים מידע מקצועי")
 

@@ -17,13 +17,14 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Header, Request, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from app.agents.identification.agent import IdentificationAgent
 from app.agents.knowledge.agent import KnowledgeAgent
 from app.api.dependencies import AIRateLimitDep, CurrentUserDep
 from app.api.routers.knowledge import get_knowledge_agent
 from app.api.schemas.common import DataEnvelope
+from app.api.schemas.plants import clean_text
 from app.common.enums import ConfidenceLevel, IdentificationMethod, IdentificationStatus
 from app.common.errors import NotFoundError, ValidationFailedError
 from app.infrastructure import wikipedia
@@ -102,11 +103,18 @@ class ConfirmRequest(BaseModel):
     API_CONTRACTS writes `confirmed_species_id`, but candidates deliberately have
     no species row until this moment — creating one per candidate would let every
     hallucinated binomial into the global taxonomy table.
+
+    `name` is the other half of A2: `plants.name` is nullable only until
+    confirmation. It is optional here, and an absent one falls back to the
+    candidate's common name rather than leaving the plant unnamed.
     """
 
     model_config = {"extra": "forbid"}
 
     candidate_id: UUID
+    name: str | None = Field(default=None, max_length=120)
+
+    _normalise_name = field_validator("name")(clean_text)
 
 
 class CorrectRequest(BaseModel):
@@ -231,6 +239,7 @@ async def confirm_identification(
         user_id=user.id,
         identification_id=identification_id,
         candidate_id=payload.candidate_id,
+        name=payload.name,
     )
 
     # A species with no published knowledge needs research before a care plan can

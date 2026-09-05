@@ -20,7 +20,13 @@ from app.api.schemas.plants import (
     PlantResponse,
     PlantUpdateRequest,
 )
-from app.common.enums import CareTaskStatus, HealthStatus, PlantStatus, SystemEventType
+from app.common.enums import (
+    CareTaskStatus,
+    HealthStatus,
+    IdentificationStatus,
+    PlantStatus,
+    SystemEventType,
+)
 from app.common.errors import InvalidTransitionError, PlantNotFoundError
 from app.domain.rules.plant_lifecycle import (
     PlantFacts,
@@ -83,7 +89,7 @@ async def create_plant(
 def _decorate_for_grid(client, access_token: str, plants: list[dict]) -> list[dict]:
     """Add the thumbnail, species name and nearest task each card needs.
 
-    Four queries for the whole page rather than three per plant. A listing
+    Five queries for the whole page rather than four per plant. A listing
     endpoint that fans out per row is how a grid of twenty plants becomes sixty
     round trips, and the signing call is an HTTP request of its own - which is
     why the images are signed in one batch.
@@ -183,12 +189,33 @@ def _decorate_for_grid(client, access_token: str, plants: list[dict]) -> list[di
                 "status": task["status"],
             }
 
+    # Which unidentified plants are actually waiting on the *user* rather than on
+    # the model. The two look identical on a card otherwise, and "ממתין לזיהוי"
+    # on a plant that was identified an hour ago is how a user concludes the
+    # identification failed - which is exactly what happened before this.
+    unconfirmed = [
+        str(p["id"]) for p in plants if p["status"] == PlantStatus.PENDING_IDENTIFICATION.value
+    ]
+    awaiting_confirmation: set[str] = set()
+    if unconfirmed:
+        awaiting_confirmation = {
+            str(row["plant_id"])
+            for row in rows(
+                client.table("identifications")
+                .select("plant_id")
+                .in_("plant_id", unconfirmed)
+                .eq("status", IdentificationStatus.SUCCESS.value)
+                .execute()
+            )
+        }
+
     return [
         {
             **plant,
             "thumbnail_url": thumbnails.get(str(plant["id"])),
             "species_name": species.get(str(plant.get("species_id"))),
             "next_task": next_tasks.get(str(plant["id"])),
+            "awaiting_confirmation": str(plant["id"]) in awaiting_confirmation,
         }
         for plant in plants
     ]

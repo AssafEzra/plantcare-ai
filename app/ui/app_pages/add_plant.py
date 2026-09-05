@@ -9,11 +9,10 @@ changed.
 from __future__ import annotations
 
 import time
-from typing import Literal
 
 import streamlit as st
 
-from app.common.enums import ConfidenceLevel
+from app.ui.components.identification_card import identification_card
 from app.ui.components.layout import page_header, show_error
 from app.ui.state.api_client import ApiError, get, post
 
@@ -27,14 +26,6 @@ STAGES: list[tuple[str, str]] = [
     ("ANALYZING", "מנתחים את התמונות"),
     ("PREPARING_RESULT", "מכינים את התוצאה"),
 ]
-
-# The colour is a Streamlit semantic name; the hex comes from config.toml, so
-# these render in the approved palette without any per-call styling.
-CONFIDENCE_LABELS: dict[ConfidenceLevel, tuple[str, Literal["green", "orange", "red"]]] = {
-    ConfidenceLevel.HIGH: ("גבוהה", "green"),
-    ConfidenceLevel.MEDIUM: ("בינונית", "orange"),
-    ConfidenceLevel.LOW: ("נמוכה", "red"),
-}
 
 STEP = "add_plant_step"
 PLANT = "add_plant_plant_id"
@@ -202,71 +193,30 @@ elif step == "confirm":
             st.rerun()
         st.stop()
 
-    primary = candidates[0]
-    level = ConfidenceLevel(identification.get("confidence_level") or "LOW")
-    label, colour = CONFIDENCE_LABELS[level]
-
-    with st.container(border=True):
-        st.subheader(primary.get("common_name") or primary["scientific_name"], anchor=False)
-        st.caption(f"*{primary['scientific_name']}*")
-        st.badge(f"רמת ביטחון: {label}", color=colour)
-
-        if level is ConfidenceLevel.LOW:
-            # FINAL §8 asks for a low-confidence warning. The user still decides -
-            # hiding a weak result would leave them with nothing to act on - but
-            # they should know what they are agreeing to.
-            st.warning(
-                "הזיהוי אינו ודאי. כדאי לבדוק את האפשרויות הנוספות לפני שמאשרים.",
-                icon=":material/help:",
-            )
-
-        if identification.get("image_quality"):
-            st.caption(identification["image_quality"])
-
-        # Shown only when the deterministic check found a real matching page
-        # (FINAL §8: the URL must never be invented).
-        if identification.get("wikipedia_url"):
-            st.link_button(
-                "מידע נוסף בוויקיפדיה",
-                identification["wikipedia_url"],
-                icon=":material/open_in_new:",
-            )
-
-    chosen = primary["id"]
-    if len(candidates) > 1:
-        st.write("אפשרויות נוספות:")
-        options = {
-            candidate["id"]: (
-                f"{candidate.get('common_name') or candidate['scientific_name']} "
-                f"({candidate['scientific_name']})"
-            )
-            for candidate in candidates
-        }
-        chosen = st.radio(
-            "בחירת הצמח",
-            options=list(options),
-            format_func=lambda key: options[key],
-            label_visibility="collapsed",
-        )
-
-    actions = st.container(horizontal=True)
-    with actions:
-        if st.button("זה הצמח שלי", type="primary", icon=":material/check:"):
-            try:
-                with st.spinner("מאשרים…"):
-                    result = post(
-                        f"/v1/identifications/{identification_id}/confirm",
-                        json={"candidate_id": chosen},
-                    )
-                st.session_state["pc_confirmed"] = result
-                st.session_state[STEP] = "done"
-                st.rerun()
-            except ApiError as exc:
-                show_error(exc)
-
-        if st.button("נסה שוב", icon=":material/refresh:"):
-            reset()
+    def confirm(candidate_id: str, name: str | None) -> None:
+        try:
+            with st.spinner("מאשרים…"):
+                result = post(
+                    f"/v1/identifications/{identification_id}/confirm",
+                    json={"candidate_id": candidate_id, "name": name},
+                )
+            st.session_state["pc_confirmed"] = result
+            st.session_state[STEP] = "done"
             st.rerun()
+        except ApiError as exc:
+            show_error(exc)
+
+    def restart() -> None:
+        reset()
+        st.rerun()
+
+    identification_card(
+        identification,
+        on_confirm=confirm,
+        on_restart=restart,
+        key_prefix="add_plant",
+        wikipedia_url=identification.get("wikipedia_url"),
+    )
 
 
 # --- done ---------------------------------------------------------------------

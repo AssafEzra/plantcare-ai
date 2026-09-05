@@ -19,11 +19,14 @@ from app.common.enums import (
 )
 
 
-def _clean(value: str | None) -> str | None:
+def clean_text(value: str | None) -> str | None:
     """Trim, and treat an all-whitespace string as absent.
 
     The database rejects a blank name outright, so normalising here turns a
     fumbled form submission into "not named yet" rather than a 422.
+
+    Public because the confirmation payload names the plant too (A2), and a
+    second copy of this rule would eventually disagree with this one.
     """
     if value is None:
         return None
@@ -40,7 +43,7 @@ class PlantCreateRequest(BaseModel):
     name: str | None = Field(default=None, max_length=120)
     notes: str | None = Field(default=None, max_length=2000)
 
-    _normalise = field_validator("name", "notes")(_clean)
+    _normalise = field_validator("name", "notes")(clean_text)
 
 
 class PlantUpdateRequest(BaseModel):
@@ -56,7 +59,7 @@ class PlantUpdateRequest(BaseModel):
     name: str | None = Field(default=None, max_length=120)
     notes: str | None = Field(default=None, max_length=2000)
 
-    _normalise = field_validator("name", "notes")(_clean)
+    _normalise = field_validator("name", "notes")(clean_text)
 
 
 class NextTask(BaseModel):
@@ -90,6 +93,11 @@ class PlantResponse(BaseModel):
     # plant had. The card was reading a key nothing ever set.
     thumbnail_url: str | None = None
     species_name: str | None = None
+
+    # True when the plant has a finished identification the user has not answered
+    # yet, which is a different situation from one still being analysed: the card
+    # can invite the user in rather than telling them to wait.
+    awaiting_confirmation: bool = False
     next_task: NextTask | None = None
 
 
@@ -109,7 +117,7 @@ class EnvironmentRequest(BaseModel):
     room: str | None = Field(default=None, max_length=120)
     notes: str | None = Field(default=None, max_length=2000)
 
-    _normalise = field_validator("room", "notes")(_clean)
+    _normalise = field_validator("room", "notes")(clean_text)
 
 
 class EnvironmentResponse(BaseModel):

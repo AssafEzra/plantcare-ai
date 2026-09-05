@@ -249,11 +249,11 @@ in recoverability, and the release-checklist item it creates.
 - [x] Plant grid
 - [x] Plant card
 - [x] Main image - first gallery upload becomes the main image
-- [x] Plant Name
+- [x] Plant Name - set at confirmation from the chosen candidate when the user does not type one (PR 28; A2 said so in PR 2 and nothing implemented it, so every card read "ללא שם")
 - [x] Species - common name where there is one, the binomial otherwise (PR 25)
 - [x] Health status
 - [x] Nearest task - the earliest open task, in the same words the task card uses (PR 25)
-- [x] Attention indicator - the health badge, plus an explicit caption while a plant waits for identification or knowledge
+- [x] Attention indicator - the health badge, plus an explicit caption while a plant waits for identification or knowledge; a plant whose identification is finished says it is waiting on the *user* (PR 28)
 - [x] Search - pattern syntax neutralised so a wildcard cannot match everything
 - [~] Basic sort/filter - status and health filters and search are done; **sort is still not built**
 - [x] Click → Plant Dashboard - delivered in PR 16; the checkbox was missed
@@ -276,9 +276,9 @@ in recoverability, and the release-checklist item it creates.
 - [x] Confidence - 0.000-1.000, level derived in Python (HIGH >= 0.85, MEDIUM >= 0.60)
 - [x] Alternatives - up to two, re-sorted by confidence, duplicates collapsed
 - [x] Image quality
-- [x] Identification review - confirmation screen with processing stages
+- [x] Identification review - confirmation screen with processing stages; reachable from the plant's own dashboard as well as from the wizard (PR 28)
 - [x] Wikipedia link validation - verified against Wikipedia's REST API; a redirect to a different subject is rejected
-- [x] User confirmation - the only point at which a species becomes authoritative
+- [x] User confirmation - the only point at which a species becomes authoritative, and the point at which the plant is named (PR 28)
 - [x] Re-identification - an ACTIVE plant stays active while the new species is researched (A21)
 - [x] Identification history - append-only; a correction adds a row
 - [x] New Species creation - at confirm, from the chosen candidate

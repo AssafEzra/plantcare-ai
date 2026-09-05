@@ -324,6 +324,22 @@ code that had been green for weeks:
    thirteen sections and a null `published_at` is a row publication cannot produce;
    asserting against it tests nothing and hides what it does find behind a 500.
 
+**A fourth rule, added in PR 28: walk the path the user actually took, including
+the one where they stopped.** Every journey runs start to finish in a single
+uninterrupted sequence, which is the one thing a real user rarely does. The
+identification confirmation screen lived in the Add Plant wizard's session state
+and was therefore reachable only by the browser tab that started the flow — a
+user who closed the tab was left with a plant identified in the database and
+permanently unidentified in the interface. Nine journeys, an integration suite
+and a UI suite were all green, because none of them ever put the flow down and
+came back to it.
+
+So a multi-step flow now needs a test that resumes it from a cold start: fetch the
+plant fresh, from a client that knows only its id, and assert the pending decision
+is still offered and still answerable. What makes a wizard convenient — carrying
+state between steps — is exactly what makes its interruption invisible to a test
+that never interrupts.
+
 **Two harness concessions, both deliberate.** Journeys drive the scheduler scoped to
 one user rather than `POST /v1/internal/tick`, which is global by design and takes
 about twenty-five seconds against a DEV database holding a thousand plants; and they
