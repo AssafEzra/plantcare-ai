@@ -66,6 +66,21 @@ feature branch
 
 Production deployment should not occur directly from an unreviewed feature branch.
 
+## 4a. Environment configuration that must differ between DEV and PROD
+
+**Added in PR 20, per FINAL_SPECIFICATION §37.** `supabase/config.toml` is one file pushed to
+whichever project is linked, so any value that should differ by environment is a release-checklist
+item rather than something the file can express.
+
+| Setting | DEV | PROD | Why |
+|---|---|---|---|
+| `auth.jwt_expiry` | `43200` (12h) | **`3600` (1h)** | DEV runs long so a testing session survives a working day. A twelve-hour access token in production widens the window a leaked token is useful for, and the refresh token already makes a one-hour expiry invisible to a user. |
+| `auth.site_url` / `additional_redirect_urls` | `localhost:8501` | the deployed UI origin | A production project that still allows a localhost redirect is an open redirect into a developer's machine. |
+
+**Verify before promoting to PROD:** `supabase config push` against the production project with
+these values corrected, then confirm in the dashboard. The spec fixes no session lifetime, so both
+values are deliberate choices rather than deviations.
+
 ## 5. Secrets
 
 Secrets belong in the deployment platform's secret/environment-variable manager.

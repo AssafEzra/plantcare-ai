@@ -162,7 +162,15 @@ site_url = "http://localhost:8501"
 # A list of *exact* URLs that auth providers are permitted to redirect to post authentication.
 additional_redirect_urls = ["http://localhost:8501", "http://127.0.0.1:8501"]
 # How long tokens are valid for, in seconds. Defaults to 3600 (1 hour), maximum 604,800 (1 week).
-jwt_expiry = 3600
+#
+# DEV runs at 12 hours so a testing session survives a working day; one hour meant
+# signing in repeatedly while walking through a flow. The spec fixes no session
+# lifetime, so this is a configuration choice rather than a deviation.
+#
+# PRODUCTION MUST NOT INHERIT THIS. `DEPLOYMENT_AND_OPERATIONS.md` carries it as an
+# explicit release-checklist item: PROD keeps 3600, and the refresh token is what
+# makes that invisible to a user.
+jwt_expiry = 43200
 # JWT issuer URL. If not set, defaults to auth.external_url.
 # jwt_issuer = ""
 # Path to JWT signing key. DO NOT commit your signing keys file to git.
