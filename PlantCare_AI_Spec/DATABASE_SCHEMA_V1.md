@@ -204,7 +204,13 @@ User operational changes create a new version. Professional recommendation conte
 `source_type` records why this version was created and is the single audit trail for version provenance; there is no separate `care_plan_changes` table (a prior draft of this schema referenced one — superseded by this field).
 
 ### `care_rules`
-`id`, `care_plan_version_id`, `action_type`, `interval_days`, `preferred_time_local`, `preferred_weekday`, `instructions`, `is_active`, `created_at`.
+`id`, `care_plan_version_id`, `action_type` (`care_rule_action_type`), `interval_days`, `preferred_time_local`, `preferred_weekday`, `instructions`, `is_active`, `created_at`.
+
+**Amended during implementation (MVP), per FINAL §37:** A7 is now a CHECK rather than a
+scheduler convention - `preferred_weekday` may only be set when `interval_days % 7 = 0`.
+Anchoring a weekday to a 30-day interval is incoherent, so it is rejected at write time instead
+of being silently ignored later. `interval_days` is bounded to 1-365, rejecting a model that
+emits nonsense such as 3650.
 
 `interval_days` always defines the recurrence period. `preferred_weekday` is optional and only anchors *which* day of the week the recurrence should land on (e.g. `interval_days=7` with `preferred_weekday=FRIDAY`); it is never used as an alternate recurrence mode on its own.
 
@@ -213,14 +219,39 @@ User operational changes create a new version. Professional recommendation conte
 
 Generate only relevant near-term tasks; do not pre-generate thousands of future tasks. Do not create an infinite overdue backlog.
 
+**Amended during implementation (MVP), per FINAL §37:** a partial unique index enforces **at
+most one PENDING task per rule**, so a buggy scheduler run cannot pre-generate a backlog. A task
+that has gone OVERDUE is no longer PENDING, so the next recurrence can still be scheduled -
+exactly the §13 behaviour. CHECKs additionally require `overdue_since` whenever status is
+OVERDUE, and `completed_at` if and only if status is DONE.
+
 ### `care_events`
 `id`, `user_id`, `plant_id`, `care_task_id`, `event_type`, `event_at`, `note`, `correction_of_event_id`, `created_at`.
 
 Immutable. Corrections create new events.
 
+**Amended during implementation (MVP), per FINAL §37:** a partial unique index allows one `DONE`
+or `SKIPPED` event per task, so API_CONTRACTS' "duplicate action events are rejected" is backed
+by the database rather than by a read-then-write race in application code. `MISSED` is
+deliberately excluded from that index: it is written by the scheduler sweep, not the user, and
+must not consume the slot a later corrective `DONE` needs. A CHECK requires
+`correction_of_event_id` if and only if `event_type = 'CORRECTED'`.
+
 ## Health
 ### `health_assessments`
 `id`, `user_id`, `plant_id`, `agent_request_id`, `overall_status`, `confidence_level`, `trend`, `user_note`, `requires_attention`, `insufficient_information_reason`, `raw_result jsonb`, `created_at`.
+
+**Amended during implementation (MVP), per FINAL §37:** a CHECK requires
+`insufficient_information_reason` whenever `overall_status = 'UNKNOWN'` - §16 says to save
+UNKNOWN *with the reason*, and an unexplained UNKNOWN is indistinguishable from a bug. A second
+CHECK forbids an UNKNOWN verdict from also carrying a `confidence_level`, since the two would
+contradict each other on screen. `trend` is computed in Python from prior assessments (A11),
+never taken from model output.
+
+The 1-4 image rule spans rows, so it is enforced by two deferred constraint triggers rather than
+a CHECK: one on `health_assessment_images` and one on `health_assessments`. Both are needed -
+the image-side trigger alone never fires when an assessment is written with no images at all,
+which is the likelier bug.
 
 ### `health_assessment_images`
 Composite PK `(health_assessment_id, plant_image_id)`, plus `display_order`, `created_at`. MVP: 1–4 images.
@@ -234,16 +265,44 @@ Composite PK `(health_assessment_id, plant_image_id)`, plus `display_order`, `cr
 ### `health_recommendations`
 `id`, `health_assessment_id`, `recommendation_text`, `priority`, `requires_care_plan_adjustment`, `created_at`.
 
+`requires_care_plan_adjustment` is a flag only. The Health Agent cannot modify a Care Plan; it
+raises a proposal through the Care Agent, which the user must approve (FINAL §12).
+
+### `health_assessment_sources`
+`id`, `health_assessment_id`, `source_class`, `title`, `url nullable`, `publisher`, `retrieved_at`, `citation_text`, `created_at`.
+
+**Added during implementation (MVP), per FINAL §37:** FINAL §16 lists `sources` as a required
+output field of a `HealthAssessment`, and DEVELOPMENT_PROGRESS §16 has a "Sources" item, but
+this document defined no table to hold them. Mirrors `knowledge_sources`, reuses the same
+deterministic verification pipeline, and carries the same CHECK: an external claim must supply
+the URL that was actually fetched, and only `AI_GENERATED_REQUIRES_VERIFICATION` may lack one.
+Immutable, like its parent assessment.
+
 Every successful Health Check updates the plant's current health status; historical assessments remain unchanged.
 
 ## AI infrastructure
 ### `agent_requests`
-`id`, `user_id`, `plant_id`, `agent_type`, `status`, `idempotency_key`, `input_summary jsonb`, `output_summary jsonb`, `error_code`, timestamps.
+`id`, `user_id`, `plant_id`, `agent_type`, `status`, `stage`, `idempotency_key`, `request_fingerprint`, `input_summary jsonb`, `output_summary jsonb`, `error_code`, timestamps.
+
+**Amended during implementation (MVP), per FINAL §37:** `stage` added, constrained to the UI
+progression `IMAGES_RECEIVED -> CONTEXT_LOADED -> ANALYZING -> PREPARING_RESULT -> COMPLETE`
+that API_CONTRACTS specifies for the 202-poll pattern. `request_fingerprint` added for A24: it
+holds a hash of the request body, so a repeated `Idempotency-Key` carrying a *different* payload
+can be distinguished from a genuine retry and answered with 409. Uniqueness on
+`(user_id, idempotency_key)` is scoped per user, since keys are client-generated and will
+collide across users.
 
 ### `agent_executions`
-`id`, `agent_request_id`, `agent_type`, `model`, `model_version`, `prompt_version`, `status`, `started_at`, `completed_at`, `input_tokens`, `output_tokens`, `estimated_cost`, `latency_ms`, `error_code`, `error_message`, `created_at`.
+`id`, `agent_request_id`, `agent_type`, `model`, `model_version`, `prompt_version`, `status`, `attempt`, `started_at`, `completed_at`, `input_tokens`, `output_tokens`, `estimated_cost`, `latency_ms`, `error_code`, `error_message`, `created_at`.
 
-Do not store chain-of-thought.
+Do not store chain-of-thought. The column list is deliberately closed and carries no free-text
+field for model reasoning, raw prompts or raw responses; `error_message` exists for a provider
+error string, not for transcripts.
+
+**Amended during implementation (MVP), per FINAL §37:** `attempt` added and CHECKed to 1-3. §23
+caps structured-output retries at 2, so a request can produce at most three attempts; a fourth
+means the ceiling was bypassed. Read access is admin-only - model, cost and prompt version are
+not user-facing.
 
 ## Notifications
 ### `notification_preferences`
@@ -257,9 +316,26 @@ For that reason this table is created in the foundation migration alongside `pro
 not with the other notification tables.
 
 ### `notification_deliveries`
-`id`, `user_id`, `care_task_id nullable`, `channel`, `status`, `scheduled_at`, `sent_at`, `provider_message_id`, `error_message`, `created_at`.
+`id`, `user_id`, `care_task_id nullable`, `channel`, `status`, `dedupe_key UNIQUE`, `scheduled_at`, `sent_at`, `provider_message_id`, `error_message`, `created_at`.
 
 Use idempotency/unique logical notification keys to prevent duplicate sends.
+
+**Amended during implementation (MVP), per FINAL §37:** this document mandated duplicate-send
+prevention but defined no column for it (A12). `dedupe_key` is `text UNIQUE`, formatted
+`{scope}:{identifier}:{local_date}` - for example `digest:<user_id>:2026-09-05` or
+`task:<care_task_id>:reminder`. The date component is the **local** date of the recipient, so
+changing timezone cannot produce two sends on one local day. A duplicate fails on insert, before
+any provider call, so re-running the scheduler tick is safe.
+
+### `admin_audit_log`
+`id`, `admin_user_id`, `action`, `target_table`, `target_id`, `payload jsonb`, `created_at`.
+
+**Added during implementation (MVP), per FINAL §37:** §27 said "audit records as required" and
+§29 requires consequential admin actions to be audited, but no table was defined (A12). `action`
+is free text, deliberately not an enum: an enum would force a migration for every new
+administrative action, and an audit log must never block a feature. Append-only **including for
+administrators** - an audit trail an admin can edit is not an audit trail. Admin-read;
+service-role write.
 
 ## System history
 ### `system_events`

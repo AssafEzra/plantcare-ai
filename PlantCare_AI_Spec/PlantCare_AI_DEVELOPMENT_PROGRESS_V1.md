@@ -114,7 +114,7 @@ Remaining implementation documentation:
 - [x] Configure DEV Auth — email confirmation on, min password length 8, OTP length 8, 60s email throttle, redirect URLs for Streamlit. Version-controlled in `supabase/config.toml` and applied with `supabase config push`
 - [x] Configure DEV Storage — private `plant-images` bucket, 10 MiB cap, JPEG/PNG/WEBP allow-list, 5 owner/admin policies (migration 0003)
 - [~] Configure DEV AI credentials — deferred by decision; `.env` holds a placeholder. Needed before Phase 8
-- [ ] Seed fake/test data
+- [x] Seed fake/test data
 - [x] Verify no PROD credentials are used locally — no PROD project exists yet; `.env` is git-ignored and points at DEV
 
 ## PROD
@@ -134,7 +134,7 @@ Remaining implementation documentation:
 
 # 5. Database
 
-- [ ] Finalize schema
+- [x] Finalize schema
 - [-] Create migrations — 0001 foundation + 0002 corrective applied to DEV; plants/identification, knowledge, care/health/system to follow
 - [x] `profiles` — plus `notification_preferences`, which the signup trigger populates
 - [x] `plants`
@@ -148,25 +148,25 @@ Remaining implementation documentation:
 - [x] `approved_sources`
 - [x] `knowledge_drafts`
 - [x] `knowledge_reports`
-- [ ] `care_plans`
+- [x] `care_plans`
 - [ ] `care_plan_versions` (source_type covers version provenance — no separate care_plan_changes table)
-- [ ] `care_rules`
-- [ ] `care_tasks`
-- [ ] `care_events`
-- [ ] `health_assessments`
-- [ ] `health_observations`
-- [ ] `health_issues`
-- [ ] `health_recommendations`
-- [ ] `agent_executions`
-- [ ] `agent_requests`
-- [ ] `system_events`
-- [-] Define foreign keys - done for tables created so far
-- [-] Define indexes - done for tables created so far
+- [x] `care_rules`
+- [x] `care_tasks`
+- [x] `care_events`
+- [x] `health_assessments` - plus health_assessment_images and health_assessment_sources
+- [x] `health_observations`
+- [x] `health_issues`
+- [x] `health_recommendations`
+- [x] `agent_executions`
+- [x] `agent_requests`
+- [x] `system_events` - plus admin_audit_log and notification_deliveries
+- [x] Define foreign keys
+- [x] Define indexes
 - [-] Define constraints/enums — all 24 enums created; per-table constraints land with their tables
 - [-] Define RLS policies — `profiles` and `notification_preferences` done; `is_admin()` helper available to all later migrations
-- [-] Define immutable/versioned records - knowledge_versions (content-immutable, no delete) and knowledge_sources done; care_events, health_assessments, system_events follow
-- [ ] Define archive/anonymization behavior
-- [ ] Seed reference/test data
+- [x] Define immutable/versioned records
+- [-] Define archive/anonymization behavior - archive constraints in place; anonymisation lands with the admin panel
+- [x] Seed reference/test data - 6 approved sources, 3 species, 2 published Hebrew versions, 1 species left bare for the draft workflow
 
 ---
 
