@@ -70,7 +70,16 @@ class PossibleIssue(BaseModel):
 
     issue_name: str = Field(min_length=2, max_length=200)
     evidence: str = Field(min_length=5, max_length=500)
-    severity: int | None = Field(default=None, ge=1, le=5)
+    severity: int | None = Field(
+        default=None,
+        ge=1,
+        le=5,
+        description=(
+            "How serious this issue looks, on a fixed 1-5 scale where 1 is minor "
+            "and 5 is severe. Not a rank: several issues may share a value, and "
+            "the number never counts up with the length of the list."
+        ),
+    )
     confidence_level: ConfidenceLevel | None = None
 
     @field_validator("issue_name", "evidence")
@@ -90,7 +99,17 @@ class Recommendation(BaseModel):
     model_config = {"extra": "forbid"}
 
     recommendation_text: str = Field(min_length=5, max_length=500)
-    priority: int | None = Field(default=None, ge=1, le=5)
+    priority: int | None = Field(
+        default=None,
+        ge=1,
+        le=5,
+        description=(
+            "How urgent this recommendation is, on a fixed 1-5 scale where 1 is "
+            "do this first and 5 is do it eventually. Not a position in the list: "
+            "the sixth recommendation is not priority 6, and several may share a "
+            "value."
+        ),
+    )
     requires_care_plan_adjustment: bool = False
 
     @field_validator("recommendation_text")

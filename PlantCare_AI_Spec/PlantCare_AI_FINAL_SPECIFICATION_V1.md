@@ -541,6 +541,20 @@ User approval
 New Care Plan Version
 ```
 
+**Implemented in PR 30 (§37).** `PUT /v1/plants/{id}/environment` shipped in PR 11
+and no screen ever called it: תנאי הגידול displayed whatever was stored, said
+"עדיין לא הוגדרו תנאי גידול" when nothing was, and offered no way to change that.
+Reported as *"i couldnt add or edit תנאי הגידול"*. Worse, the caption underneath
+promised exactly the flow drawn above — a change triggers a review of the care
+plan — while nothing could make a change and nothing reviewed anything.
+
+The plant dashboard now carries the form, and a successful save requests an
+`ENVIRONMENT_CHANGE` proposal, so the diagram's first arrow exists. The request is
+made only when the plant already has an active plan: queueing one for a plant
+still waiting for its first would put two competing proposals in front of the
+user. Every field stays optional (§18) — someone who knows their plant sits on a
+north-facing windowsill should not have to invent a humidity reading to say so.
+
 ### Health-driven changes
 
 Health Agent may suggest a possible adjustment.
@@ -1133,6 +1147,20 @@ HEALTH_MODEL=...
 
 Models can be swapped without rewriting Agent logic.
 
+**Added in PR 30 (§37) — a 202 that nothing waits on is a 202 that failed
+silently.** §24 makes every agent call asynchronous: 202 with an
+`agent_request_id`, then the client polls `/v1/agent-requests/{id}`. Only the Add
+Plant wizard ever did. The health check and both care-plan proposal routes fired
+their 202, told the user "the results will appear here in a moment", and never
+looked again — so a failed run said nothing at all, and a successful one appeared
+only if the user happened to reload. Reported as *"did a health check and nothing
+happened. didnt get result or status update."*
+
+The polling now lives in one component every caller uses, because §25's "visible
+failure" is unachievable by a page that never looks at the outcome. A run that has
+not finished is reported as still running, never as failed: Knowledge takes
+minutes and Care took 105 seconds on its first live run.
+
 **Amended in PR 29 (§37): timeouts are per agent, alongside the models.**
 
 ```text
@@ -1173,6 +1201,22 @@ instantly, so every test of a timeout tests the gateway's handling of one rather
 than whether the budget is right, and no test looked at *how* the request was
 made. `tests/unit/test_anthropic_provider.py` now substitutes the SDK client and
 asserts on the request itself.
+
+**Corrected in PR 30 — streaming moved where validation happens.** `messages.parse()`
+returned a message that the provider then validated, so a schema violation became
+a `SchemaValidationFailedError` and the two retries applied. The streaming helper
+validates *during accumulation*, inside `get_final_message()`, and raises
+pydantic's `ValidationError` straight out of the iterator — which is not one of
+the provider's error types, so it escaped the gateway's handlers entirely: **no
+retry, no `agent_executions` row, and a flat `AGENT_FAILED` on the request**. Both
+§23's retry budget and §25's "the failure is visible" were switched off for all
+four agents by a change that looked like it only touched transport. The provider
+now converts it, and a test pins it.
+
+Found when a Health check returned `priority: 6` against a `le=5` bound — a
+plausible reading of an unlabelled 1-5 field as "the sixth recommendation". Both
+bounded scales in the Health contract now describe themselves in the schema the
+model is given.
 
 ### Prompts
 

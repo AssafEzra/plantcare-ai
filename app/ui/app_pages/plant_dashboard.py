@@ -14,29 +14,21 @@ from typing import Any
 
 import streamlit as st
 
+from app.ui.components.agent_progress import await_request
 from app.ui.components.care_plan import active_plan_card, proposal_card
 from app.ui.components.care_task_card import care_task_card, due_text
+from app.ui.components.environment_form import FIELD_LABELS, describe, environment_form
 from app.ui.components.health_card import render_assessment, render_history
 from app.ui.components.identification_card import identification_card
 from app.ui.components.layout import empty_state, guarded, page_header, show_error
 from app.ui.components.status import status_badge, trend_badge
 from app.ui.components.timeline import render_timeline
-from app.ui.state.api_client import ApiError, get, post
+from app.ui.state.api_client import ApiError, get, post, put
 
 SELECTED = "pc_selected_plant"
 FLASH = "plant_flash"
 HISTORY_SHOWN = "plant_history_shown"
 HEALTH_OPEN = "plant_health_open"
-
-ENVIRONMENT_LABELS: dict[str, str] = {
-    "location_type": "מיקום",
-    "light_level": "עוצמת אור",
-    "light_direction": "כיוון החלון",
-    "temperature_c": "טמפרטורה",
-    "humidity_percent": "לחות",
-    "room": "חדר",
-    "notes": "הערות",
-}
 
 SECTION_LABELS: dict[str, str] = {
     "identification": "זיהוי",
@@ -244,6 +236,37 @@ def adjust(version_id: str, overrides: dict[str, Any], summary: str) -> None:
         show_error(exc)
 
 
+def await_proposal(started: dict, *, waiting: str) -> None:
+    """Stay with a queued proposal until it exists, then say what happened.
+
+    Care took 105 seconds on its first live run, so "it will appear here in a
+    moment" was a promise the page then made no attempt to keep: it never polled,
+    and a failed run left the user staring at the same empty state that invited
+    them to press the button in the first place.
+    """
+    st.write(waiting)
+    final = await_request(started["agent_request_id"])
+
+    if final is None:
+        flash(
+            "ההצעה עדיין בהכנה. היא תופיע כאן ברגע שתהיה מוכנה.",
+            kind="info",
+            icon=":material/hourglass_top:",
+        )
+    elif final["status"] == "FAILED":
+        # FINAL §25: no version, no rules, and the user is told rather than left
+        # waiting for something that is not coming.
+        flash(
+            "לא הצלחנו להכין הצעה כרגע. אפשר לנסות שוב.",
+            kind="warning",
+            icon=":material/error:",
+        )
+    else:
+        flash("ההצעה מוכנה וממתינה לאישור שלך.", icon=":material/pending_actions:")
+
+    st.rerun()
+
+
 if data.get("open_proposals"):
     proposals = guarded(lambda: get(f"/v1/plants/{plant_id}/care-plan/proposals")) or []
     if proposals:
@@ -268,16 +291,12 @@ elif not data.get("open_proposals") and empty_state(
     action_key="pd_request_plan",
 ):
     try:
-        with st.spinner("מכינים הצעה…"):
-            post(f"/v1/plants/{plant_id}/care-plan/proposals", json={"reason": "INITIAL_PLAN"})
-        flash(
-            "ההצעה בהכנה. היא תופיע כאן בעוד רגע.",
-            kind="info",
-            icon=":material/hourglass_top:",
-        )
-        st.rerun()
+        queued = post(f"/v1/plants/{plant_id}/care-plan/proposals", json={"reason": "INITIAL_PLAN"})
     except ApiError as exc:
         show_error(exc)
+        st.stop()
+
+    await_proposal(queued, waiting="מכינים הצעה לתוכנית טיפול…")
 
 
 # --- health ---------------------------------------------------------------------
@@ -290,39 +309,61 @@ def request_care_adjustment(assessment_id: str) -> None:
     the user then approves, which is the only route from a finding to a schedule.
     """
     try:
-        post(
+        started = post(
             f"/v1/plants/{plant_id}/care-plan/adjustment-proposals",
             json={
                 "health_assessment_id": assessment_id,
                 "reason": "ממצאי בדיקת הבריאות מצביעים על צורך בהתאמת התדירות.",
             },
         )
-        flash(
-            "מכינים הצעה לעדכון התוכנית. היא תופיע כאן לאישור.",
-            kind="info",
-            icon=":material/pending_actions:",
-        )
-        st.rerun()
     except ApiError as exc:
         show_error(exc)
+        return
+
+    await_proposal(started, waiting="מכינים הצעה לעדכון התוכנית…")
 
 
 def run_health_check(image_ids: list[str], note: str | None) -> None:
+    """Start the check and stay with it until it finishes.
+
+    It used to fire the 202, promise that "the results will appear here in a
+    moment", and never look again — so a failed run said nothing at all and a
+    successful one appeared only if the user happened to reload. Reported as
+    "did a health check and nothing happened".
+    """
     try:
-        with st.spinner("בודקים את הצמח…"):
-            post(
-                f"/v1/plants/{plant_id}/health-checks",
-                json={"image_ids": image_ids, "user_note": note},
-            )
+        started = post(
+            f"/v1/plants/{plant_id}/health-checks",
+            json={"image_ids": image_ids, "user_note": note},
+        )
+    except ApiError as exc:
+        show_error(exc)
+        return
+
+    st.write("בודקים את הצמח…")
+    final = await_request(started["agent_request_id"])
+
+    if final is None:
+        # Still running. Not a failure, and saying so would be a lie about a run
+        # that is very likely about to succeed.
         st.session_state.pop(HEALTH_OPEN, None)
         flash(
-            "הבדיקה יצאה לדרך. התוצאות יופיעו כאן בעוד רגע.",
+            "הבדיקה נמשכת. התוצאה תופיע כאן ברגע שתהיה מוכנה.",
             kind="info",
             icon=":material/hourglass_top:",
         )
-        st.rerun()
-    except ApiError as exc:
-        show_error(exc)
+    elif final["status"] == "FAILED":
+        # FINAL §25: the failure is visible, and nothing authoritative was written.
+        flash(
+            "הבדיקה לא הושלמה. אפשר לנסות שוב, ותמונות חדות יותר עוזרות.",
+            kind="warning",
+            icon=":material/error:",
+        )
+    else:
+        st.session_state.pop(HEALTH_OPEN, None)
+        flash("הבדיקה הושלמה.")
+
+    st.rerun()
 
 
 st.subheader("בריאות הצמח", anchor=False)
@@ -377,18 +418,62 @@ st.divider()
 
 # --- environment ---------------------------------------------------------------
 
+
+def save_environment(values: dict[str, Any]) -> None:
+    """Store the conditions, then ask for the plan to be looked at again.
+
+    FINAL §12: an environment change produces a *proposal*, never a silent
+    rewrite — the caption below has promised that since PR 20 while nothing
+    could change the conditions and nothing reviewed the plan when they did.
+
+    The review is only requested when there is a plan to review. Queueing a
+    proposal for a plant that has no care plan yet would put a second, competing
+    INITIAL_PLAN in front of the user.
+    """
+    try:
+        put(f"/v1/plants/{plant_id}/environment", json=values)
+    except ApiError as exc:
+        show_error(exc)
+        return
+
+    if not data.get("care_plan"):
+        flash("תנאי הגידול נשמרו.")
+        st.rerun()
+
+    try:
+        queued = post(
+            f"/v1/plants/{plant_id}/care-plan/proposals",
+            json={"reason": "ENVIRONMENT_CHANGE"},
+        )
+    except ApiError:
+        # The conditions are saved either way, and saying otherwise would send
+        # the user back to re-enter something that is already stored.
+        flash(
+            "תנאי הגידול נשמרו. לא הצלחנו להתחיל בדיקה של תוכנית הטיפול כרגע.",
+            kind="warning",
+            icon=":material/warning:",
+        )
+        st.rerun()
+
+    st.write("תנאי הגידול נשמרו. בודקים אם צריך לעדכן את תוכנית הטיפול…")
+    await_proposal(queued, waiting="בודקים את תוכנית הטיפול…")
+
+
 environment = data.get("environment")
 with st.expander("תנאי הגידול", icon=":material/thermostat:"):
-    if environment:
-        for key, label in ENVIRONMENT_LABELS.items():
+    if environment and any(environment.get(key) not in (None, "") for key in FIELD_LABELS):
+        for key, label in FIELD_LABELS.items():
             value = environment.get(key)
             if value not in (None, ""):
-                st.markdown(f"**{label}:** {value}")
+                st.markdown(f"**{label}:** {describe(key, value)}")
+        st.divider()
     else:
-        st.caption("עדיין לא הוגדרו תנאי גידול.")
+        st.caption("עדיין לא הוגדרו תנאי גידול. אפשר למלא כאן — כל שדה הוא רשות.")
+
     # FINAL §12: an environment change produces a proposal, never a silent
     # rewrite. Saying so here sets the expectation before the user changes one.
     st.caption("עדכון התנאים מפעיל בדיקה של תוכנית הטיפול, אך לא משנה אותה אוטומטית.")
+    environment_form(environment, on_save=save_environment, key_prefix="pd_env")
 
 
 # --- knowledge ------------------------------------------------------------------

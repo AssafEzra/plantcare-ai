@@ -133,3 +133,52 @@ def test_reasoning_is_never_requested_for_display(provider):
     _run(provider)
 
     assert provider.calls[0]["thinking"] == {"type": "adaptive", "display": "omitted"}
+
+
+# --- schema failures must stay retriable (PR 30) --------------------------------
+
+
+def test_a_validation_error_from_the_stream_becomes_a_schema_failure(env, monkeypatch):
+    """The regression PR 29 shipped and a user found.
+
+    `parse()` returned a message and `_extract` validated it. The streaming helper
+    validates *during accumulation*, inside `get_final_message()`, and raises
+    pydantic's error straight out of the iterator — which is not a
+    `SchemaValidationFailedError`, so the gateway's handlers never saw it. No
+    retry, no `agent_executions` row, and the workflow's blanket `except` recorded
+    a flat AGENT_FAILED: `FINAL §23`'s two retries and `§25`'s "a failed call is
+    visible" were both switched off, for every agent at once.
+
+    Found when a Health check returned `priority: 6` against a `le=5` bound and
+    the user saw nothing happen at all.
+    """
+    import anthropic
+    from pydantic import ValidationError
+
+    from app.infrastructure.ai.provider import SchemaValidationFailedError
+
+    class _Boom:
+        def __enter__(self) -> _Boom:
+            return self
+
+        def __exit__(self, *exc: object) -> bool:
+            return False
+
+        def get_final_message(self) -> Any:
+            raise ValidationError.from_exception_data("Colour", [])
+
+    class _Client:
+        def __init__(self, **kwargs: Any) -> None:
+            self.messages = SimpleNamespace(stream=lambda **kwargs: _Boom())
+
+    monkeypatch.setattr(anthropic, "Anthropic", _Client)
+
+    from app.infrastructure.ai.anthropic_provider import AnthropicProvider
+
+    with pytest.raises(SchemaValidationFailedError):
+        AnthropicProvider().structured_output(
+            model="claude-opus-5",
+            schema=Colour,
+            system="system text",
+            prompt="what colour is the sky?",
+        )

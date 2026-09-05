@@ -276,7 +276,7 @@ in recoverability, and the release-checklist item it creates.
 - [x] Confidence - 0.000-1.000, level derived in Python (HIGH >= 0.85, MEDIUM >= 0.60)
 - [x] Alternatives - up to two, re-sorted by confidence, duplicates collapsed
 - [x] Image quality
-- [x] Identification review - confirmation screen with processing stages; reachable from the plant's own dashboard as well as from the wizard (PR 28)
+- [x] Identification review - confirmation screen with processing stages; reachable from the plant's own dashboard as well as from the wizard (PR 28). The stage display is shared by all four agents from PR 30
 - [x] Wikipedia link validation - verified against Wikipedia's REST API; a redirect to a different subject is rejected
 - [x] User confirmation - the only point at which a species becomes authoritative, and the point at which the plant is named (PR 28)
 - [x] Re-identification - an ACTIVE plant stays active while the new species is researched (A21)
@@ -330,7 +330,7 @@ in recoverability, and the release-checklist item it creates.
 - [x] Version Care Plans - one transaction: supersede, activate, repoint, cancel old pending tasks (A5)
 - [x] Change Summary - required on every version after the first, by CHECK constraint
 - [x] Operational preference editing - no model call; recommendations copied byte-identical
-- [x] Environment-change proposal - proposal only, per the §12 flow
+- [x] Environment-change proposal - proposal only, per the §12 flow; requested by the environment form from PR 30, which is what finally makes the first arrow of that flow exist
 - [x] Health-driven proposal - endpoint ready; the Health Agent that calls it lands in PR 21
 - [x] Preserve previous versions - content-immutable, asserted by comparing the stored blobs
 
@@ -378,6 +378,7 @@ in recoverability, and the release-checklist item it creates.
 - [x] 1–4 image input - bounded in the request model and re-checked in the workflow; delivered in PR 21
 - [x] Image quality validation - A25: warns, never blocks, so the UNKNOWN outcome stays reachable
 - [x] Optional note - framed to the model as the user's description, not a finding
+- [x] Result and status shown when the run ends (PR 30) - the check was fired and never polled, so neither a result nor a failure ever reached the user
 - [x] Context assembly - the seven §16 inputs; the agent reaches no database
 - [x] Structured HealthAssessment
 - [x] Overall status
@@ -411,7 +412,7 @@ in recoverability, and the release-checklist item it creates.
 - [x] Health section - findings, evidence, and the UNKNOWN path (PR 21)
 - [x] History section - merged from five tables on read, so the timeline cannot drift from the data
 - [x] Health Check CTA - opens the check inline; images from the plant's own gallery
-- [x] Environment update - shown, with a note that it proposes rather than rewrites (FINAL §12)
+- [x] Environment update - editable from the plant dashboard, every field optional; a save requests an ENVIRONMENT_CHANGE proposal when the plant has a plan (PR 30 - shipped read-only in PR 20, and the note promising a plan review was the only part that worked)
 - [x] Knowledge error report - report, never edit (FINAL §10)
 - [x] Archive/restore - history survives both
 - [x] Manual history event - the four user-created kinds only; the rest are written by the actions that cause them

@@ -8,24 +8,14 @@ changed.
 
 from __future__ import annotations
 
-import time
-
 import streamlit as st
 
+from app.ui.components.agent_progress import await_request
 from app.ui.components.identification_card import identification_card
 from app.ui.components.layout import page_header, show_error
 from app.ui.state.api_client import ApiError, get, post
 
 MAX_IMAGES = 4
-POLL_INTERVAL_SECONDS = 1.5
-POLL_TIMEOUT_SECONDS = 180
-
-STAGES: list[tuple[str, str]] = [
-    ("IMAGES_RECEIVED", "התמונות התקבלו"),
-    ("CONTEXT_LOADED", "ההקשר נטען"),
-    ("ANALYZING", "מנתחים את התמונות"),
-    ("PREPARING_RESULT", "מכינים את התוצאה"),
-]
 
 STEP = "add_plant_step"
 PLANT = "add_plant_plant_id"
@@ -117,34 +107,7 @@ elif step == "identifying":
     page_header("הוספת צמח", "שלב 2 מתוך 3")
     st.write("מזהים את הצמח שלך…")
 
-    placeholder = st.empty()
-    deadline = time.monotonic() + POLL_TIMEOUT_SECONDS
-    final: dict | None = None
-
-    while time.monotonic() < deadline:
-        try:
-            state = get(f"/v1/agent-requests/{st.session_state[REQUEST]}")
-        except ApiError as exc:
-            show_error(exc)
-            break
-
-        current = state.get("stage")
-        reached = [s for s, _ in STAGES].index(current) if current in [s for s, _ in STAGES] else -1
-
-        with placeholder.container():
-            for index, (_, label) in enumerate(STAGES):
-                if state["status"] in ("SUCCEEDED", "FAILED") or index < reached:
-                    st.markdown(f":green[✓] {label}")
-                elif index == reached:
-                    st.markdown(f"**● {label}**")
-                else:
-                    st.markdown(f":gray[○ {label}]")
-
-        if state["status"] in ("SUCCEEDED", "FAILED"):
-            final = state
-            break
-
-        time.sleep(POLL_INTERVAL_SECONDS)
+    final = await_request(st.session_state[REQUEST])
 
     if final is None:
         st.warning("הזיהוי נמשך זמן רב מהצפוי.", icon=":material/hourglass_top:")

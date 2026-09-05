@@ -126,28 +126,53 @@ def rendered(app: AppTest) -> str:
 # --- the separation FINAL §12 depends on ---------------------------------------
 
 
-def test_the_advice_has_no_input_beside_it(page):
+def _render_proposal(card: dict) -> None:
+    from app.ui.components.care_plan import proposal_card
+
+    proposal_card(card, on_approve=lambda _: None, on_reject=lambda _: None)
+
+
+def _render_active(card: dict) -> None:
+    from app.ui.components.care_plan import active_plan_card
+
+    active_plan_card(card, on_adjust=lambda *_: None)
+
+
+def card_only(render, card: dict) -> AppTest:
+    """Render one card and nothing else.
+
+    These two assertions are about what sits *beside the advice*, and they used to
+    be written as "the page has no inputs" — true when the plant dashboard had
+    none anywhere. PR 31 added the growing-conditions form further down the same
+    page and both went red, having caught nothing: the advice was still
+    uneditable. Scoping them to the card says what they actually mean, and keeps
+    them from failing again the next time an unrelated section grows a field.
+    """
+    app = AppTest.from_function(render, kwargs={"card": card}, default_timeout=30)
+    app.run()
+    assert not app.exception, [str(e) for e in app.exception]
+    return app
+
+
+def test_the_advice_has_no_input_beside_it():
     """A proposal offers two buttons and no fields.
 
     The user's decision here is yes or no. An input anywhere on this card would
     suggest the advice is theirs to rewrite, which §12 says it is not.
     """
-    app = page(proposals=[version()])
-    app.run()
+    app = card_only(_render_proposal, version())
 
-    assert not app.exception, [str(e) for e in app.exception]
     assert app.number_input.values == []
     assert app.text_area.values == []
 
 
-def test_the_active_plan_offers_frequency_and_nothing_else(page):
+def test_the_active_plan_offers_frequency_and_nothing_else():
     """The editable half, and only it.
 
     One number input per rule — no field for the summary, the watering advice or
     the warnings.
     """
-    app = page(plan=version(status="ACTIVE"))
-    app.run()
+    app = card_only(_render_active, version(status="ACTIVE"))
 
     assert len(app.number_input) == len(RULES)
     labels = " ".join(n.label for n in app.number_input)

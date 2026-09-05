@@ -99,6 +99,20 @@ class AnthropicProvider:
                 timeout=timeout_seconds if timeout_seconds is not None else NOT_GIVEN,
             ) as stream:
                 response = stream.get_final_message()
+        except ValidationError as exc:
+            # Schema validation moved when this call started streaming. `parse()`
+            # returned a message and `_extract` below validated it; the streaming
+            # helper validates during accumulation, inside `get_final_message()`,
+            # and raises pydantic's error straight out of the iterator.
+            #
+            # Uncaught, that error is not a `SchemaValidationFailedError`, so the
+            # gateway's handlers never see it: no retry, no `agent_executions`
+            # row, and the workflow's blanket `except` records a flat
+            # AGENT_FAILED. `FINAL §23`'s two retries and `§25`'s "a failed call
+            # is visible" were both silently switched off for every agent - found
+            # when a Health check returned `priority: 6` against a `le=5` bound
+            # and the user saw nothing at all happen.
+            raise SchemaValidationFailedError(str(exc)) from exc
         except anthropic.APITimeoutError as exc:
             raise ProviderTimeoutError("הניתוח נמשך זמן רב מדי.") from exc
         except anthropic.APIStatusError as exc:
