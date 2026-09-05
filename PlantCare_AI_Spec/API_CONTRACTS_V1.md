@@ -470,6 +470,25 @@ operation does and why the audit entry records none of what it erased.
 `/audit-log` reads a table that refuses UPDATE and DELETE for every role. Append-only is
 a property of the table, not a convention of the endpoint.
 
+## Plant list
+
+`GET /v1/plants` returns, per plant, three fields beyond the stored row — added in
+PR 25 because `PROGRESS §10` asks the card to show them and nothing supplied them:
+
+| Field | Why it is not just the stored column |
+|---|---|
+| `thumbnail_url` | The bucket is private, so `main_image_id` is not something a browser can render. The URL is signed as the caller and short-lived, like every other image URL in this API. |
+| `species_name` | `species_id` is a UUID. Common name where the species has one, the binomial otherwise. |
+| `next_task` | The earliest PENDING or OVERDUE task, with its `action_type` — a due date with no action is not a reminder. Overdue work is included deliberately: late work is the most relevant thing a card can say. |
+
+All three are batched across the whole page — four queries for the listing rather
+than three per plant, with the thumbnails signed in one call. They are absent from
+`GET /v1/plants/{id}`, which has richer sources for the same facts.
+
+Until this shipped, `plant_card` read a `thumbnail_url` key that nothing ever set,
+so every card in My Plants rendered "no image" regardless of how many photographs
+the plant had.
+
 ## Knowledge reads
 
 `GET /v1/species/{species_id}/knowledge` renders the current published version.

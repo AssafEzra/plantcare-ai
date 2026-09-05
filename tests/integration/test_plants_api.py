@@ -13,10 +13,13 @@ import io
 import os
 import uuid
 from collections.abc import Iterator
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
 from PIL import Image
+
+from tests.integration.conftest import unique_species_name
 
 pytestmark = pytest.mark.integration
 
@@ -579,3 +582,147 @@ def test_an_admin_sees_only_their_own_plants(api, account, admin_sdk):
 
     with contextlib.suppress(Exception):
         admin_sdk.table("plants").delete().eq("id", theirs["id"]).execute()
+
+
+# --- what the grid needs (PROGRESS §10) -------------------------------------------
+
+
+def test_the_list_carries_the_thumbnail_the_card_renders(api: TestClient, account):
+    """The regression that made My Plants a grid of grey placeholders.
+
+    `plant_card` had read `thumbnail_url` since PR 9 and this endpoint never set
+    it, so every card showed "no image" however many photographs the plant had.
+    `main_image_id` alone is not enough: the bucket is private, so the card needs
+    a signed URL it can put in an `<img>`.
+    """
+    _, auth = account()
+    plant = create_plant(api, auth)
+    api.post(
+        f"/v1/plants/{plant['id']}/images",
+        headers=auth,
+        files={"file": ("a.jpg", photo(), "image/jpeg")},
+    )
+
+    listed = api.get("/v1/plants", headers=auth).json()["data"]
+    mine = next(p for p in listed if p["id"] == plant["id"])
+
+    assert mine["main_image_id"]
+    assert mine["thumbnail_url"], "the grid has an image id but nothing to render"
+    assert mine["thumbnail_url"].startswith("http")
+
+
+def test_the_list_carries_the_species_name(api: TestClient, account, admin_sdk):
+    """`species_id` is a UUID. A card cannot show a UUID to a person."""
+    user_id, auth = account()
+    species = (
+        admin_sdk.table("species")
+        .insert({"scientific_name": unique_species_name(), "common_name": "מונסטרה"})
+        .execute()
+        .data[0]
+    )
+    plant = (
+        admin_sdk.table("plants")
+        .insert(
+            {"user_id": user_id, "species_id": species["id"], "name": "צמח", "status": "ACTIVE"}
+        )
+        .execute()
+        .data[0]
+    )
+
+    listed = api.get("/v1/plants", headers=auth).json()["data"]
+    mine = next(p for p in listed if p["id"] == plant["id"])
+
+    assert mine["species_name"] == "מונסטרה"
+
+
+def test_the_list_carries_the_nearest_open_task(api: TestClient, account, admin_sdk):
+    """The nearest, and the action - a due date with no action is not a reminder.
+
+    Two tasks are created deliberately: the endpoint must return the earlier one,
+    which is the only part of this that a single-task fixture would not prove.
+    They belong to two different rules because a partial unique index allows only
+    one PENDING task per rule - the invariant that keeps a tick from producing a
+    duplicate reminder, and one that makes "two tasks" mean "two rules".
+    """
+    user_id, auth = account()
+    plant, version = _plant_with_rules(admin_sdk, user_id)
+
+    for action, days in (("FERTILIZING", 9), ("WATERING", 2)):
+        rule = (
+            admin_sdk.table("care_rules")
+            .insert(
+                {
+                    "care_plan_version_id": version["id"],
+                    "action_type": action,
+                    "interval_days": 7,
+                }
+            )
+            .execute()
+            .data[0]
+        )
+        admin_sdk.table("care_tasks").insert(
+            {
+                "user_id": user_id,
+                "plant_id": plant["id"],
+                "care_rule_id": rule["id"],
+                "due_at_utc": (datetime.now(UTC) + timedelta(days=days)).isoformat(),
+                "status": "PENDING",
+            }
+        ).execute()
+
+    listed = api.get("/v1/plants", headers=auth).json()["data"]
+    mine = next(p for p in listed if p["id"] == plant["id"])
+
+    assert mine["next_task"]["action_type"] == "WATERING"
+    due = datetime.fromisoformat(mine["next_task"]["due_at_utc"].replace("Z", "+00:00"))
+    assert (due - datetime.now(UTC)).days < 5, "the later task was returned"
+
+
+def test_a_plant_with_nothing_to_show_carries_nulls_not_errors(api: TestClient, account):
+    """A plant between creation and identification has no image, no species and no
+    schedule. The card is written for that; the endpoint must not fail on it."""
+    _, auth = account()
+    plant = create_plant(api, auth)
+
+    listed = api.get("/v1/plants", headers=auth).json()["data"]
+    mine = next(p for p in listed if p["id"] == plant["id"])
+
+    assert mine["thumbnail_url"] is None
+    assert mine["species_name"] is None
+    assert mine["next_task"] is None
+
+
+def _plant_with_rules(admin_sdk, user_id: str) -> tuple[dict, dict]:
+    """An ACTIVE plant with an ACTIVE plan version, ready for rules.
+
+    Built directly rather than through the agents: this file is about the plants
+    API, and driving a care plan through the Care Agent to reach a rule would
+    make the test fail for reasons that have nothing to do with what it asserts.
+    """
+    plant = (
+        admin_sdk.table("plants")
+        .insert({"user_id": user_id, "name": "צמח מתוזמן", "status": "ACTIVE"})
+        .execute()
+        .data[0]
+    )
+    plan = (
+        admin_sdk.table("care_plans")
+        .insert({"user_id": user_id, "plant_id": plant["id"]})
+        .execute()
+        .data[0]
+    )
+    version = (
+        admin_sdk.table("care_plan_versions")
+        .insert(
+            {
+                "care_plan_id": plan["id"],
+                "version_number": 1,
+                "status": "ACTIVE",
+                "source_type": "INITIAL_PLAN",
+                "professional_recommendations": {"summary": "המלצה"},
+            }
+        )
+        .execute()
+        .data[0]
+    )
+    return plant, version
