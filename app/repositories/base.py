@@ -26,8 +26,20 @@ class _HasData(Protocol):
 
 
 def rows(result: _HasData) -> list[Row]:
-    """Every returned row, as plain dicts."""
-    return cast(list[Row], result.data or [])
+    """Every returned row, as plain dicts.
+
+    PostgREST returns two different shapes and both arrive here. A table query
+    gives a list; an RPC whose function returns a single composite gives that row
+    as a bare dict. Normalising in one place keeps every call site from having to
+    know which kind of query produced its result - the previous version assumed a
+    list, so `first_row()` on an RPC result raised `KeyError: 0`.
+    """
+    data = result.data
+    if data is None:
+        return []
+    if isinstance(data, dict):
+        return [cast(Row, data)]
+    return cast(list[Row], data)
 
 
 def first_row(result: _HasData) -> Row | None:

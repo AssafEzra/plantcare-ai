@@ -17,17 +17,21 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
-from pydantic import BaseModel
-
 from app.common.enums import AgentType
 from app.infrastructure.ai.gateway import AIGateway
 
 
-class Agent[RequestT, ResultT: BaseModel](ABC):
+class Agent[RequestT, ResultT](ABC):
     """Base for the four agents.
 
     The gateway is injected rather than constructed, so a test can drive an agent
     with a scripted provider and never touch a network.
+
+    `ResultT` is deliberately unconstrained. What the *model* returns is always a
+    schema-validated Pydantic model, enforced by the gateway; what the *agent*
+    returns is the application's conclusion after its own checks, and those two
+    are not the same thing. Requiring the conclusion to be a Pydantic model would
+    blur exactly the line worth keeping visible.
     """
 
     agent_type: AgentType

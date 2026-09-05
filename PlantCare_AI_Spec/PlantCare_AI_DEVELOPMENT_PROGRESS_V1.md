@@ -261,24 +261,24 @@ Remaining implementation documentation:
 - [x] Add Plant flow - step 1: create plant, upload identification photos
 - [x] 1-4 identification photos
 - [x] Photo preview
-- [ ] Remove/add photo
+- [x] Remove/add photo
 - [x] Photo guidance
 - [x] Optional user note
-- [ ] Identification Agent contract
-- [ ] Multimodal model integration
-- [ ] Structured output
-- [ ] Confidence
-- [ ] Alternatives
-- [ ] Image quality
-- [ ] Identification review
-- [ ] Wikipedia link validation
-- [ ] User confirmation
-- [ ] Re-identification
-- [ ] Identification history
-- [ ] New Species creation
-- [ ] Knowledge Pending state
-- [ ] Existing Knowledge lookup
-- [ ] Graceful failure states
+- [x] Identification Agent contract
+- [x] Multimodal model integration - vision verified against the real API
+- [x] Structured output
+- [x] Confidence - 0.000-1.000, level derived in Python (HIGH >= 0.85, MEDIUM >= 0.60)
+- [x] Alternatives - up to two, re-sorted by confidence, duplicates collapsed
+- [x] Image quality
+- [x] Identification review - confirmation screen with processing stages
+- [x] Wikipedia link validation - verified against Wikipedia's REST API; a redirect to a different subject is rejected
+- [x] User confirmation - the only point at which a species becomes authoritative
+- [x] Re-identification - an ACTIVE plant stays active while the new species is researched (A21)
+- [x] Identification history - append-only; a correction adds a row
+- [x] New Species creation - at confirm, from the chosen candidate
+- [x] Knowledge Pending state - research draft opened, plant remains usable
+- [x] Existing Knowledge lookup - published knowledge activates the plant immediately
+- [x] Graceful failure states - FAILED and NEEDS_MORE_INFORMATION both surface without an authoritative record
 
 ---
 
