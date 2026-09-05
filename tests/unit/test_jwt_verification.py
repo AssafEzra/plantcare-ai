@@ -115,9 +115,14 @@ def test_unsigned_token_is_rejected(env, monkeypatch):
         jwt_module.verify_access_token(token)
 
 
-def test_hs256_token_is_rejected_without_a_configured_secret(env):
-    """This project uses asymmetric keys. An HS256 token can only be honoured if a
-    shared secret is configured, and none is - so it must not be trusted."""
+def test_hs256_token_is_rejected(env):
+    """Only asymmetric algorithms are accepted.
+
+    Supabase issues ES256 and publishes a JWKS; there is no shared secret to
+    verify an HS256 token against, so honouring one would mean honouring it
+    unverified. An attacker who could choose the algorithm would otherwise only
+    need to guess a secret rather than forge a signature.
+    """
     token = jwt.encode(
         {"sub": str(uuid.uuid4()), "aud": "authenticated", "exp": int(time.time()) + 60},
         key="guessable",

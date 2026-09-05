@@ -67,28 +67,6 @@ def reset_jwks_cache() -> None:
         _jwks_fetched_at = 0.0
 
 
-def _decode_symmetric(token: str) -> dict[str, Any]:
-    """Fallback for projects still issuing HS256 tokens signed with the JWT secret.
-
-    Supabase moved to asymmetric ES256 keys with a JWKS endpoint; older projects
-    (and some local stacks) still use HS256. Supporting both keeps the API working
-    across environments without weakening either path — the signature is still
-    verified, just with a different key type.
-    """
-    settings = get_settings()
-    secret = getattr(settings, "supabase_jwt_secret", None)
-    if not secret:
-        raise UnauthenticatedError("Token could not be verified.")
-    return jwt.decode(
-        token,
-        secret,
-        algorithms=["HS256"],
-        audience="authenticated",
-        leeway=_CLOCK_SKEW_LEEWAY_SECONDS,
-        options={"require": ["exp", "sub"]},
-    )
-
-
 def verify_access_token(token: str) -> dict[str, Any]:
     """Return the verified claims, or raise :class:`UnauthenticatedError`.
 
@@ -116,9 +94,11 @@ def verify_access_token(token: str) -> dict[str, Any]:
                 leeway=_CLOCK_SKEW_LEEWAY_SECONDS,
                 options={"require": ["exp", "sub"]},
             )
-        elif algorithm == "HS256":
-            claims = _decode_symmetric(token)
         else:
+            # Only asymmetric algorithms are accepted. This project's Supabase
+            # instance issues ES256 and publishes a JWKS, so there is no shared
+            # secret to verify an HS256 token against - accepting one would mean
+            # accepting it unverified. `alg: none` lands here too.
             raise UnauthenticatedError("Unsupported token algorithm.")
     except jwt.ExpiredSignatureError as exc:
         raise UnauthenticatedError("Session has expired. Please sign in again.") from exc
