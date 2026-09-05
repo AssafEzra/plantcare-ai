@@ -571,8 +571,9 @@ Recorded because each is a pattern worth remembering, not only an incident.
 | PR 13 | The binomial validator accepted any two words, so `"unknown plant"` or a whole sentence would have created a species row | Adversarial contract tests written against the validator rather than against the happy path |
 | PR 14 | `_normalise()` filtered to `[a-z0-9 ]`, which deletes Hebrew outright — so the common-name relevance fallback was dead code in the one language this application writes | A test written with a Hebrew common name rather than an English one. Every English test passed |
 | PR 14 | A second `start_research` on an already-running draft was refused, and reported as "already approved" | An integration test asserting that two confirmations of the same new species join one research run rather than billing twice |
+| PR 14 | Six agent tests read configuration without the `env` fixture. They passed locally and failed on push: a developer's `.env` silently satisfies pydantic-settings for any test that forgot it | CI, which has no `.env`. `scripts/check.sh` now runs the CI selection from a directory that has none, so the local gate and CI ask the same question |
 
-The pattern: **mocks confirm the shape you assumed.** Eight of these twelve were only
+The pattern: **mocks confirm the shape you assumed.** Nine of these thirteen were only
 findable by executing against the real thing — a live database, a real browser, a
 real API — which is why each phase applies its migrations to DEV, and why one
 live provider test is kept despite costing money to run.

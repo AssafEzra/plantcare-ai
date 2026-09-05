@@ -140,7 +140,7 @@ def test_unknown_section_cross_references_are_dropped_not_fatal():
 # --- the agent -----------------------------------------------------------------
 
 
-def test_generate_returns_the_researched_content():
+def test_generate_returns_the_researched_content(env):
     agent = agent_with(
         KnowledgeOutput(
             content=content(),
@@ -157,7 +157,7 @@ def test_generate_returns_the_researched_content():
     assert result.research_notes is not None
 
 
-def test_the_same_url_cited_twice_becomes_one_source():
+def test_the_same_url_cited_twice_becomes_one_source(env):
     agent = agent_with(
         KnowledgeOutput(
             content=content(),
@@ -176,7 +176,7 @@ def test_the_same_url_cited_twice_becomes_one_source():
     assert urls == ["https://rhs.org.uk/monstera", "https://mobot.org/monstera"]
 
 
-def test_a_failed_research_run_raises_rather_than_returning_an_empty_draft():
+def test_a_failed_research_run_raises_rather_than_returning_an_empty_draft(env):
     """Unlike identification, there is no useful partial answer here.
 
     Swallowing the failure would leave an administrator reviewing a blank draft;
@@ -191,7 +191,7 @@ def test_a_failed_research_run_raises_rather_than_returning_an_empty_draft():
         )
 
 
-def test_the_agent_uses_the_knowledge_model():
+def test_the_agent_uses_the_knowledge_model(env):
     """FINAL §23: each agent's model is configuration. A knowledge run using the
     identification model would be a silent cost and quality change."""
     provider = MockProvider([KnowledgeOutput(content=content())])
@@ -202,7 +202,7 @@ def test_the_agent_uses_the_knowledge_model():
     assert provider.calls[0]["model"] == agent.gateway.model_for(AgentType.KNOWLEDGE)
 
 
-def test_the_users_language_and_approved_domains_reach_the_prompt():
+def test_the_users_language_and_approved_domains_reach_the_prompt(env):
     provider = MockProvider([KnowledgeOutput(content=content())])
     agent = KnowledgeAgent(AIGateway(provider, record_executions=False))
     agent.generate(
@@ -223,7 +223,7 @@ def test_the_users_language_and_approved_domains_reach_the_prompt():
     assert "מקורות מועדפים" in sent
 
 
-def test_run_is_not_the_entry_point():
+def test_run_is_not_the_entry_point(env):
     agent = KnowledgeAgent(AIGateway(MockProvider(), record_executions=False))
     with pytest.raises(NotImplementedError):
         agent.run(KnowledgeRequest(scientific_name="Monstera deliciosa"))

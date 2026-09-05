@@ -22,7 +22,13 @@ echo "PlantCare AI - checks"
 run "format" uv run ruff format --check .
 run "lint"   uv run ruff check .
 run "mypy"   uv run mypy app
-run "tests"  uv run pytest -q -m "not integration and not live"
+# Run the CI selection from a directory that has no .env, which is the condition
+# CI actually runs under. A developer's .env silently satisfies pydantic-settings
+# for any test that forgot the `env` fixture, so those tests pass locally and fail
+# on push - which is exactly how PR 14 broke the build. cwd is changed rather than
+# the file moved: an interrupted script must not be able to delete a real .env.
+root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+run "tests" env -C "${TMPDIR:-/tmp}" uv run --project "$root" pytest -q   -c "$root/pyproject.toml" --rootdir "$root" -m "not integration and not live" "$root/tests"
 
 if [ "${1:-}" = "--integration" ]; then
   run "integration" uv run pytest -q -m integration
