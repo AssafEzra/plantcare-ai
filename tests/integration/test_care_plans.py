@@ -548,3 +548,61 @@ def test_a_plan_cannot_be_proposed_for_an_unidentified_plant(api, account, admin
     finally:
         with contextlib.suppress(Exception):
             admin_sdk.table("plants").delete().eq("id", plant["id"]).execute()
+
+
+def test_a_seeded_species_contributes_its_knowledge_to_the_plan(api, account, admin_sdk, scripted):
+    """The regression that mattered most in PR 20.
+
+    Knowledge published before A16 stores each section as a plain string, and
+    `care_context._sections()` required a dict — so a care plan for any seeded
+    species was built from an empty knowledge base, silently. Nothing failed;
+    the agent simply received nothing and produced a plan anyway.
+    """
+    from app.orchestration.services import care_context
+
+    user_id, _ = account()
+    species = (
+        admin_sdk.table("species")
+        .insert({"scientific_name": unique_species_name()})
+        .execute()
+        .data[0]
+    )
+    # The pre-A16 shape, exactly as `seed.sql` writes it.
+    admin_sdk.table("knowledge_versions").insert(
+        {
+            "species_id": species["id"],
+            "language": "he",
+            "version_number": 1,
+            "is_current": True,
+            "content": {
+                "light": "אור עקיף בהיר.",
+                "watering": "להשקות כשהמצע יבש לעומק שלושה סנטימטרים.",
+                "soil": "מצע מנקז היטב.",
+                "sources": ["https://example.org"],
+            },
+        }
+    ).execute()
+    plant = (
+        admin_sdk.table("plants")
+        .insert(
+            {
+                "user_id": user_id,
+                "species_id": species["id"],
+                "status": "ACTIVE",
+                "name": "צמח עם ידע ישן",
+            }
+        )
+        .execute()
+        .data[0]
+    )
+
+    try:
+        context, _ = care_context.build(admin_sdk, plant_id=uuid.UUID(plant["id"]))
+
+        assert context.knowledge_sections, "a seeded species must not yield an empty context"
+        assert "watering" in context.knowledge_sections
+        # `sources` is provenance, not advice, and must not reach the agent as prose.
+        assert "sources" not in context.knowledge_sections
+    finally:
+        with contextlib.suppress(Exception):
+            admin_sdk.table("plants").delete().eq("id", plant["id"]).execute()

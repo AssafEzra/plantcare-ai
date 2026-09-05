@@ -35,6 +35,22 @@ ENVIRONMENT_LABELS: dict[str, str] = {
     "notes": "הערות",
 }
 
+SECTION_LABELS: dict[str, str] = {
+    "identification": "זיהוי",
+    "description": "תיאור",
+    "light": "אור",
+    "watering": "השקיה",
+    "soil": "מצע",
+    "temperature": "טמפרטורה",
+    "humidity": "לחות",
+    "fertilization": "דישון",
+    "repotting": "החלפת עציץ",
+    "pruning": "גיזום",
+    "propagation": "ריבוי",
+    "common_problems": "בעיות נפוצות",
+    "toxicity_safety": "רעילות ובטיחות",
+}
+
 LOGGABLE: dict[str, str] = {
     "REPOTTED": "החלפתי עציץ",
     "MOVED": "העברתי למקום אחר",
@@ -266,10 +282,20 @@ if species:
                 show_error(exc)
 
         if knowledge:
-            for name, section in (knowledge.get("content") or {}).items():
-                if isinstance(section, dict) and section.get("text"):
-                    st.markdown(f"**{name}**")
-                    st.write(section["text"])
+            sections = knowledge.get("content") or {}
+            rendered_any = False
+            for name, label in SECTION_LABELS.items():
+                section = sections.get(name)
+                text = section.get("text") if isinstance(section, dict) else section
+                if text:
+                    rendered_any = True
+                    st.markdown(f"**{label}**")
+                    st.write(text)
+
+            if not rendered_any:
+                # An empty box reads as a broken page. Saying so is worse news and
+                # better information.
+                st.caption("המידע המקצועי אינו זמין להצגה כרגע.")
 
             # FINAL §10: users report errors; they never edit.
             with st.form("knowledge_report"):

@@ -519,6 +519,46 @@ def tasks_for_user(
     return rows(query.execute())
 
 
+def decorate_tasks(client: Client, tasks: list[Row]) -> list[Row]:
+    """Attach the plant name and action type a task is meaningless without.
+
+    Lives here rather than in a router because both the care-task list and the
+    plant dashboard need it — and the dashboard shipped without it, rendering
+    "**** · my plant" where a reminder should have been. A task row on its own is
+    two foreign keys and a timestamp.
+    """
+    if not tasks:
+        return []
+
+    plants = {
+        plant["id"]: plant
+        for plant in rows(
+            client.table("plants")
+            .select("id, name")
+            .in_("id", list({str(t["plant_id"]) for t in tasks}))
+            .execute()
+        )
+    }
+    care_rules = {
+        rule["id"]: rule
+        for rule in rows(
+            client.table("care_rules")
+            .select("id, action_type")
+            .in_("id", list({str(t["care_rule_id"]) for t in tasks}))
+            .execute()
+        )
+    }
+
+    return [
+        {
+            **task,
+            "plant_name": plants.get(str(task["plant_id"]), {}).get("name"),
+            "action_type": care_rules.get(str(task["care_rule_id"]), {}).get("action_type"),
+        }
+        for task in tasks
+    ]
+
+
 def parse_timestamp(value: Any) -> datetime | None:
     if not value:
         return None

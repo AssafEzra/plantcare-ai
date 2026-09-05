@@ -69,7 +69,9 @@ def care_task_card(
     """
     task_id = task["id"]
     action = task.get("action_type") or ""
-    label, icon = ACTION_LABELS.get(action, (action, ":material/task_alt:"))
+    # A missing action must not render as `**` `**` — bold-empty is four literal
+    # asterisks on screen, which is how the plant dashboard first shipped.
+    label, icon = ACTION_LABELS.get(action, (action or "טיפול", ":material/task_alt:"))
     overdue = task.get("status") == "OVERDUE"
 
     with st.container(border=True):

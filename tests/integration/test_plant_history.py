@@ -421,6 +421,39 @@ def test_the_dashboard_returns_every_section_final_17_lists(api, storied):
     assert "upcoming_tasks" in data
 
 
+def test_upcoming_tasks_carry_the_plant_name_and_action(api, admin_sdk, storied):
+    """The dashboard shipped without decorating them, rendering "**** · my plant".
+
+    A task row on its own is two foreign keys and a timestamp; the name and the
+    action are what make it a reminder.
+    """
+    from datetime import UTC, datetime, timedelta
+
+    rule = (
+        admin_sdk.table("care_rules")
+        .select("id")
+        .eq("care_plan_version_id", storied["version_id"])
+        .execute()
+    ).data[0]
+    admin_sdk.table("care_tasks").insert(
+        {
+            "user_id": storied["user_id"],
+            "plant_id": storied["plant_id"],
+            "care_rule_id": rule["id"],
+            "due_at_utc": (datetime.now(UTC) + timedelta(hours=6)).isoformat(),
+            "status": "PENDING",
+        }
+    ).execute()
+
+    tasks = api.get(f"/v1/plants/{storied['plant_id']}/dashboard", headers=storied["auth"]).json()[
+        "data"
+    ]["upcoming_tasks"]
+
+    assert tasks
+    assert tasks[0]["plant_name"] == "צמח עם היסטוריה"
+    assert tasks[0]["action_type"] == "WATERING"
+
+
 def test_the_dashboard_carries_the_latest_health_and_its_trend(api, storied):
     health = api.get(f"/v1/plants/{storied['plant_id']}/dashboard", headers=storied["auth"]).json()[
         "data"

@@ -325,3 +325,24 @@ def test_upcoming_lines_name_the_action(page):
     assert len(set(upcoming_lines)) == 3, "each line must be distinguishable"
     joined = " ".join(upcoming_lines)
     assert "השקיה" in joined and "דישון" in joined and "בדיקה" in joined
+
+
+def test_a_task_with_no_action_label_does_not_render_asterisks(page):
+    """Bold-empty is four literal asterisks on screen.
+
+    Found on the plant dashboard, which shipped without decorating its tasks and
+    rendered "**** · my plant" where a reminder should have been. The card is now
+    defensive about it regardless of who forgot.
+    """
+    bare = {**task(), "action_type": None, "plant_name": None}
+    app = page(
+        dashboard(
+            today_care=[bare],
+            counts={"active_plants": 1, "today_tasks": 1, "attention": 0, "overdue": 0},
+        )
+    )
+    app.run()
+
+    text = rendered(app)
+    assert "****" not in text
+    assert "טיפול" in text

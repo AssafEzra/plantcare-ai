@@ -167,11 +167,14 @@ async def get_plant_dashboard(
     )
     latest = assessments[0] if assessments else None
 
-    open_tasks = [
-        task
-        for task in scheduler.tasks_for_user(user.client, user_id=user.id)
-        if str(task["plant_id"]) == str(plant_id)
-    ]
+    open_tasks = scheduler.decorate_tasks(
+        user.client,
+        [
+            task
+            for task in scheduler.tasks_for_user(user.client, user_id=user.id)
+            if str(task["plant_id"]) == str(plant_id)
+        ],
+    )
 
     plan = care_workflow.plan_for_plant(user.client, plant_id=plant_id)
     proposals = care_workflow.proposals_for_plant(user.client, plant_id=plant_id)

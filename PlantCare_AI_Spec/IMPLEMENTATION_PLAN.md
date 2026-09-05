@@ -73,8 +73,8 @@ Target: the Definition of Done in `FINAL_SPECIFICATION §35`.
 | 23 | 16 · Testing | Nine E2E journeys, RLS matrix, no-authoritative-record | ☐ |
 | 24 | 17 · Deployment | Railway, PROD Supabase, cron tick, alerts, runbook | ☐ |
 
-**1,131 tests** currently pass — 754 unit, API, agent and UI tests that CI runs on every
-push, plus 376 integration tests executed against the DEV Supabase project, plus one
+**1,157 tests** currently pass — 778 unit, API, agent and UI tests that CI runs on every
+push, plus 378 integration tests executed against the DEV Supabase project, plus one
 live provider test excluded from both.
 
 ---
@@ -605,8 +605,10 @@ Recorded because each is a pattern worth remembering, not only an incident.
 | PR 18 | An expired session left the user on a signed-in-looking page with a red banner and no way forward but guessing to reload. `ApiError.is_auth_error` had existed since PR 9 and nothing acted on it | Leaving a browser tab open for two hours while testing. The sequencing is the bug: `access_token()` does clear the session when a refresh fails, but the shell has already routed for that run, so only a rerun sends the next pass to sign-in |
 | PR 18 | Upcoming care omitted the action type, so three rules on one plant rendered three word-for-word identical lines — "the monstera · tomorrow at 08:00", three times | Looking at the expanded section in the browser. Every assertion about upcoming care passed: the data was right, the line just did not say which of the three it was |
 | PR 20 | **Found before it could bite:** an assessment and its images cannot be written through two PostgREST calls. The 1–4 image constraint is `DEFERRABLE INITIALLY DEFERRED` and therefore checked at commit, and every REST call is its own transaction — so the first commits with zero images and fails. PR 21's Health Agent must use a single RPC | Building a history fixture that needed a health assessment. Recorded in `DATABASE_SCHEMA`, because meeting this while building PR 21 would have looked like a broken constraint rather than a requirement of the design |
+| PR 20 | The plant dashboard did not decorate its tasks, rendering **`**** · my plant`** where a reminder belonged — bold-empty is four literal asterisks on screen | Opening the page. The decoration lived in one router and the other never called it; it now lives in the scheduler service, and the card is defensive about a missing label regardless of who forgets |
+| PR 20 | Knowledge published before A16 stores sections as plain strings, and `care_context._sections()` required a dict — so **a care plan for any seeded species was built with no knowledge at all**, silently. `knowledge_versions` is content-immutable, so those rows can never be migrated | Expanding the knowledge section on the dashboard and finding it empty. The UI bug was cosmetic; the Care Agent one was not, and nothing had failed loudly enough to notice |
 
-The pattern: **mocks confirm the shape you assumed.** Eighteen of these twenty-two were only
+The pattern: **mocks confirm the shape you assumed.** Twenty of these twenty-four were only
 findable by executing against the real thing — a live database, a real browser, a
 real API — which is why each phase applies its migrations to DEV, and why one
 live provider test is kept despite costing money to run.

@@ -24,6 +24,7 @@ from app.agents.care.contract import CareContext
 from app.common.errors import NotFoundError, ValidationFailedError
 from app.config.logging import get_logger
 from app.config.settings import get_settings
+from app.domain.services import knowledge_content
 from app.repositories.base import Row, first_row, rows
 from supabase import Client
 
@@ -88,11 +89,18 @@ def build(client: Client, *, plant_id: UUID) -> tuple[CareContext, str | None]:
         client.table("profiles").select("timezone").eq("id", plant["user_id"]).execute()
     )
 
+    sections = _sections(knowledge)
+    if not sections:
+        # A plan built from an empty knowledge base is a plan built from nothing,
+        # and it would look exactly like a plan built from thin knowledge. Better
+        # to refuse than to produce advice with no source.
+        raise ValidationFailedError("המידע המקצועי על המין אינו קריא. יש לפנות למנהל המערכת.")
+
     context = CareContext(
         plant_name=plant.get("name"),
         scientific_name=species["scientific_name"],
         common_name=species.get("common_name"),
-        knowledge_sections=_sections(knowledge),
+        knowledge_sections=sections,
         environment=_environment(client, plant_id),
         current_health_status=plant.get("current_health_status"),
         health_history=_health_history(client, plant_id),
@@ -119,17 +127,17 @@ def _current_knowledge(client: Client, species_id: str) -> Row | None:
 def _sections(knowledge: Row) -> dict[str, str]:
     """The plan-relevant sections, as plain text.
 
+    Read through `knowledge_content`, which handles both the A16 shape and the
+    plain strings the PR 6 seed wrote. This function previously required a dict
+    and therefore returned **nothing** for every seeded species — so a care plan
+    for a Monstera was built with no knowledge at all, and said so nowhere.
+
     The per-section confidence is deliberately dropped. It is an admin review
     signal (PR 14), and feeding it to the Care Agent would invite it to hedge a
     watering interval because a reviewer was unsure about propagation.
     """
-    content = knowledge.get("content") or {}
-    extracted: dict[str, str] = {}
-    for name in PLAN_RELEVANT_SECTIONS:
-        section = content.get(name)
-        if isinstance(section, dict) and section.get("text"):
-            extracted[name] = str(section["text"])
-    return extracted
+    available = knowledge_content.as_sections(knowledge.get("content"))
+    return {name: text for name, text in available.items() if name in PLAN_RELEVANT_SECTIONS}
 
 
 def _environment(client: Client, plant_id: UUID) -> dict[str, Any]:

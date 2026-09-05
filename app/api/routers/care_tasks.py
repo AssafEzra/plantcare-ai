@@ -101,44 +101,6 @@ class TickResponse(BaseModel):
 # --- helpers ------------------------------------------------------------------
 
 
-def _decorate(client, tasks: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Attach the plant name and action type a task is meaningless without.
-
-    "Water the monstera" is a reminder; "task 4f2a due at 08:00" is a database
-    row. Two lookups rather than a join, for the same reason as the scheduler.
-    """
-    if not tasks:
-        return []
-
-    plants = {
-        plant["id"]: plant
-        for plant in rows(
-            client.table("plants")
-            .select("id, name")
-            .in_("id", list({t["plant_id"] for t in tasks}))
-            .execute()
-        )
-    }
-    care_rules = {
-        rule["id"]: rule
-        for rule in rows(
-            client.table("care_rules")
-            .select("id, action_type")
-            .in_("id", list({t["care_rule_id"] for t in tasks}))
-            .execute()
-        )
-    }
-
-    return [
-        {
-            **task,
-            "plant_name": plants.get(task["plant_id"], {}).get("name"),
-            "action_type": care_rules.get(task["care_rule_id"], {}).get("action_type"),
-        }
-        for task in tasks
-    ]
-
-
 # --- routes -------------------------------------------------------------------
 
 
@@ -162,7 +124,7 @@ async def list_care_tasks(
         status=status.value if status else None,
     )
     return DataEnvelope(
-        data=[TaskResponse(**task) for task in _decorate(user.client, found)],
+        data=[TaskResponse(**task) for task in scheduler.decorate_tasks(user.client, found)],
         request_id=request.state.request_id,
     )
 
@@ -195,7 +157,7 @@ async def get_dashboard(request: Request, user: CurrentUserDep) -> DataEnvelope[
     _, today_end = recurrence.day_bounds_utc(today, timezone_name)
 
     open_tasks = scheduler.tasks_for_user(user.client, user_id=user.id)
-    decorated = _decorate(user.client, open_tasks)
+    decorated = scheduler.decorate_tasks(user.client, open_tasks)
 
     today_care = [t for t in decorated if _due(t) < today_end]
     upcoming = [t for t in decorated if _due(t) >= today_end][:10]

@@ -182,6 +182,8 @@ Three points worth stating rather than leaving to be inferred:
 *published version* and are immutable, so writing them at draft time would freeze a draft's
 provenance while the draft is still being revised.
 
+**Two shapes exist permanently, noted in PR 20.** Knowledge published before A16 — the `seed.sql` data from PR 6 — stores each section as a **plain string** rather than a `{text, confidence}` object, and `knowledge_versions` is content-immutable, so those rows can never be rewritten. Every consumer must therefore read through `app/domain/services/knowledge_content.py`, which understands both, and the `GET /v1/species/{id}/knowledge` response normalises on read so no client has to know. This is not cosmetic: the Care Agent's context builder required a dict, so a care plan for any seeded species was assembled with **no knowledge sections at all** — silently, because an empty section list is indistinguishable from thin knowledge. Building a plan from an unreadable knowledge version now raises rather than producing advice with no source.
+
 ### `knowledge_versions`
 `id`, `species_id`, `language`, `version_number`, `content jsonb`, `source_summary jsonb`, `is_current`, `published_by`, `published_at`, `created_at`.
 

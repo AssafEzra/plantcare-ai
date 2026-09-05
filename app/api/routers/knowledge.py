@@ -29,6 +29,7 @@ from app.api.routers.care import CareAgentDep
 from app.api.schemas.common import DataEnvelope
 from app.common.enums import KnowledgeDraftStatus, KnowledgeSourceClass
 from app.common.errors import NotFoundError, ValidationFailedError
+from app.domain.services import knowledge_content
 from app.infrastructure.ai.anthropic_provider import AnthropicProvider
 from app.infrastructure.ai.gateway import AIGateway
 from app.orchestration.services.agent_requests import BackgroundTasksExecutor
@@ -192,6 +193,14 @@ async def get_species_knowledge(
         raise NotFoundError("עדיין אין מידע מקצועי מאושר עבור המין הזה.")
 
     sources = workflow.version_sources(user.client, version_id=UUID(version["id"]))
+
+    # Normalised on read. Versions published before A16 store each section as a
+    # plain string, and `knowledge_versions` is content-immutable so those rows
+    # can never be rewritten — every consumer would otherwise need to know.
+    version["content"] = {
+        name: {"text": text}
+        for name, text in knowledge_content.as_sections(version.get("content")).items()
+    }
 
     return DataEnvelope(
         data=KnowledgeResponse(**version, sources=[SourceResponse(**s) for s in sources]),
