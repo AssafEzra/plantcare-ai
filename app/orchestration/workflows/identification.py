@@ -255,7 +255,12 @@ def _persist(
 
 
 def confirm(
-    client: Client, *, user_id: UUID, identification_id: UUID, candidate_id: UUID
+    client: Client,
+    *,
+    user_id: UUID,
+    identification_id: UUID,
+    candidate_id: UUID,
+    name: str | None = None,
 ) -> dict[str, Any]:
     """The user chooses a candidate. Only here does a species become authoritative.
 
@@ -263,6 +268,11 @@ def confirm(
     picked, rather than when the candidates were stored. Materialising a row per
     candidate would let every low-confidence hallucinated binomial permanently
     pollute the global taxonomy table.
+
+    This is also where the plant gets its name (A2). `plants.name` is nullable
+    only until confirmation, and API_CONTRACTS says an absent name falls back to
+    the candidate's common name - so a user who skips the field ends up with "כנף
+    נזירים" rather than a grid of cards all reading "ללא שם".
     """
     identification = first_row(
         client.table("identifications")
@@ -323,7 +333,14 @@ def confirm(
         ensure_transition(current, step)
         current = step
 
-    plants_repo.update(client, plant_id, {"species_id": species_id, "status": target.value})
+    changes: dict[str, Any] = {"species_id": species_id, "status": target.value}
+    # A name the user typed always wins. Otherwise the plant is named only if it
+    # has no name yet: re-identifying a plant the user named "המונסטרה בסלון"
+    # must not rename it after them.
+    chosen_name = name or plant.get("name") or _fallback_name(candidate)
+    if chosen_name != plant.get("name"):
+        changes["name"] = chosen_name
+    plants_repo.update(client, plant_id, changes)
 
     client.table("identifications").update(
         {"primary_species_id": species_id, "method": IdentificationMethod.USER_CONFIRMED.value}
@@ -352,6 +369,7 @@ def confirm(
 
     return {
         "plant_id": str(plant_id),
+        "name": chosen_name,
         "species_id": species_id,
         "scientific_name": species["scientific_name"],
         "status": target.value,
@@ -361,6 +379,16 @@ def confirm(
         # user's plant is already usable without it.
         "research": research,
     }
+
+
+def _fallback_name(candidate: dict[str, Any]) -> str:
+    """What to call a plant whose owner did not name it.
+
+    The common name reads like something a person would say; the binomial is the
+    honest fallback when the model returned no common name. Truncated to the
+    column's limit, which a long common name can exceed.
+    """
+    return (candidate.get("common_name") or candidate["scientific_name"])[:120]
 
 
 def _confirmation_path(current: PlantStatus, target: PlantStatus) -> list[PlantStatus]:

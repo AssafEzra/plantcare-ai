@@ -137,3 +137,14 @@ def test_a_plant_with_no_species_or_task_renders_without_them(page):
     text = _text(app)
     assert "השקיה" not in text
     assert "צמח חדש" in text
+
+
+def test_a_plant_waiting_on_the_user_says_so_rather_than_waiting_on_us(page):
+    """`PENDING_IDENTIFICATION` covers two different situations, and only one of
+    them is the user's to resolve. A card that says "ממתין לזיהוי" about a plant
+    identified an hour ago reads as a failure, so nobody opens it."""
+    app = page([{**BARE, "awaiting_confirmation": True}])
+
+    text = _text(app)
+    assert "ממתין לאישור שלך" in text
+    assert "ממתין לזיהוי" not in text

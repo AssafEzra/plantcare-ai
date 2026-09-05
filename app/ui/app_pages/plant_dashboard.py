@@ -17,6 +17,7 @@ import streamlit as st
 from app.ui.components.care_plan import active_plan_card, proposal_card
 from app.ui.components.care_task_card import care_task_card, due_text
 from app.ui.components.health_card import render_assessment, render_history
+from app.ui.components.identification_card import identification_card
 from app.ui.components.layout import empty_state, guarded, page_header, show_error
 from app.ui.components.status import status_badge, trend_badge
 from app.ui.components.timeline import render_timeline
@@ -98,6 +99,7 @@ if data is None:
     st.stop()
 
 species: dict[str, Any] | None = data.get("species")
+pending_identification: dict[str, Any] | None = data.get("pending_identification")
 health: dict[str, Any] = data.get("health") or {}
 gallery: list[dict[str, Any]] = data.get("gallery") or []
 
@@ -142,6 +144,8 @@ with facts:
     if species:
         st.markdown(f"**{species.get('common_name') or species['scientific_name']}**")
         st.caption(f"*{species['scientific_name']}*")
+    elif pending_identification:
+        st.caption("הזיהוי הושלם וממתין לאישור שלך.")
     else:
         st.caption("הצמח עדיין לא זוהה.")
 
@@ -176,6 +180,30 @@ if len(gallery) > 1:
                     column.image(image["thumbnail_url"], width="stretch")
 
 st.divider()
+
+
+# --- an identification waiting for an answer -----------------------------------
+
+if pending_identification:
+    pending_id = pending_identification["id"]
+
+    def confirm_identification(candidate_id: str, name: str | None) -> None:
+        try:
+            with st.spinner("מאשרים…"):
+                post(
+                    f"/v1/identifications/{pending_id}/confirm",
+                    json={"candidate_id": candidate_id, "name": name},
+                )
+            flash("הזיהוי אושר.")
+            st.rerun()
+        except ApiError as exc:
+            show_error(exc)
+
+    st.subheader("זיהינו את הצמח — האם זה נכון?", anchor=False)
+    identification_card(
+        pending_identification, on_confirm=confirm_identification, key_prefix="pd_ident"
+    )
+    st.divider()
 
 
 # --- proposals and plan --------------------------------------------------------

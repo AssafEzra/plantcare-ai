@@ -128,6 +128,15 @@ confirmation, from the candidate the user actually chose. `name` is optional; wh
 absent the plant takes the candidate's common name (A2: `plants.name` is nullable
 only until this point).
 
+**Implemented in PR 28.** PR 13 shipped the endpoint without either half of that
+sentence: `ConfirmRequest` had no `name` field and the workflow never wrote one, so
+`plants.name` stayed NULL through confirmation and every card in My Plants read
+"ללא שם". The payload now carries an optional `name`, and an absent one falls back
+to the chosen candidate's common name (its binomial when the model returned no
+common name). A name the user typed always wins, and a plant that already has a
+name keeps it — re-identifying "המונסטרה בסלון" must not rename it after its
+species.
+
 Orchestration:
 - published Knowledge exists for `(species_id, language)` → `IDENTIFIED` → `ACTIVE`;
 - otherwise create Species if necessary, create Knowledge Draft, queue research,
@@ -481,8 +490,15 @@ PR 25 because `PROGRESS §10` asks the card to show them and nothing supplied th
 | `species_name` | `species_id` is a UUID. Common name where the species has one, the binomial otherwise. |
 | `next_task` | The earliest PENDING or OVERDUE task, with its `action_type` — a due date with no action is not a reminder. Overdue work is included deliberately: late work is the most relevant thing a card can say. |
 
-All three are batched across the whole page — four queries for the listing rather
-than three per plant, with the thumbnails signed in one call. They are absent from
+**PR 28 adds a fourth**, `awaiting_confirmation`: true when the plant is
+`PENDING_IDENTIFICATION` and a SUCCESS identification is already on file. The
+status alone covers two different situations — waiting on the model and waiting on
+the user — and only one of them is the user's to resolve. A card that still reads
+"ממתין לזיהוי" an hour after the analysis finished is read as a failure, so nobody
+opens it, which is exactly how two identified plants sat unconfirmed in DEV.
+
+All four are batched across the whole page — five queries for the listing rather
+than four per plant, with the thumbnails signed in one call. They are absent from
 `GET /v1/plants/{id}`, which has richer sources for the same facts.
 
 Until this shipped, `plant_card` read a `thumbnail_url` key that nothing ever set,
@@ -502,6 +518,30 @@ do not: a health check is usually a close-up of a damaged leaf, which is evidenc
 rather than a portrait. And the listing falls back to the plant's newest visible
 photograph when no main image is set, because rows in that state already exist and
 no migration can guess a main image for them.
+
+## Plant dashboard: a pending identification
+
+**Added in PR 28** (`FINAL §37`), reported from real use: a user added a plant, the
+identification succeeded with HIGH confidence, and the interface told them the
+plant was not identified.
+
+`GET /v1/plants/{id}/dashboard` returns `pending_identification` — the newest
+SUCCESS identification of a plant that is still `PENDING_IDENTIFICATION`, with its
+candidates, confidence level and image-quality note; `null` once a species is
+confirmed, and `null` while nothing has finished.
+
+The reason it is needed is a UI fact with an API consequence. The confirmation
+screen existed only inside the Add Plant wizard, held in `st.session_state`: it
+belonged to the browser tab that started the flow. A refresh, a closed tab, or a
+walk away between "analysing" and "is this your plant?" left the identification
+finished in the database and unreachable in the interface — permanently, since no
+endpoint exposed a plant's identifications and the plant's own page said only
+"הצמח עדיין לא זוהה". The state was recoverable in SQL and by nothing a user could
+do.
+
+Confirmation is a property of the plant, not of a wizard step, so the plant's own
+view model carries it and the same `POST /v1/identifications/{id}/confirm` answers
+it from either place.
 
 ## Knowledge reads
 

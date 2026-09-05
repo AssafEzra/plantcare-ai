@@ -398,6 +398,117 @@ def test_confirmation_creates_the_species_row(api, account, scripted, admin_sdk)
     assert after.data
 
 
+def test_confirmation_names_the_plant_after_the_candidate(api, account, scripted, admin_sdk):
+    """A2, and API_CONTRACTS §confirm: `plants.name` is nullable only until here.
+
+    The wizard never asked for a name and the workflow never set one, so every
+    plant added through the product was called "ללא שם" on its own card. An absent
+    name takes the candidate's common name.
+    """
+    _, auth = account()
+    plant_id, image_id = plant_with_photo(api, auth)
+    scripted.queue(success("Monstera deliciosa"))
+    run_identification(api, auth, plant_id, image_id)
+
+    confirm_first_candidate(api, auth, admin_sdk, plant_id)
+
+    plant = api.get(f"/v1/plants/{plant_id}", headers=auth).json()["data"]
+    assert plant["name"] == "מונסטרה"
+
+
+def test_a_name_the_user_typed_wins(api, account, scripted, admin_sdk):
+    _, auth = account()
+    plant_id, image_id = plant_with_photo(api, auth)
+    scripted.queue(success("Monstera deliciosa"))
+    run_identification(api, auth, plant_id, image_id)
+
+    record = latest_identification(admin_sdk, plant_id)
+    candidate = (
+        admin_sdk.table("identification_candidates")
+        .select("id")
+        .eq("identification_id", record["id"])
+        .order("rank")
+        .execute()
+    ).data[0]
+    api.post(
+        f"/v1/identifications/{record['id']}/confirm",
+        headers=auth,
+        json={"candidate_id": candidate["id"], "name": "  המונסטרה בסלון  "},
+    )
+
+    plant = api.get(f"/v1/plants/{plant_id}", headers=auth).json()["data"]
+    assert plant["name"] == "המונסטרה בסלון"
+
+
+def test_an_unanswered_identification_is_offered_on_the_plant_dashboard(
+    api, account, scripted, admin_sdk
+):
+    """The regression this PR exists for.
+
+    The confirmation screen lived only in the Add Plant wizard's session state, so
+    a user who closed the tab between the analysis and the question left a plant
+    that was identified in the database and unanswerable in the interface. Its
+    dashboard said "not identified yet" and offered nothing to press.
+    """
+    _, auth = account()
+    plant_id, image_id = plant_with_photo(api, auth)
+    scripted.queue(success("Monstera deliciosa"))
+    run_identification(api, auth, plant_id, image_id)
+
+    dashboard = api.get(f"/v1/plants/{plant_id}/dashboard", headers=auth).json()["data"]
+
+    pending = dashboard["pending_identification"]
+    assert pending is not None, "an identified plant offered no way to confirm it"
+    assert pending["confidence_level"] == "HIGH"
+    assert pending["candidates"][0]["scientific_name"] == "Monstera deliciosa"
+
+    # And it is answerable from there: the same endpoint the wizard uses.
+    confirmed = api.post(
+        f"/v1/identifications/{pending['id']}/confirm",
+        headers=auth,
+        json={"candidate_id": pending["candidates"][0]["id"]},
+    )
+    assert confirmed.status_code == 200
+
+    after = api.get(f"/v1/plants/{plant_id}/dashboard", headers=auth).json()["data"]
+    assert after["pending_identification"] is None, "an answered question was asked again"
+    assert after["species"] is not None
+
+
+def test_a_confirmed_plant_offers_no_pending_identification(api, account, scripted, admin_sdk):
+    """Only a plant still waiting is asked about. Re-identification is its own
+    flow with its own screen, and a dashboard that kept asking after the answer
+    would be asking the user to confirm what they already confirmed."""
+    _, auth = account()
+    plant_id, image_id = plant_with_photo(api, auth)
+    scripted.queue(success("Monstera deliciosa"))
+    run_identification(api, auth, plant_id, image_id)
+    confirm_first_candidate(api, auth, admin_sdk, plant_id)
+
+    dashboard = api.get(f"/v1/plants/{plant_id}/dashboard", headers=auth).json()["data"]
+    assert dashboard["pending_identification"] is None
+
+
+def test_the_grid_says_a_plant_is_waiting_on_the_user(api, account, scripted, admin_sdk):
+    """Waiting on the model and waiting on the user look identical otherwise, and
+    a card that still says "ממתין לזיהוי" an hour later reads as a failure."""
+    _, auth = account()
+    plant_id, image_id = plant_with_photo(api, auth)
+    scripted.queue(success("Monstera deliciosa"))
+
+    def card() -> dict:
+        listed = api.get("/v1/plants", headers=auth).json()["data"]
+        return next(p for p in listed if p["id"] == plant_id)
+
+    assert card()["awaiting_confirmation"] is False
+
+    run_identification(api, auth, plant_id, image_id)
+    assert card()["awaiting_confirmation"] is True
+
+    confirm_first_candidate(api, auth, admin_sdk, plant_id)
+    assert card()["awaiting_confirmation"] is False
+
+
 def test_a_failed_identification_cannot_be_confirmed(api, account, scripted, admin_sdk):
     """Confirming one would be exactly the authoritative record FINAL §25 forbids."""
     _, auth = account()

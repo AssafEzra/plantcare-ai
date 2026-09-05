@@ -25,13 +25,14 @@ from pydantic import BaseModel, Field
 
 from app.api.dependencies import CurrentUserDep
 from app.api.schemas.common import DataEnvelope
-from app.common.enums import SystemEventType
+from app.common.enums import IdentificationStatus, PlantStatus, SystemEventType
 from app.common.errors import ValidationFailedError
 from app.infrastructure.storage import plant_images as storage
 from app.orchestration.services import plant_history, scheduler
 from app.orchestration.workflows import care as care_workflow
 from app.repositories import plants as repo
 from app.repositories.base import first_row, rows
+from supabase import Client
 
 router = APIRouter(prefix="/plants", tags=["plants"])
 
@@ -55,6 +56,34 @@ class SpeciesSummary(BaseModel):
     common_name: str | None = None
 
 
+class PendingCandidate(BaseModel):
+    id: UUID
+    scientific_name: str
+    common_name: str | None = None
+    rank: int
+    confidence_score: float | None = None
+
+
+class PendingIdentification(BaseModel):
+    """A finished identification the user has not answered yet.
+
+    The confirmation screen used to live only inside the Add Plant wizard, in
+    `st.session_state`. Anyone who closed the tab, refreshed, or wandered off
+    between "analysing" and "is this your plant?" left behind a plant that was
+    identified in the database and permanently `PENDING_IDENTIFICATION` in the
+    interface - its dashboard said "הצמח עדיין לא זוהה" with nothing to press.
+
+    Carrying the pending result on the dashboard makes the plant itself the place
+    the question is answered, so the flow survives an interruption.
+    """
+
+    id: UUID
+    confidence_level: str | None = None
+    image_quality: str | None = None
+    created_at: datetime
+    candidates: list[PendingCandidate] = Field(default_factory=list)
+
+
 class HealthSummary(BaseModel):
     current_status: str
     latest_assessment_id: UUID | None = None
@@ -75,6 +104,7 @@ class PlantDashboardResponse(BaseModel):
     archived_at: datetime | None = None
 
     species: SpeciesSummary | None = None
+    pending_identification: PendingIdentification | None = None
     main_image: GalleryImage | None = None
     gallery: list[GalleryImage] = Field(default_factory=list)
     environment: dict[str, Any] | None = None
@@ -131,6 +161,44 @@ def _image(row: dict[str, Any], *, main_id: str | None, access_token: str) -> Ga
     )
 
 
+def _pending_identification(client: Client, plant: dict[str, Any]) -> PendingIdentification | None:
+    """The newest successful identification of an unconfirmed plant, if there is one.
+
+    Only for a plant still waiting to be identified: once a species is confirmed
+    the question has been answered, and re-identification is its own flow with
+    its own screen.
+    """
+    if plant["status"] != PlantStatus.PENDING_IDENTIFICATION.value:
+        return None
+
+    record = first_row(
+        client.table("identifications")
+        .select("id, confidence_level, image_quality, created_at")
+        .eq("plant_id", str(plant["id"]))
+        .eq("status", IdentificationStatus.SUCCESS.value)
+        .order("created_at", desc=True)
+        .limit(1)
+        .execute()
+    )
+    if record is None:
+        return None
+
+    candidates = rows(
+        client.table("identification_candidates")
+        .select("id, scientific_name, common_name, rank, confidence_score")
+        .eq("identification_id", record["id"])
+        .order("rank")
+        .execute()
+    )
+    if not candidates:
+        # A SUCCESS with no candidates is not something the user can answer.
+        return None
+
+    return PendingIdentification(
+        **record, candidates=[PendingCandidate(**candidate) for candidate in candidates]
+    )
+
+
 @router.get("/{plant_id}/dashboard", response_model=DataEnvelope[PlantDashboardResponse])
 async def get_plant_dashboard(
     request: Request, plant_id: UUID, user: CurrentUserDep
@@ -147,6 +215,8 @@ async def get_plant_dashboard(
         )
         if found:
             species = SpeciesSummary(**found)
+
+    pending = _pending_identification(user.client, plant) if species is None else None
 
     images = repo.list_images(user.client, plant_id)
     gallery = [
@@ -188,6 +258,7 @@ async def get_plant_dashboard(
             created_at=plant["created_at"],
             archived_at=plant.get("archived_at"),
             species=species,
+            pending_identification=pending,
             main_image=main_image,
             gallery=gallery,
             environment=repo.get_environment(user.client, plant_id),
