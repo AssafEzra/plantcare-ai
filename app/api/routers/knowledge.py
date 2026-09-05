@@ -25,12 +25,14 @@ from pydantic import BaseModel, Field
 
 from app.agents.knowledge.agent import KnowledgeAgent
 from app.api.dependencies import AdminDep, CurrentUserDep
+from app.api.routers.care import CareAgentDep
 from app.api.schemas.common import DataEnvelope
 from app.common.enums import KnowledgeDraftStatus, KnowledgeSourceClass
 from app.common.errors import NotFoundError, ValidationFailedError
 from app.infrastructure.ai.anthropic_provider import AnthropicProvider
 from app.infrastructure.ai.gateway import AIGateway
 from app.orchestration.services.agent_requests import BackgroundTasksExecutor
+from app.orchestration.workflows import care as care_workflow
 from app.orchestration.workflows import knowledge as workflow
 from app.repositories.base import first_row, rows
 
@@ -265,7 +267,12 @@ async def get_knowledge_draft(
 
 @router.post("/admin/knowledge-drafts/{draft_id}/approve", response_model=DataEnvelope[dict])
 async def approve_knowledge_draft(
-    request: Request, draft_id: UUID, payload: ApproveRequest, admin: AdminDep
+    request: Request,
+    draft_id: UUID,
+    payload: ApproveRequest,
+    admin: AdminDep,
+    background: BackgroundTasks,
+    care_agent: CareAgentDep,
 ) -> DataEnvelope[dict]:
     """Publish a reviewed draft and release the plants waiting on it (A4).
 
@@ -274,6 +281,18 @@ async def approve_knowledge_draft(
     version in between.
     """
     result = workflow.publish(admin.client, draft_id=draft_id, admin_note=payload.admin_note)
+
+    # A3, deferred from PR 15 until the Care Agent existed. A plant released to
+    # ACTIVE with no care plan has nothing to schedule, so publication is also
+    # what starts its first plan. Queued after the response: an administrator
+    # approving a draft should not wait on a model call per released plant.
+    queued = care_workflow.queue_initial_plans(
+        UUID(result["species_id"]),
+        executor=BackgroundTasksExecutor(background),
+        agent=care_agent,
+    )
+    result["initial_plans_queued"] = queued
+
     return DataEnvelope(data=result, request_id=request.state.request_id)
 
 

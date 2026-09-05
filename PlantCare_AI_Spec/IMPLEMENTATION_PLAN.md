@@ -63,8 +63,8 @@ Target: the Definition of Done in `FINAL_SPECIFICATION §35`.
 | 13 | 8 · Identification | `IdentificationAgent`, Wikipedia verification, confirm workflow | ✅ |
 | 14 | 9 · Knowledge Agent | Research, deterministic source verification | ✅ |
 | 15 | 9 · Knowledge admin | Review, publication, fan-out to pending plants | ✅ |
-| 16 | 10 · Care Agent | Context assembly, proposals, operational adjustment | ▶ next |
-| 17 | 11 · Scheduler | Deterministic recurrence, tasks, events, `/internal/tick` | ☐ |
+| 16 | 10 · Care Agent | Context assembly, proposals, operational adjustment | ✅ |
+| 17 | 11 · Scheduler | Deterministic recurrence, tasks, events, `/internal/tick` | ▶ next |
 | 18 | 11 · Home dashboard | The twelve `PROGRESS §9` items **[audit]** | ☐ |
 | 19 | 12 · Notifications | Resend provider, digest, `dedupe_key` idempotency | ☐ |
 | 20 | 13 · Plant dashboard | Full view model, history timeline | ☐ |
@@ -73,8 +73,8 @@ Target: the Definition of Done in `FINAL_SPECIFICATION §35`.
 | 23 | 16 · Testing | Nine E2E journeys, RLS matrix, no-authoritative-record | ☐ |
 | 24 | 17 · Deployment | Railway, PROD Supabase, cron tick, alerts, runbook | ☐ |
 
-**876 tests** currently pass — 572 unit, API, agent and UI tests that CI runs on every
-push, plus 304 integration tests executed against the DEV Supabase project, plus one
+**974 tests** currently pass — 654 unit, API, agent and UI tests that CI runs on every
+push, plus 320 integration tests executed against the DEV Supabase project, plus one
 live provider test excluded from both.
 
 ---
@@ -306,7 +306,7 @@ Covers `PROGRESS §12`.
 
 ---
 
-### Phase 10 — Care Agent + Care Plan → **PR 16** — next
+### Phase 10 — Care Agent + Care Plan → **PR 16** — ✅
 Covers `PROGRESS §13`.
 
 - `orchestration/services/care_context.py` assembles knowledge version + plant + environment + current health + health history + care history + preferences. **The agent never queries the DB.**
@@ -324,7 +324,7 @@ Covers `PROGRESS §13`.
 
 ---
 
-### Phase 11 — Scheduler, Care Tasks & Home Dashboard → **PRs 17–18**
+### Phase 11 — Scheduler, Care Tasks & Home Dashboard → **PRs 17–18** — next
 Covers `PROGRESS §14` and **`§9` [audit — the Home Dashboard was absent from the first draft entirely]**.
 
 **PR 17 — Deterministic scheduling**
@@ -436,9 +436,9 @@ A1–A16 from the first draft; **A17–A28 added by the audit**. **A19, A22, A23
 |---|---|---|---|
 | A1 | No `/v1/auth/*` endpoints, but the UI must register/login/reset | Streamlit uses the Supabase anon client for auth only; FastAPI stays token-consuming | P3 |
 | A2 | `plants.name` required before the user has named the plant | Nullable; required at confirmation | P2 |
-| A3 | Nothing says the initial Care Plan proposal is auto-generated | Auto-queue `INITIAL_PLAN` on every transition into `ACTIVE` | P8 |
+| ~~A3~~ | Nothing says the initial Care Plan proposal is auto-generated | **✅ RESOLVED in PR 16** — an `INITIAL_PLAN` proposal is queued when a plant becomes ACTIVE, including via the knowledge fan-out. Deferred from PR 15 until the Care Agent existed, since a QUEUED request nothing could execute would have looked like a stuck job | — |
 | ~~A4~~ | Fate of `KNOWLEDGE_PENDING` plants on publish | **✅ RESOLVED in PR 15** — publication moves every `KNOWLEDGE_PENDING` plant of that species to `ACTIVE`, inside the publishing transaction. `ARCHIVED` and already-`ACTIVE` plants are deliberately untouched. The care proposal follows in PR 16 | — |
-| A5 | Outstanding `PENDING` tasks when a version supersedes | `CANCELLED`, re-materialize from new rules | P10 |
+| ~~A5~~ | Outstanding `PENDING` tasks when a version supersedes | **✅ RESOLVED in PR 16** — cancelled inside the activation transaction. DONE, SKIPPED and OVERDUE are untouched: they record what happened, and a new plan does not change the past | — |
 | A6 | Processed/thumbnail dimensions unspecified | 1600px @ q85; 400px thumb | P6 |
 | A7 | `preferred_weekday` vs non-multiple-of-7 intervals | Honor only when `interval_days % 7 == 0` | P11 |
 | A8 | Next-due anchor after a late completion | DONE → `event_at`; SKIP → original `due_at` | P11 |
@@ -453,7 +453,7 @@ A1–A16 from the first draft; **A17–A28 added by the audit**. **A19, A22, A23
 | ~~A17~~ | Fate of `KNOWLEDGE_PENDING` plants when a draft is **rejected or FAILED** — A4 covered only success, so plants strand | **✅ RESOLVED in PRs 14–15** — the draft lifecycle makes `REJECTED → RESEARCHING` and `FAILED → RESEARCHING` legal and `APPROVED` terminal; rejection changes no plant, and the retry route is the path out | — |
 | **A18** | `confidence_score` has no scale and no thresholds mapping to `confidence_level` | 0.0–1.0; HIGH ≥ 0.85, MEDIUM ≥ 0.60; derived in Python | P8 |
 | ~~A19~~ | `care_rules.action_type` untyped | **✅ RESOLVED** — closed enum, see Schema additions | — |
-| **A20** | Spec says agents "ask the user" for missing context, but no status/table/endpoint can hold a question | MVP ships the qualify branch only (`missing_context[]` on the proposal card); record the scoping | P10 |
+| ~~A20~~ | Spec says agents "ask the user" for missing context, but no status/table/endpoint can hold a question | **✅ RESOLVED in PR 16** — the qualify branch only. `missing_context[]` renders on the card as information, never as a question, and the plan is produced regardless. Pot size and drainage are not even columns on `plant_environments`, which is why the agent names them | — |
 | **A21** | Re-identifying an **ACTIVE** plant onto a species with no published Knowledge has no defined outcome | Stay `ACTIVE` on the existing plan; `RE_IDENTIFICATION` proposal on publication; do not cancel live tasks | P8 |
 | ~~A22~~ | `system_events.event_type` names one value | **✅ RESOLVED** — closed enum excluding dedicated-table kinds, see Schema additions | — |
 | ~~A23~~ | `species` upsert has no normalization rule | **✅ RESOLVED** — `normalize_scientific_name()` + `normalized_name` index, see Schema additions | — |
@@ -546,6 +546,11 @@ made silently. Each entry below is also recorded in the spec document it affects
 | 15 | `publish_knowledge_draft()` is `SECURITY DEFINER`, guarded by `is_admin()` inside | The fan-out updates *other users'* plants, which no admin JWT can do through RLS — and should not be able to in general. The privilege is granted to the one operation rather than to the person |
 | 15 | The fan-out does **not** queue the `INITIAL_PLAN` care proposal A3 calls for | The Care Agent lands in PR 16. A `QUEUED` agent request nothing can execute is worse than none: it would sit in the admin monitoring view forever looking like a stuck job. PR 16 adds it at this same point and backfills plants released before it existed |
 | 15 | An approved source's `domain` is not editable | Changing it would silently reclassify every `knowledge_sources` row pointing at it — rows that are immutable precisely so a published version's provenance cannot be rewritten. A different domain is a different source |
+| 16 | An implausible rule is dropped, and the plan keeps its other rules | A rule that reaches the database fails a CHECK and takes the whole insert with it, losing six good rules alongside one bad one. A plan with three sensible rules is worth keeping; a plan with none is a failure, and is treated as one |
+| 16 | An operational adjustment makes no model call at all | It is a deterministic edit of parameters. Routing it through the agent would cost money *and* give the model the chance to rewrite advice the user is explicitly not allowed to edit |
+| 16 | An adjustment produces a PROPOSED version the user must still approve | The version chain is the audit trail. Letting an operational tweak be the one way to change the active plan without saying yes to it would put a hole in it |
+| 16 | Only one open proposal per plant | Two is a choice the user did not ask to make, and approving one would silently orphan the other |
+| 16 | `activate_care_plan_version()` is SECURITY **INVOKER**, unlike the knowledge publisher | Everything it touches belongs to the calling user, so RLS should apply in full. A definer function would bypass exactly the checks that make it safe — the knowledge one is a definer precisely because it writes *other* users' rows |
 
 ### Amendments to the specification
 
@@ -579,8 +584,9 @@ Recorded because each is a pattern worth remembering, not only an incident.
 | PR 15 | `admin_audit_log` had an admin **read** policy and no INSERT policy — the same gap `agent_requests` had in PR 13, found the same way | An administrator's own client recording a source change. Publication and rejection were unaffected, because their `SECURITY DEFINER` functions bypass RLS — so the gap hid behind the two paths that did not use it |
 | PR 15 | PR 14's integration tests named species `Testus {hex}ensis`. `normalize_scientific_name()` strips digits, so those collapse to about a dozen values (`testus a`, `testus b`, …) — and unlike a rolled-back transaction these rows are **committed** against DEV and outlive the run. Seventeen of them silently occupied the name space an older test file drew from, and seventeen previously-green tests began failing | Running the whole integration suite rather than only the new file. `unique_species_name()` existed for exactly this and had been written in PR 6 after the same mistake |
 | PR 15 | Every admin action wrote its confirmation with `st.success()` and then called `st.rerun()`, which discards it — so approving published the version, released the plants, and showed the administrator nothing at all. The fan-out count, the part they most need confirmed, was never visible | Clicking the button in a browser. `AppTest` asserts what a run renders, not what survives the rerun a click triggers, so seven green UI tests had nothing to say about it |
+| PR 16 | The care context selected five `plant_environments` columns that do not exist — pot material, pot diameter, drainage, soil type, distance from window. Every proposal failed at the first query | The first integration run. The columns were plausible enough to write from memory and are genuinely absent from the schema, which is why the agent's `missing_context` names exactly those facts |
 
-The pattern: **mocks confirm the shape you assumed.** Twelve of these sixteen were only
+The pattern: **mocks confirm the shape you assumed.** Thirteen of these seventeen were only
 findable by executing against the real thing — a live database, a real browser, a
 real API — which is why each phase applies its migrations to DEV, and why one
 live provider test is kept despite costing money to run.

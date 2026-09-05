@@ -561,6 +561,40 @@ User approval
 New Care Plan Version
 ```
 
+**Specified during implementation (PR 16), per §37**
+
+*The two halves are separate fields, not one document.* `professional_recommendations` is prose;
+`care_rules` are parameters. This section says the user may edit frequency, preferred time and
+reminder preference but not the advice — a rule that is only expressible if the two are
+structurally apart. Were they one blob, every operational tweak would rewrite the advice
+underneath it, and "not directly editable" would be a convention rather than a guarantee. The
+proposal card reflects this: the advice has no input anywhere near it.
+
+*A plan is for one plant, not for the species.* All seven inputs listed above are assembled and
+sent. The care history matters most and is the easiest to forget: the plan says what should
+happen and the history says what does, and a user watering five days late every time is telling
+us the interval is wrong for their home rather than that they are careless.
+
+*A proposed rule the scheduler could not honour is dropped, not fatal.* Interval bounds, per
+action plausibility (repotting is measured in months), A7 weekday coherence and reminder hours
+are checked in Python before the write. A rule that reached the database would fail a CHECK
+constraint and take the whole insert with it, losing the good rules alongside the bad one. A
+proposal left with **no** rules is a failure, though: it would appear in the user's list looking
+approvable, and approving it would activate a plan that schedules nothing.
+
+*One watering rule, not two.* A duplicate action type is a competing rule, not a richer schedule
+— the scheduler would materialise a task for each and tell the user to water the same plant
+twice.
+
+*The initial plan is proposed automatically* when a plant becomes `ACTIVE`, including via the
+knowledge fan-out of §10 (A3). It is still only a proposal.
+
+*Missing context (A20).* The agent may report what would have made the plan better — pot size,
+drainage, how much direct sun the window really gets. The MVP **renders these and asks nothing**:
+there is no status, table or endpoint that could carry an answer back, so a question would
+promise a conversation the product cannot have. Notably, pot size and drainage are not columns on
+`plant_environments` at all, which is exactly why the agent tends to name them.
+
 ---
 
 # 13. Care Rules, Tasks and Events

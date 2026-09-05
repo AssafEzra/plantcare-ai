@@ -308,25 +308,25 @@ Remaining implementation documentation:
 
 # 13. Care Agent & Care Plans
 
-- [ ] Care Agent contract
-- [ ] Input schema
-- [ ] Output schema
-- [ ] Context assembly
-- [ ] Use Knowledge Version
-- [ ] Use Plant
-- [ ] Use Environment
-- [ ] Use Health state/history
-- [ ] Generate Care Plan proposal
-- [ ] Structured Care Rules
-- [ ] Validate output
-- [ ] User approval
-- [ ] Persist Care Plan
-- [ ] Version Care Plans
-- [ ] Change Summary
-- [ ] Operational preference editing
-- [ ] Environment-change proposal
-- [ ] Health-driven proposal
-- [ ] Preserve previous versions
+- [x] Care Agent contract
+- [x] Input schema - the seven §12 inputs as `CareContext`, and nothing else the agent can reach
+- [x] Output schema - recommendations and rules as separate fields, which is what makes "advice is not editable" enforceable
+- [x] Context assembly - `orchestration/services/care_context.py`, read through the caller's client so RLS applies
+- [x] Use Knowledge Version - the plan-relevant sections only; the version id is recorded on the plan
+- [x] Use Plant
+- [x] Use Environment
+- [x] Use Health state/history
+- [x] Generate Care Plan proposal - always a proposal; nothing here can activate a plan
+- [x] Structured Care Rules - closed action enum (A19), bounded intervals, A7 weekday coherence
+- [x] Validate output - `domain/rules/care_rule_validation.py`; an implausible rule is dropped, not fatal to the plan
+- [x] User approval - the only path to ACTIVE
+- [x] Persist Care Plan
+- [x] Version Care Plans - one transaction: supersede, activate, repoint, cancel old pending tasks (A5)
+- [x] Change Summary - required on every version after the first, by CHECK constraint
+- [x] Operational preference editing - no model call; recommendations copied byte-identical
+- [x] Environment-change proposal - proposal only, per the §12 flow
+- [x] Health-driven proposal - endpoint ready; the Health Agent that calls it lands in PR 21
+- [x] Preserve previous versions - content-immutable, asserted by comparing the stored blobs
 
 ---
 

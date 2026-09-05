@@ -258,6 +258,42 @@ forgotten dependency a non-event rather than a breach.
 ```
 Creates a new version. Professional recommendations cannot be overwritten through this endpoint.
 
+**Specified in PR 16, per FINAL §37**
+
+*The payload has no `professional_recommendations` field and rejects one.* "Cannot be
+overwritten" is a product rule in §12; `extra: forbid` makes it a `422`, so a client that sends
+new advice alongside a frequency change is refused rather than quietly ignored. The
+recommendations are copied **byte-identical** from the source version - not regenerated, and no
+model is called, because an operational edit is deterministic and giving a model the opportunity
+would be giving it the opportunity to rewrite the advice.
+
+*`operational_preferences` is keyed by action type*, so changing one rule leaves the others
+alone: `{"WATERING": {"interval_days": 10}}`. A key naming an action the plan does not have is
+ignored - adding an action is a plan change, which is a proposal, not an adjustment.
+
+*An adjustment produces a PROPOSED version, not an active one.* The user still approves it. The
+version chain is the audit trail, and letting an operational tweak be the one way to change the
+active plan without saying yes to it would put a hole in it.
+
+*Approval is one database transaction* (`activate_care_plan_version()`, migration 0013): the
+previous version is superseded, the new one activated, `care_plans.active_version_id` repointed,
+and the old version's **PENDING** tasks cancelled (A5). The partial unique index allows one
+ACTIVE version per plan, so supersede-then-activate is the only legal ordering, and a failure
+between the two would leave the plant with no active plan - which is how a plant silently stops
+being cared for. `DONE`, `SKIPPED` and `OVERDUE` tasks are untouched: they record what happened,
+and a new plan does not change the past.
+
+*A proposal is refused while one is already open.* Two open proposals is a choice the user did
+not ask to make, and approving one would silently orphan the other.
+
+*`reason: OPERATIONAL_ADJUSTMENT` is not accepted by the proposals endpoint.* It is the one
+source type a user creates directly, and it has its own route.
+
+*A20 - missing context.* A proposal may carry `missing_context`: facts that would have made the
+plan better, rendered on the card as information. They are **not questions**; the MVP has no
+status, table or endpoint that could carry an answer back, and phrasing them as questions would
+promise a conversation that cannot happen. The plan is produced regardless.
+
 ## Care Tasks
 `GET /v1/care-tasks?date=today&status=pending`
 
