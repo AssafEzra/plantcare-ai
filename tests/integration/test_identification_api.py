@@ -20,7 +20,8 @@ from PIL import Image
 
 from app.agents.identification.agent import IdentificationAgent
 from app.agents.identification.contract import Candidate, IdentificationOutput
-from app.api.routers.identification import get_identification_agent
+from app.agents.knowledge.agent import KnowledgeAgent
+from app.api.routers.identification import get_identification_agent, get_knowledge_agent
 from app.common.enums import IdentificationStatus
 from app.infrastructure.ai.gateway import AIGateway
 from app.infrastructure.ai.mock_provider import MockProvider
@@ -66,12 +67,26 @@ def scripted():
 
 
 @pytest.fixture
-def api(live_env, scripted) -> Iterator[TestClient]:
+def scripted_knowledge():
+    """The Knowledge Agent's provider.
+
+    Overridden even though these tests are about identification: confirming a
+    species with no published knowledge queues a research run, and without this
+    every confirmation test would make a real, billable research call.
+    """
+    return MockProvider()
+
+
+@pytest.fixture
+def api(live_env, scripted, scripted_knowledge) -> Iterator[TestClient]:
     from app.api.main import create_app
 
     app = create_app()
     app.dependency_overrides[get_identification_agent] = lambda: IdentificationAgent(
         AIGateway(scripted, record_executions=False)
+    )
+    app.dependency_overrides[get_knowledge_agent] = lambda: KnowledgeAgent(
+        AIGateway(scripted_knowledge, record_executions=False)
     )
     with TestClient(app, raise_server_exceptions=False) as client:
         yield client

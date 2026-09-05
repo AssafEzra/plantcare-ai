@@ -141,14 +141,21 @@ does not know, keep the two independent.
 
 `POST /v1/identifications/{identification_id}/correct`
 ```json
-{"candidate_id":"uuid","scientific_name":"Monstera adansonii","note":"החורים בעלים"}
+{"scientific_name":"Monstera adansonii","note":"החורים בעלים"}
 ```
 
-**Specified in PR 13** (A13) — the endpoint was listed with no request body. Exactly
-one of `candidate_id` (an alternative already offered) or `scientific_name` (a name
-the user supplies themselves) is required; `note` is optional and free text. A
-correction is **history only**: it appends an identification row and never mutates
-the previous one, per the append-only rule in `FINAL_SPECIFICATION §9`.
+**Specified in PR 13** (A13) — the endpoint was listed with no request body. At least
+one of `scientific_name` (a name the user supplies themselves) or `note` (free text)
+is required; a correction that says nothing is not a correction. Choosing an
+alternative the agent already offered is not a correction at all — that is
+`confirm` with a different `candidate_id`, which is why no `candidate_id` is
+accepted here.
+
+A correction is **history only**: it appends an identification row with method
+`USER_CORRECTED` and status `NEEDS_MORE_INFORMATION`, and never mutates the row it
+corrects. It does not move the plant — `FINAL_SPECIFICATION §8` requires a
+confirmation for that, and the status CHECK enforces it, since a row that is not
+`SUCCESS` may carry no species.
 
 (Aligned to the flat `/v1/identifications/{identification_id}` convention already used by `confirm` and `GET`; ownership is still derived from the JWT plus the identification's `plant_id`, so no `plant_id` path segment is needed.)
 

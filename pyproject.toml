@@ -56,6 +56,17 @@ ignore = [
     "B008",   # FastAPI Depends() in defaults is idiomatic
 ]
 
+# Every user-facing string in this application is Hebrew, so RUF001's "this
+# character looks like a Latin letter" warning fires on ordinary product copy -
+# and only on some letters, which makes it a lottery on the wording rather than a
+# check on anything. The rule exists to catch a Cyrillic lookalike smuggled into
+# an identifier; it is kept for that, with the Hebrew alphabet excluded so nobody
+# reaches for a worse Hebrew word to satisfy a linter.
+allowed-confusables = [
+    "א", "ב", "ג", "ד", "ה", "ו", "ז", "ח", "ט", "י", "כ", "ך", "ל", "מ", "ם",
+    "נ", "ן", "ס", "ע", "פ", "ף", "צ", "ץ", "ק", "ר", "ש", "ת",
+]
+
 [tool.ruff.lint.flake8-tidy-imports.banned-api]
 # Architectural invariant (PROJECT_STRUCTURE §6): configuration is centralised.
 "os.environ".msg = "Read configuration through app.config.settings, never os.environ directly."

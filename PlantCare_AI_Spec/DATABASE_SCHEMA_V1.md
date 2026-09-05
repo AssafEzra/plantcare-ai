@@ -142,6 +142,44 @@ pending research is the plant's `KNOWLEDGE_PENDING` status, not the draft.
 
 Content sections: Identification, Description, Light, Watering, Soil, Temperature, Humidity, Fertilization, Repotting, Pruning, Propagation, Common Problems, Toxicity/Safety, Sources.
 
+**Specified in PR 14, per FINAL §37 (A16):** `content` is `jsonb`, so the database cannot
+constrain it and every consumer would otherwise guess. The recorded shape is the Pydantic
+`KnowledgeContent` model in `app/agents/knowledge/contract.py`, validated when the draft is
+written and again at publication:
+
+```jsonc
+{
+  "sections": {
+    "identification": {"text": "…", "confidence": 0.0-1.0},
+    // the other twelve, all required
+  },
+  "sources": [
+    {"source_class": "APPROVED | EXTERNAL_UNAPPROVED | AI_GENERATED_REQUIRES_VERIFICATION",
+     "url": "… or null", "title": "…", "publisher": "…",
+     "approved_source_id": "uuid or null", "notes": "…",
+     "supports_sections": ["watering", "…"]}
+  ]
+}
+```
+
+Three points worth stating rather than leaving to be inferred:
+
+- **Thirteen prose sections, not fourteen.** The list above names Sources as the fourteenth, but
+  Sources is not prose — it is the provenance record, and it carries a class, a URL and a
+  retrieval time that the database constrains. It therefore sits beside the sections rather than
+  inside them, and becomes `knowledge_sources` rows at publication.
+- **Every section is required, and none may be blank or a refusal.** A model that runs out of
+  tokens mid-answer, or fills a field with "no information was found", produces a document whose
+  Toxicity/Safety section is missing or meaningless — the section a user with a cat goes looking
+  for. Validation fails the run instead, which is retriable.
+- **`confidence` is per section and is not shown to users.** It is an admin review signal: the
+  least-supported section is where a reviewer's limited time is worth spending. A single
+  document-level score would average away exactly that.
+
+**Sources live in the draft blob until approval.** `knowledge_sources` rows reference a
+*published version* and are immutable, so writing them at draft time would freeze a draft's
+provenance while the draft is still being revised.
+
 ### `knowledge_versions`
 `id`, `species_id`, `language`, `version_number`, `content jsonb`, `source_summary jsonb`, `is_current`, `published_by`, `published_at`, `created_at`.
 

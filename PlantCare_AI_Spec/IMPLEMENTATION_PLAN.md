@@ -61,8 +61,8 @@ Target: the Definition of Done in `FINAL_SPECIFICATION §35`.
 | 11 | 7 · Add Plant slice | Plants CRUD, archive/restore, environment, image endpoints, grid | ✅ |
 | 12 | 8 · AI Gateway | Provider abstraction, gateway, prompts, request lifecycle | ✅ |
 | 13 | 8 · Identification | `IdentificationAgent`, Wikipedia verification, confirm workflow | ✅ |
-| 14 | 9 · Knowledge Agent | Research, deterministic source verification | ▶ next |
-| 15 | 9 · Knowledge admin | Review, publication, fan-out to pending plants | ☐ |
+| 14 | 9 · Knowledge Agent | Research, deterministic source verification | ✅ |
+| 15 | 9 · Knowledge admin | Review, publication, fan-out to pending plants | ▶ next |
 | 16 | 10 · Care Agent | Context assembly, proposals, operational adjustment | ☐ |
 | 17 | 11 · Scheduler | Deterministic recurrence, tasks, events, `/internal/tick` | ☐ |
 | 18 | 11 · Home dashboard | The twelve `PROGRESS §9` items **[audit]** | ☐ |
@@ -73,8 +73,9 @@ Target: the Definition of Done in `FINAL_SPECIFICATION §35`.
 | 23 | 16 · Testing | Nine E2E journeys, RLS matrix, no-authoritative-record | ☐ |
 | 24 | 17 · Deployment | Railway, PROD Supabase, cron tick, alerts, runbook | ☐ |
 
-**680 tests** currently pass — unit, API, UI, integration against DEV, plus one
-live provider test excluded from CI.
+**847 tests** currently pass — 560 unit, API, agent and UI tests that CI runs on every
+push, plus 287 integration tests executed against the DEV Supabase project, plus one
+live provider test excluded from both.
 
 ---
 
@@ -283,7 +284,7 @@ Covers `PROGRESS §19`, `§11` (AI half).
 
 ---
 
-### Phase 9 — Species / Knowledge workflow → **PRs 14–15** — PR 14 next
+### Phase 9 — Species / Knowledge workflow → **PRs 14–15** — PR 14 ✅, PR 15 next
 Covers `PROGRESS §12`.
 
 **PR 14 — Knowledge Agent + deterministic source verification**
@@ -448,8 +449,8 @@ A1–A16 from the first draft; **A17–A28 added by the audit**. **A19, A22, A23
 | A13 | `POST …/correct` has no request body | `{candidate_id?, scientific_name?, note}`; history only | P8 |
 | ~~A14~~ | "Rate-limit AI endpoints" with no numbers | **✅ RESOLVED in PR 8** — 10/user/hour, 3/min, configurable; keyed on the *verified* user id via a dependency rather than slowapi, whose decorator resolves its key before auth runs and would have keyed on an unverified `sub` | — |
 | A15 | No E2E tooling named for Streamlit | httpx at API level + `AppTest`; no browser driver | P16 |
-| A16 | `knowledge_versions.content` has no field schema | Pydantic `KnowledgeContent`, validated at draft and publish | P9 |
-| **A17** | Fate of `KNOWLEDGE_PENDING` plants when a draft is **rejected or FAILED** — A4 covered only success, so plants strand | Stay pending with an "in review" message; draft stays retriable so fan-out eventually fires | P9 |
+| ~~A16~~ | `knowledge_versions.content` has no field schema | **✅ RESOLVED in PR 14** — Pydantic `KnowledgeContent`: thirteen required prose sections each carrying its own confidence, sources recorded beside them rather than inside them, validated at draft and again at publish | — |
+| ~~A17~~ | Fate of `KNOWLEDGE_PENDING` plants when a draft is **rejected or FAILED** — A4 covered only success, so plants strand | **✅ RESOLVED in PR 14** — the draft lifecycle makes `REJECTED → RESEARCHING` and `FAILED → RESEARCHING` legal and `APPROVED` terminal, so a rejected draft always leaves a path out; the fan-out itself lands in PR 15 | — |
 | **A18** | `confidence_score` has no scale and no thresholds mapping to `confidence_level` | 0.0–1.0; HIGH ≥ 0.85, MEDIUM ≥ 0.60; derived in Python | P8 |
 | ~~A19~~ | `care_rules.action_type` untyped | **✅ RESOLVED** — closed enum, see Schema additions | — |
 | **A20** | Spec says agents "ask the user" for missing context, but no status/table/endpoint can hold a question | MVP ships the qualify branch only (`missing_context[]` on the proposal card); record the scoping | P10 |
@@ -537,14 +538,18 @@ made silently. Each entry below is also recorded in the spec document it affects
 | 13 | The agent returns raw names; `species` rows are created at **confirm**, not at identification | Materialising a species per candidate would let every low-confidence hallucinated binomial permanently enter a taxonomy table shared by all users, and two of three candidates are wrong by construction. Recorded in `API_CONTRACTS`, which specified `confirmed_species_id` |
 | 13 | The model is never asked for a Wikipedia URL | There is then none to discard. The link is resolved and verified separately against Wikipedia's REST API — and a 200 is not enough, since Wikipedia redirects generously: the returned title must actually name the same species. A confident link to the wrong plant is worse than no link |
 | 13 | `IdentificationAgent` re-sorts and de-duplicates its own candidates, and downgrades an empty `SUCCESS` | The model is asked for descending confidence and usually obliges, but a UI that trusts `candidates[0]` must not depend on that. A `SUCCESS` carrying nothing would render an empty confirmation screen inviting the user to confirm air |
+| 14 | `source_verification.py` defines its own `SourceClaim` input rather than taking the agent's `ProposedSource` | The domain must not depend on an agent, and PR 21 verifies health-assessment sources through this same module with a different agent contract on the other side. Importing one agent's Pydantic class to cite a web page would have made the second caller depend on the first agent's package |
+| 14 | A draft's sources live inside `knowledge_drafts.content`, not in `knowledge_sources` | Those rows reference a *published version* and are immutable. Writing them at draft time would freeze a draft's provenance while the draft is still being revised; they are created at approval |
+| 14 | A research failure raises rather than returning a degraded result, unlike identification | There is no useful partial answer to a research request. An empty draft is not knowledge, and swallowing the error would leave an administrator reviewing a blank one instead of a draft marked FAILED and retriable |
+| 14 | RUF001 (ambiguous-unicode) is configured with the Hebrew alphabet allowed rather than worked around | The rule fires on ordinary Hebrew product copy, and only on *some* letters — making it a lottery on wording rather than a check on anything. Left enabled for its real purpose (a Cyrillic lookalike in an identifier) with Hebrew excluded, so nobody reaches for a worse Hebrew word to satisfy a linter |
 
 ### Amendments to the specification
 
 | Document | Change |
 |---|---|
-| `DATABASE_SCHEMA` | Nine additions, each with its reasoning: `care_rule_action_type` and `system_event_type` enums, `species.normalized_name`, `notification_preferences` defaults, `health_assessment_sources`, `admin_audit_log`, `notification_deliveries.dedupe_key`, `language` columns, nullable `identification_candidates.species_id` and `plants.name`. Plus the constraints that turn spec rules into database guarantees |
+| `DATABASE_SCHEMA` | The `knowledge_drafts.content` shape recorded in PR 14 (A16): thirteen prose sections each with its own confidence, sources beside them rather than inside them, and why every section is required. Plus nine additions, each with its reasoning: `care_rule_action_type` and `system_event_type` enums, `species.normalized_name`, `notification_preferences` defaults, `health_assessment_sources`, `admin_audit_log`, `notification_deliveries.dedupe_key`, `language` columns, nullable `identification_candidates.species_id` and `plants.name`. Plus the constraints that turn spec rules into database guarantees |
 | `PROJECT_STRUCTURE` | §12 records `migrations/` → `supabase/migrations/` (Supabase CLI constraint); §13 records `pages/` → `app_pages/`; §14 records where UI styling lives |
-| `FINAL_SPECIFICATION` | §7 records how a restored plant's status is determined |
+| `FINAL_SPECIFICATION` | §7 records how a restored plant's status is determined; §11 records that research is queued automatically at confirmation and what a draft's lifecycle permits (A17) |
 | `API_CONTRACTS` | Identification amended in PR 13: `confirm` takes `candidate_id` (not `confirmed_species_id`); `correct` gains the request body it never had (A13); confidence scale and thresholds recorded (A18); re-identification of an ACTIVE plant defined (A21); confirmation documented as passing **through** `IDENTIFIED` |
 | `DEVELOPMENT_PROGRESS` | Checkboxes updated in the PR that completed each item, with `[~]` for anything blocked and the reason |
 
@@ -564,8 +569,10 @@ Recorded because each is a pattern worth remembering, not only an incident.
 | PR 13 | The repository helpers assumed PostgREST always returns a list. An RPC returning a single composite returns a bare dict, so `first_row()` raised `KeyError: 0` and confirmation failed | The first RPC call made through the repository layer |
 | PR 13 | The confirm workflow moved a plant straight from `PENDING_IDENTIFICATION` to `ACTIVE`, which my own lifecycle table refuses — and was right to refuse | An integration test against DEV, contradicting a unit test I had written myself asserting the skip is illegal |
 | PR 13 | The binomial validator accepted any two words, so `"unknown plant"` or a whole sentence would have created a species row | Adversarial contract tests written against the validator rather than against the happy path |
+| PR 14 | `_normalise()` filtered to `[a-z0-9 ]`, which deletes Hebrew outright — so the common-name relevance fallback was dead code in the one language this application writes | A test written with a Hebrew common name rather than an English one. Every English test passed |
+| PR 14 | A second `start_research` on an already-running draft was refused, and reported as "already approved" | An integration test asserting that two confirmations of the same new species join one research run rather than billing twice |
 
-The pattern: **mocks confirm the shape you assumed.** Seven of these ten were only
+The pattern: **mocks confirm the shape you assumed.** Eight of these twelve were only
 findable by executing against the real thing — a live database, a real browser, a
 real API — which is why each phase applies its migrations to DEV, and why one
 live provider test is kept despite costing money to run.

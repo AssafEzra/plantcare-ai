@@ -27,12 +27,13 @@ from app.common.enums import (
     AgentType,
     IdentificationMethod,
     IdentificationStatus,
+    KnowledgeDraftStatus,
     PlantStatus,
     SystemEventType,
 )
 from app.common.errors import NotFoundError, ValidationFailedError
 from app.config.logging import get_logger
-from app.config.settings import get_settings
+from app.domain.rules.knowledge_lifecycle import is_open
 from app.domain.rules.plant_lifecycle import (
     PlantFacts,
     ensure_transition,
@@ -42,6 +43,7 @@ from app.infrastructure.ai.provider import ImageInput
 from app.infrastructure.storage import plant_images as storage
 from app.infrastructure.supabase.client import service_client
 from app.orchestration.services import agent_requests as requests_service
+from app.orchestration.workflows import knowledge as knowledge_workflow
 from app.repositories import plants as plants_repo
 from app.repositories.base import first_row, require_row, rows
 from supabase import Client
@@ -331,8 +333,9 @@ def confirm(
         "id", str(candidate_id)
     ).execute()
 
+    research: dict[str, str] | None = None
     if target is PlantStatus.KNOWLEDGE_PENDING:
-        _ensure_knowledge_draft(client, species_id)
+        research = _start_research(UUID(species_id), user_id)
 
     plants_repo.record_event(
         client,
@@ -353,6 +356,10 @@ def confirm(
         "scientific_name": species["scientific_name"],
         "status": target.value,
         "knowledge_pending": target is PlantStatus.KNOWLEDGE_PENDING,
+        # Present when research was started. The caller submits it to an executor:
+        # confirmation must not block on a model call that takes a minute, and the
+        # user's plant is already usable without it.
+        "research": research,
     }
 
 
@@ -388,29 +395,39 @@ def _status_after_confirm(plant: dict[str, Any], *, has_knowledge: bool) -> Plan
     )
 
 
-def _ensure_knowledge_draft(client: Client, species_id: str) -> None:
-    """Open a research draft, unless one is already in flight.
+def _start_research(species_id: UUID, user_id: UUID) -> dict[str, str] | None:
+    """Open a research draft and queue the run, unless one is already in flight.
 
     A partial unique index allows only one open draft per species and language, so
     a second confirmation of the same new species joins the existing research
-    rather than racing it.
+    rather than racing it — and joining means *not* queueing a second billable
+    run, which is why this returns None in that case.
+
+    Failure here is deliberately swallowed. The user has confirmed their plant and
+    it is theirs; if research could not be started, the plant sits in
+    KNOWLEDGE_PENDING and an administrator can retry (A17). Turning that into a
+    500 would undo a confirmation that already succeeded.
     """
-    settings = get_settings()
-    existing = rows(
-        client.table("knowledge_drafts")
-        .select("id")
-        .eq("species_id", species_id)
-        .in_("status", ["DRAFT", "RESEARCHING", "READY_FOR_REVIEW"])
+    admin = service_client()
+    open_draft = rows(
+        admin.table("knowledge_drafts")
+        .select("id, status")
+        .eq("species_id", str(species_id))
+        .in_("status", [s.value for s in KnowledgeDraftStatus if is_open(s)])
         .limit(1)
         .execute()
     )
-    if existing:
-        return
+    if open_draft:
+        return None
 
-    service_client().table("knowledge_drafts").insert(
-        {
-            "species_id": species_id,
-            "language": settings.default_content_language,
-            "status": "DRAFT",
-        }
-    ).execute()
+    try:
+        run = knowledge_workflow.start_research(species_id=species_id, initiated_by=user_id)
+    except Exception as exc:
+        log.error(
+            "identification.research_start_failed",
+            species_id=str(species_id),
+            error_type=type(exc).__name__,
+        )
+        return None
+
+    return run.as_summary()

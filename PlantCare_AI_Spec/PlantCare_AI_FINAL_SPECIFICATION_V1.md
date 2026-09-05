@@ -449,6 +449,41 @@ Does NOT:
 
 Knowledge research may be long-running and should be queued/background-like from the UX perspective.
 
+**Specified during implementation (PR 14), per §37**
+
+*When research starts.* Automatically, when a user confirms an identification for a species with
+no published Knowledge. The user is not asked and is not made to wait: their plant is added and
+usable in `KNOWLEDGE_PENDING` while research runs behind the 202-and-poll contract of §24. An
+administrator can also start or restart a run.
+
+*One run per species.* A second confirmation of the same new species joins the run already in
+flight rather than starting a rival one. Two concurrent runs would bill twice and end with two
+drafts of the same knowledge competing to publish, which the partial unique index refuses anyway.
+
+*The draft lifecycle.* The states this section names, and the moves between them that are legal:
+
+```text
+DRAFT ──────────────► RESEARCHING ──────► READY_FOR_REVIEW ──► APPROVED (terminal)
+  └──► REJECTED           └──► FAILED            ├──► REJECTED
+                                                 └──► RESEARCHING (research again)
+REJECTED ──► RESEARCHING        FAILED ──► RESEARCHING
+```
+
+A rejected or failed draft stays retriable (A17). It has to: plants sit in `KNOWLEDGE_PENDING`
+until *some* version of that species publishes, and a terminal rejection would strand every one
+of them with no path out. `APPROVED` is terminal in the other direction — its content is already
+an immutable published version, and a draft that could move again would imply that version could
+change. Only `RESEARCHING` can become `FAILED`, because failure is what a run does when it cannot
+finish and a run always sets `RESEARCHING` first.
+
+*Sources are verified, never taken on trust.* The agent proposes URLs; Python fetches each one,
+requires a 200, and requires the page to actually be about that species — Wikipedia-style
+redirects and real domains serving fabricated paths both pass a status check and fail this one.
+Only then is a source classified `APPROVED` (matching an enabled approved domain) or
+`EXTERNAL_UNAPPROVED`. A claim that fails verification is **kept and marked**
+`AI_GENERATED_REQUIRES_VERIFICATION`, not discarded: dropping it would leave the draft looking
+better sourced than it is.
+
 ---
 
 # 12. Care Agent

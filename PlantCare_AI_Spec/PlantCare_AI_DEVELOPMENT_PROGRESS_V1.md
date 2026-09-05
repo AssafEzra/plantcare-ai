@@ -284,17 +284,17 @@ Remaining implementation documentation:
 
 # 12. Knowledge Agent & Knowledge Base
 
-- [ ] Species entity
-- [ ] Knowledge Version entity
-- [ ] Immutable published versions
-- [ ] Knowledge lookup
-- [ ] Knowledge Draft entity
-- [ ] Knowledge Agent contract
-- [ ] Web research mechanism
-- [ ] Approved Source policy
-- [ ] Source provenance
-- [ ] External/unapproved source marking
-- [ ] Draft retry
+- [x] Species entity
+- [x] Knowledge Version entity
+- [x] Immutable published versions - content-immutable, `is_current` mutable; DELETE refused outright
+- [x] Knowledge lookup - at confirmation, keyed on `(species_id, language)`
+- [x] Knowledge Draft entity
+- [x] Knowledge Agent contract - the 14 sections as a validated schema (A16)
+- [x] Web research mechanism - provider-native grounding, then deterministic verification in Python
+- [x] Approved Source policy - label-boundary domain match against the enabled allow-list
+- [x] Source provenance - class, URL and publisher recorded per source, decided by Python not by the model
+- [x] External/unapproved source marking - permitted, marked, and flagged for extra admin attention
+- [x] Draft retry - a rejected or failed draft stays retriable (A17); an approved one is terminal
 - [ ] Admin review
 - [ ] Approve/reject
 - [ ] Publish Knowledge Version

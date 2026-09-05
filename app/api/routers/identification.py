@@ -20,6 +20,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, Header, Request, status
 from pydantic import BaseModel, Field
 
 from app.agents.identification.agent import IdentificationAgent
+from app.agents.knowledge.agent import KnowledgeAgent
 from app.api.dependencies import AIRateLimitDep, CurrentUserDep
 from app.api.schemas.common import DataEnvelope
 from app.common.enums import ConfidenceLevel, IdentificationMethod, IdentificationStatus
@@ -29,6 +30,7 @@ from app.infrastructure.ai.anthropic_provider import AnthropicProvider
 from app.infrastructure.ai.gateway import AIGateway
 from app.orchestration.services.agent_requests import BackgroundTasksExecutor
 from app.orchestration.workflows import identification as workflow
+from app.orchestration.workflows import knowledge as knowledge_workflow
 from app.repositories.base import first_row, rows
 
 router = APIRouter(tags=["identification"])
@@ -46,6 +48,14 @@ def get_identification_agent() -> IdentificationAgent:
 
 
 AgentDep = Annotated[IdentificationAgent, Depends(get_identification_agent)]
+
+
+def get_knowledge_agent() -> KnowledgeAgent:
+    """The Knowledge Agent, for the research run confirmation may start."""
+    return KnowledgeAgent(AIGateway(AnthropicProvider()))
+
+
+KnowledgeAgentDep = Annotated[KnowledgeAgent, Depends(get_knowledge_agent)]
 
 
 # --- schemas ------------------------------------------------------------------
@@ -213,6 +223,8 @@ async def confirm_identification(
     identification_id: UUID,
     payload: ConfirmRequest,
     user: CurrentUserDep,
+    background: BackgroundTasks,
+    knowledge_agent: KnowledgeAgentDep,
 ) -> DataEnvelope[dict]:
     """Confirm a candidate. The species becomes authoritative here and only here."""
     result = workflow.confirm(
@@ -221,6 +233,22 @@ async def confirm_identification(
         identification_id=identification_id,
         candidate_id=payload.candidate_id,
     )
+
+    # A species with no published knowledge needs research before a care plan can
+    # exist. It runs after the response: the user's plant is already added and
+    # usable, and FINAL §11 says research is long-running and should feel queued.
+    research = result.get("research")
+    if research:
+        BackgroundTasksExecutor(background).submit(
+            knowledge_workflow.execute_research,
+            request_id=UUID(research["request_id"]),
+            draft_id=UUID(research["draft_id"]),
+            species_id=UUID(research["species_id"]),
+            language=research["language"],
+            reason=None,
+            agent=knowledge_agent,
+        )
+
     return DataEnvelope(data=result, request_id=request.state.request_id)
 
 
