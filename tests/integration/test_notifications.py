@@ -24,7 +24,7 @@ from postgrest.exceptions import APIError
 from app.common.enums import CareRuleActionType
 from app.infrastructure.email.provider import EmailMessage, EmailSendError
 from app.notifications import service
-from tests.integration.conftest import unique_species_name
+from tests.integration.conftest import delete_accounts, unique_species_name
 
 pytestmark = pytest.mark.integration
 
@@ -104,9 +104,7 @@ def account(admin_sdk):
 
     yield _make
 
-    for user_id in created:
-        with contextlib.suppress(Exception):
-            admin_sdk.auth.admin.delete_user(user_id)
+    delete_accounts(admin_sdk, created)
 
 
 @pytest.fixture

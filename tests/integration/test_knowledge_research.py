@@ -37,7 +37,7 @@ from app.common.errors import AgentSchemaError
 from app.domain.services import source_verification as verification
 from app.infrastructure.ai.gateway import AIGateway
 from app.infrastructure.ai.mock_provider import MockProvider
-from tests.integration.conftest import unique_species_name
+from tests.integration.conftest import delete_accounts, unique_species_name
 
 pytestmark = pytest.mark.integration
 
@@ -84,8 +84,7 @@ def user_id(admin_sdk) -> Iterator[uuid.UUID]:
         }
     ).user
     yield uuid.UUID(user.id)
-    with contextlib.suppress(Exception):
-        admin_sdk.auth.admin.delete_user(user.id)
+    delete_accounts(admin_sdk, [user.id])
 
 
 @pytest.fixture
@@ -376,5 +375,4 @@ def test_a_regular_user_cannot_read_a_draft(live_env, admin_sdk, species, user_i
         )
         assert visible.data == []
     finally:
-        with contextlib.suppress(Exception):
-            admin_sdk.auth.admin.delete_user(reader.id)
+        delete_accounts(admin_sdk, [reader.id])

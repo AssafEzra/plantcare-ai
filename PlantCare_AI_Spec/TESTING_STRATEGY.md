@@ -350,3 +350,33 @@ takes about twenty-five seconds, and the scheduler tests call it repeatedly. Tha
 cost is a property of the endpoint, not of the tests: PR 24 schedules it every
 fifteen minutes, so it is worth watching as real plants accumulate. Journeys drive
 the scheduler scoped to one user for this reason.
+
+### Test accounts cannot be deleted
+
+**Added in PR 26.** Teardown had called `auth.admin.delete_user` inside
+`contextlib.suppress(Exception)` since the first integration test. Every call
+failed, and nothing said so: `profiles` cascades from `auth.users`, but
+`system_events` refuses DELETE because `FINAL §1.5` makes it append-only, so the
+cascade is rejected for any account that ever created a plant. The DEV project
+had accumulated 1,375 orphaned accounts, 205 of them administrators, and the Auth
+rate limit they helped exhaust was being blamed on whichever suite hit it last.
+
+Three consequences, all now built in:
+
+- `delete_accounts()` in `tests/integration/conftest.py` is the only teardown path.
+  It attempts the delete, and **stops attempting after the first structural
+  failure** - every later account fails identically, and each attempt spends Auth
+  quota the next test needs. A rate-limit error does not stop it, because that one
+  is transient.
+- What could not be removed is **reported in the terminal summary**, with the
+  command that removes it. A silent failure that accumulates is worse than a loud
+  one that does not.
+- `scripts/purge_dev_test_accounts.py` is the only thing that can actually delete
+  them. It disables the immutability triggers for the duration of one transaction,
+  which needs table ownership, and it refuses to run against any project but DEV.
+  Foreign-key cascades stay enabled throughout - `session_replication_role =
+  replica` would have been shorter and would have left orphans.
+
+The rule: **assume every account and every plant a test creates is permanent.**
+Generate names that cannot collide, scope assertions to your own rows, and run the
+purge script when the project gets crowded.

@@ -19,7 +19,7 @@ import pytest
 from fastapi.testclient import TestClient
 from PIL import Image
 
-from tests.integration.conftest import unique_species_name
+from tests.integration.conftest import delete_accounts, unique_species_name
 
 pytestmark = pytest.mark.integration
 
@@ -83,9 +83,7 @@ def account(admin_sdk) -> Iterator:
 
     yield _make
 
-    for user_id in created:
-        with contextlib.suppress(Exception):
-            admin_sdk.auth.admin.delete_user(user_id)
+    delete_accounts(admin_sdk, created)
 
 
 def photo(width: int = 900, height: int = 700) -> bytes:

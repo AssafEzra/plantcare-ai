@@ -27,7 +27,6 @@ the agent it was about would make a real, billable call from the second hop.
 
 from __future__ import annotations
 
-import contextlib
 import io
 import os
 import uuid
@@ -54,6 +53,7 @@ from app.common.enums import (
 )
 from app.infrastructure.ai.gateway import AIGateway
 from app.infrastructure.ai.mock_provider import MockProvider
+from tests.integration.conftest import delete_accounts
 
 PASSWORD = "Journey-Passw0rd!"
 
@@ -217,9 +217,7 @@ def account(admin_sdk) -> Iterator[Callable[..., Account]]:
 
     yield _make
 
-    for user_id in created:
-        with contextlib.suppress(Exception):
-            admin_sdk.auth.admin.delete_user(user_id)
+    delete_accounts(admin_sdk, created)
 
 
 # --- building blocks a journey reuses -------------------------------------------

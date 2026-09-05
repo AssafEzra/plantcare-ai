@@ -137,3 +137,58 @@ def unique_domain() -> str:
 def unique_epithet(name: str) -> str:
     """The lowercase epithet of a name from unique_species_name()."""
     return name.split()[1].lower()
+
+
+# --- account teardown ---------------------------------------------------------
+#
+# Test accounts cannot be deleted, and every suite spent twenty-five PRs
+# pretending otherwise.
+#
+# `profiles.id` cascades from `auth.users`, and every user-owned table cascades
+# from there - but `system_events`, `care_events` and the health tables carry
+# `reject_mutation()` triggers that refuse DELETE, because FINAL §1.5 says those
+# rows are immutable. So deleting any account that ever created a plant fails
+# with "Table system_events is append-only". The cascade promises what the
+# trigger forbids.
+#
+# Immutability is the rule that should win: FINAL §21 anonymises accounts rather
+# than deleting them, so the product never walks this path. What it broke was
+# teardown, which wrapped the failure in `contextlib.suppress(Exception)` and
+# left 1,375 accounts behind - roughly a quarter of them administrators.
+#
+# Two things follow, and this helper does both.
+#
+# **Stop after the first structural failure.** Every subsequent account fails
+# identically, and each attempt is an Auth admin API call against a rate limit
+# the suite already strains. One call learns the answer; 1,374 more waste quota
+# the next test will need.
+#
+# **Say so.** The whole point is that the old code was silent. What could not be
+# removed is counted and reported in the terminal summary, with the script that
+# can remove it.
+
+_deletion_is_possible = True
+_undeleted: list[str] = []
+
+
+def delete_accounts(admin_sdk, user_ids: list[str]) -> None:
+    """Best-effort cleanup that reports what it could not do."""
+    global _deletion_is_possible
+
+    for user_id in user_ids:
+        if not _deletion_is_possible:
+            _undeleted.append(user_id)
+            continue
+        try:
+            admin_sdk.auth.admin.delete_user(user_id)
+        except Exception as exc:  # the SDK's error type is not public here
+            _undeleted.append(user_id)
+            # A database error is structural - the append-only trigger - and will
+            # recur for every account. A rate limit is transient and worth
+            # retrying on the next call, so it does not disable the attempt.
+            if "database error" in str(exc).lower():
+                _deletion_is_possible = False
+
+
+def undeleted_accounts() -> list[str]:
+    return list(_undeleted)

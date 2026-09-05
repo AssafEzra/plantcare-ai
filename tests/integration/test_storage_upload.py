@@ -20,6 +20,7 @@ from app.common.enums import ImageContextType
 from app.common.errors import UpstreamUnavailableError
 from app.domain.services.images import process
 from app.infrastructure.storage import plant_images as storage
+from tests.integration.conftest import delete_accounts
 from tests.unit.test_image_processing import make_image
 
 pytestmark = pytest.mark.integration
@@ -89,9 +90,7 @@ def account(admin_sdk) -> Iterator:
     if uploaded:
         with contextlib.suppress(Exception):
             bucket.remove(uploaded)
-    for user_id in created:
-        with contextlib.suppress(Exception):
-            admin_sdk.auth.admin.delete_user(user_id)
+    delete_accounts(admin_sdk, created)
 
 
 def _upload(account_factory, context=ImageContextType.GALLERY):

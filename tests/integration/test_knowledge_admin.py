@@ -37,7 +37,7 @@ from app.common.enums import KnowledgeDraftStatus, PlantStatus
 from app.domain.services import source_verification as verification
 from app.infrastructure.ai.gateway import AIGateway
 from app.infrastructure.ai.mock_provider import MockProvider
-from tests.integration.conftest import unique_species_name
+from tests.integration.conftest import delete_accounts, unique_species_name
 
 pytestmark = pytest.mark.integration
 
@@ -116,9 +116,7 @@ def account(admin_sdk):
 
     yield _make
 
-    for user_id in created:
-        with contextlib.suppress(Exception):
-            admin_sdk.auth.admin.delete_user(user_id)
+    delete_accounts(admin_sdk, created)
 
 
 @pytest.fixture
@@ -480,8 +478,7 @@ def test_a_user_cannot_read_a_draft_even_through_the_database(api, account, admi
         anon.auth.sign_in_with_password({"email": email, "password": PASSWORD})
         assert anon.table("knowledge_drafts").select("id").execute().data == []
     finally:
-        with contextlib.suppress(Exception):
-            admin_sdk.auth.admin.delete_user(reader.id)
+        delete_accounts(admin_sdk, [reader.id])
 
 
 def test_a_user_reads_published_knowledge_and_can_report_an_error(api, account, admin_sdk, species):
@@ -531,8 +528,7 @@ def test_a_user_cannot_write_knowledge(api, account, admin_sdk, species):
                 }
             ).execute()
     finally:
-        with contextlib.suppress(Exception):
-            admin_sdk.auth.admin.delete_user(user.id)
+        delete_accounts(admin_sdk, [user.id])
 
 
 # --- approved sources ----------------------------------------------------------

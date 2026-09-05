@@ -35,7 +35,7 @@ from app.api.routers.health import get_health_agent
 from app.common.enums import HealthStatus
 from app.infrastructure.ai.gateway import AIGateway
 from app.infrastructure.ai.mock_provider import MockProvider
-from tests.integration.conftest import unique_species_name
+from tests.integration.conftest import delete_accounts, unique_species_name
 
 pytestmark = pytest.mark.integration
 
@@ -108,9 +108,7 @@ def account(admin_sdk):
 
     yield _make
 
-    for user_id in created:
-        with contextlib.suppress(Exception):
-            admin_sdk.auth.admin.delete_user(user_id)
+    delete_accounts(admin_sdk, created)
 
 
 @pytest.fixture
