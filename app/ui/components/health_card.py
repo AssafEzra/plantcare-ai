@@ -40,6 +40,13 @@ def render_assessment(assessment: dict[str, Any], *, on_adjust_plan=None) -> Non
             status_badge(status)
             if assessment.get("trend"):
                 trend_badge(assessment["trend"])
+                if status == "UNKNOWN":
+                    # The trend is computed from earlier *readable* checks, so it
+                    # can be meaningful even when this one is not. Beside a "we
+                    # could not tell" verdict it would otherwise read as this
+                    # check's own conclusion — which is exactly the overclaiming
+                    # §16 forbids.
+                    st.caption("המגמה מבוססת על בדיקות קודמות, לא על הבדיקה הזו.")
 
         if status == "UNKNOWN":
             # FINAL §16: an insufficient check is saved with its reason. Presented

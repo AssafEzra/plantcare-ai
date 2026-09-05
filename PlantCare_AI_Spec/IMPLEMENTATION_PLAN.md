@@ -568,6 +568,7 @@ made silently. Each entry below is also recorded in the spec document it affects
 | 21 | An `UNKNOWN` result is stripped of its issues and recommendations | A verdict that could not tell what it was looking at cannot also list what might be wrong. Showing both would let a user act on findings the verdict itself disowns. Observations survive — "the lower leaves are yellow" stays true even when what it means is not |
 | 21 | An `UNKNOWN` does not overwrite the plant's status | It records that we could not tell, not that the plant declined. Overwriting a real finding with an absence of one loses information the user already had |
 | 21 | The blur threshold was measured, not chosen | The first guess (40) passed a heavily blurred image at 62. Measuring also exposed that `FIND_EDGES` paints a border artefact which made a *flat grey rectangle* score higher than a blurred photograph — the measure was non-monotonic, and a threshold on it meant nothing |
+| 21 | A trend shown beside an `UNKNOWN` verdict says where it came from | The trend is computed from earlier *readable* checks and survives an inconclusive one, which is right — but placed next to "we could not tell" it reads as this check's own conclusion. Found by looking at the two badges side by side |
 
 ### Amendments to the specification
 

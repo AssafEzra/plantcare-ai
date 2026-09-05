@@ -192,3 +192,21 @@ def test_the_health_check_button_is_offered(page):
     app.run()
 
     assert "בדיקת בריאות" in [b.label for b in app.button]
+
+
+def test_a_trend_beside_an_unknown_says_where_it_came_from(page):
+    """The trend is computed from earlier *readable* checks, so it survives an
+    inconclusive one — but beside a "we could not tell" verdict it would read as
+    this check's own conclusion, which is the overclaiming §16 forbids.
+    """
+    app = page({**UNKNOWN_ASSESSMENT, "trend": "WORSENING"})
+    app.run()
+
+    assert "מבוססת על בדיקות קודמות" in rendered(app)
+
+
+def test_a_known_result_needs_no_such_caveat(page):
+    app = page(ASSESSMENT)
+    app.run()
+
+    assert "מבוססת על בדיקות קודמות" not in rendered(app)
