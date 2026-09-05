@@ -109,6 +109,24 @@ class AIGateway:
             AgentType.HEALTH: settings.health_model,
         }[agent]
 
+    def timeout_for(self, agent: AgentType) -> float:
+        """Per-agent timeout, from configuration.
+
+        The same shape as `model_for`, and for the same reason: the four agents do
+        work of very different sizes, and a number chosen for one of them is
+        wrong for another. A single 90-second budget shared by all four passed
+        every test - the mock returns instantly - and failed the first real
+        Knowledge run in production-like use, which is not a failure a mock can
+        have.
+        """
+        settings = get_settings()
+        return {
+            AgentType.IDENTIFICATION: settings.identification_timeout_seconds,
+            AgentType.KNOWLEDGE: settings.knowledge_timeout_seconds,
+            AgentType.CARE: settings.care_timeout_seconds,
+            AgentType.HEALTH: settings.health_timeout_seconds,
+        }[agent]
+
     def run[T: BaseModel](
         self,
         *,
@@ -139,6 +157,7 @@ class AIGateway:
                     images=images,
                     max_tokens=max_tokens,
                     effort=effort,
+                    timeout_seconds=self.timeout_for(agent),
                 )
             except SchemaValidationFailedError as exc:
                 last_error = exc

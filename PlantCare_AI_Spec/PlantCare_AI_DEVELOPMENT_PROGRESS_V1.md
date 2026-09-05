@@ -449,9 +449,10 @@ in recoverability, and the release-checklist item it creates.
 - [x] AI Gateway
 - [x] Provider configuration
 - [x] Per-Agent model configuration
-- [x] Structured output validation - schema-validated via messages.parse
+- [x] Per-Agent timeout configuration (PR 29) - knowledge 600s, care and health 180s, identification 90s; one shared 90s budget killed the first real research run
+- [x] Structured output validation - schema-validated via a streamed `messages.stream(...).get_final_message()`, so a long generation is measured chunk to chunk rather than end to end (PR 29)
 - [x] Retry policy (max 2) - only schema failures retried; ceiling asserted in config, tests and a CHECK constraint
-- [x] Timeout policy - configurable; a timeout is not retried
+- [x] Timeout policy - configurable per agent; a timeout is not retried, which is why the budget has to be right the first time
 - [x] Error handling
 - [x] Prompt versioning - prompts/<agent>/<name>.vNNN.md, version recorded per execution
 - [x] Agent execution logging

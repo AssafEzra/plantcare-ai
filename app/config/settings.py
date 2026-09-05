@@ -51,7 +51,26 @@ class Settings(BaseSettings):
     knowledge_model: str = Field(..., description="Model id for the Knowledge Agent")
     care_model: str = Field(..., description="Model id for the Care Agent")
     health_model: str = Field(..., description="Model id for the Health Agent")
+    # One timeout for four agents was wrong, and it took a real user to show it.
+    # Identification is a vision call returning three candidates and measured at
+    # about thirty seconds; Knowledge research writes thirteen sections of Hebrew
+    # prose with source retrieval behind it and does not fit in ninety seconds -
+    # the first real research run in DEV died at 90,354 ms with AGENT_TIMEOUT, and
+    # a timeout is not retried, so the draft failed and the plant stayed
+    # KNOWLEDGE_PENDING with nothing to approve.
+    #
+    # These are per-agent budgets, not guesses at how long a call takes: the point
+    # is the boundary past which waiting longer is worse than failing. Knowledge's
+    # 600 is measured - the same species re-researched after this change took
+    # 262,272 ms and produced all thirteen sections - so it is roughly twice the
+    # observed run. Care and Health have never run against the live API, so they
+    # get twice the measured identification budget rather than a number pretending
+    # to be measured; record the real one when they first run.
     ai_request_timeout_seconds: int = 90
+    identification_timeout_seconds: int = 90
+    knowledge_timeout_seconds: int = 600
+    care_timeout_seconds: int = 180
+    health_timeout_seconds: int = 180
     # FINAL_SPECIFICATION §23: invalid structured output is retried at most twice.
     ai_max_structured_retries: int = 2
 
