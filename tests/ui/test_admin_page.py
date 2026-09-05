@@ -190,3 +190,53 @@ def test_an_empty_queue_explains_where_drafts_come_from(page):
     app.run()
 
     assert "טיוטה נפתחת אוטומטית" in texts(app)
+
+
+def test_the_weak_sections_are_listed_worst_first(page):
+    """The warning is a reading order, not a set.
+
+    Listing them in section order puts the shakiest claim wherever it happens to
+    fall among the fourteen, which defeats the point of naming them at all.
+    """
+    draft = {
+        **DRAFT,
+        "content": {
+            **DRAFT["content"],
+            "sections": {
+                **DRAFT["content"]["sections"],
+                "humidity": section("לחות", 0.45),
+                "propagation": section("ריבוי", 0.20),
+            },
+        },
+    }
+    app = page([draft])
+    app.run()
+
+    warning = " ".join(str(w.value) for w in app.warning)
+    assert warning.index("ריבוי") < warning.index("לחות")
+
+
+def test_the_publish_confirmation_survives_the_rerun(page):
+    """Found in the browser, not here — originally.
+
+    Every action ends in `st.rerun()`, which discards anything written before it,
+    so `st.success()` followed by `st.rerun()` shows the administrator nothing at
+    all. The publish result carries the fan-out count, which is the part they most
+    need confirmed. Parking it in session state and rendering it on the next run
+    is what makes it visible.
+    """
+    from app.ui.app_pages import admin as admin_page  # noqa: F401
+
+    app = page([DRAFT])
+    app.session_state["admin_flash"] = (
+        "success",
+        "פורסמה גרסה 1. 3 צמחים של המין הזה פעילים כעת.",
+        ":material/check_circle:",
+    )
+    app.run()
+
+    shown = " ".join(str(s.value) for s in app.success)
+    assert "פורסמה גרסה 1" in shown
+    assert "3 צמחים" in shown
+    # And it is consumed, so it does not follow the administrator around.
+    assert "admin_flash" not in app.session_state

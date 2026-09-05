@@ -60,6 +60,26 @@ WEAK_SECTION = 0.5
 
 page_header("ניהול", "אזור מנהלי מערכת")
 
+# Every action below ends in st.rerun(), which discards anything written before
+# it. A message shown and then immediately rerun away is a message nobody sees —
+# and the publish result carries the fan-out count, which is the part an
+# administrator most wants confirmed. So the outcome is parked here and rendered
+# on the next run instead.
+FLASH = "admin_flash"
+
+
+def flash(message: str, *, kind: str = "success", icon: str = ":material/check_circle:") -> None:
+    st.session_state[FLASH] = (kind, message, icon)
+
+
+def show_flash() -> None:
+    parked = st.session_state.pop(FLASH, None)
+    if not parked:
+        return
+    kind, message, icon = parked
+    {"success": st.success, "info": st.info, "warning": st.warning}[kind](message, icon=icon)
+
+
 drafts_tab, published_tab, sources_tab, reports_tab, monitoring_tab = st.tabs(
     ["טיוטות ידע", "ידע מפורסם", "מקורות מאושרים", "דיווחי משתמשים", "ניטור סוכנים"]
 )
@@ -99,10 +119,20 @@ def render_sources(sources: list[dict[str, Any]]) -> None:
 
 
 def render_sections(sections: dict[str, Any]) -> None:
+    # Worst first, matching `KnowledgeContent.weakest_sections`. Section order
+    # would put the shakiest claim wherever it happens to fall in the fourteen,
+    # and this line exists to tell a reviewer where to start.
     weak = [
         name
-        for name, section in sections.items()
-        if isinstance(section, dict) and section.get("confidence", 1.0) < WEAK_SECTION
+        for name, _ in sorted(
+            (
+                (name, section.get("confidence", 1.0))
+                for name, section in sections.items()
+                if isinstance(section, dict)
+            ),
+            key=lambda pair: pair[1],
+        )
+        if sections[name].get("confidence", 1.0) < WEAK_SECTION
     ]
     if weak:
         st.warning(
@@ -122,6 +152,7 @@ def render_sections(sections: dict[str, Any]) -> None:
 # --- drafts -------------------------------------------------------------------
 
 with drafts_tab:
+    show_flash()
     status_filter = st.selectbox(
         "סינון לפי סטטוס",
         options=["READY_FOR_REVIEW", "RESEARCHING", "REJECTED", "FAILED", "APPROVED", "הכול"],
@@ -181,10 +212,9 @@ with drafts_tab:
                             result = post(
                                 f"/v1/admin/knowledge-drafts/{draft['id']}/approve", json={}
                             )
-                            st.success(
+                            flash(
                                 f"פורסמה גרסה {result['version_number']}. "
-                                f"{result['active_plants']} צמחים פעילים במין הזה.",
-                                icon=":material/check_circle:",
+                                f"{result['active_plants']} צמחים של המין הזה פעילים כעת."
                             )
                             st.rerun()
                         except ApiError as exc:
@@ -205,7 +235,11 @@ with drafts_tab:
                                     "reason": st.session_state.get(f"note_{draft['id']}") or None
                                 },
                             )
-                            st.success("המחקר יצא לדרך.", icon=":material/hourglass_top:")
+                            flash(
+                                "המחקר יצא לדרך. הטיוטה תחזור לכאן כשיסתיים.",
+                                kind="info",
+                                icon=":material/hourglass_top:",
+                            )
                             st.rerun()
                         except ApiError as exc:
                             show_error(exc)
@@ -228,8 +262,9 @@ with drafts_tab:
                         )
                         # A17 made visible: rejection is not the end of the road,
                         # and the plants waiting on this species are still waiting.
-                        st.info(
+                        flash(
                             "הטיוטה נדחתה. הצמחים ממשיכים להמתין וניתן לחקור מחדש.",
+                            kind="info",
                             icon=":material/info:",
                         )
                         st.rerun()
@@ -259,6 +294,7 @@ with published_tab:
 # --- approved sources ---------------------------------------------------------
 
 with sources_tab:
+    show_flash()
     sources = guarded(lambda: get("/v1/admin/approved-sources"))
 
     with st.expander("הוספת מקור מאושר", icon=":material/add:"):
@@ -280,7 +316,7 @@ with sources_tab:
                         "reliability_level": reliability,
                     },
                 )
-                st.success("המקור נוסף.", icon=":material/check_circle:")
+                flash("המקור נוסף.")
                 st.rerun()
             except ApiError as exc:
                 show_error(exc)
@@ -304,8 +340,9 @@ with sources_tab:
                             post(f"/v1/admin/approved-sources/{source['id']}/disable")
                             # Deliberately does not touch existing provenance rows:
                             # they record what was true when a version published.
-                            st.info(
+                            flash(
                                 "המקור הושבת. גרסאות שכבר פורסמו אינן משתנות.",
+                                kind="info",
                                 icon=":material/history:",
                             )
                             st.rerun()
