@@ -65,15 +65,15 @@ Target: the Definition of Done in `FINAL_SPECIFICATION §35`.
 | 15 | 9 · Knowledge admin | Review, publication, fan-out to pending plants | ✅ |
 | 16 | 10 · Care Agent | Context assembly, proposals, operational adjustment | ✅ |
 | 17 | 11 · Scheduler | Deterministic recurrence, tasks, events, `/internal/tick` | ✅ |
-| 18 | 11 · Home dashboard | The twelve `PROGRESS §9` items **[audit]** | ▶ next |
-| 19 | 12 · Notifications | Resend provider, digest, `dedupe_key` idempotency | ☐ |
+| 18 | 11 · Home dashboard | The twelve `PROGRESS §9` items **[audit]** | ✅ |
+| 19 | 12 · Notifications | Resend provider, digest, `dedupe_key` idempotency | ▶ next |
 | 20 | 13 · Plant dashboard | Full view model, history timeline | ☐ |
 | 21 | 14 · Health Agent | Assessment, findings, sources, Python-computed trend | ☐ |
 | 22 | 15 · Admin panel | Monitoring, reports, audit log, anonymisation | ☐ |
 | 23 | 16 · Testing | Nine E2E journeys, RLS matrix, no-authoritative-record | ☐ |
 | 24 | 17 · Deployment | Railway, PROD Supabase, cron tick, alerts, runbook | ☐ |
 
-**1,051 tests** currently pass — 706 unit, API, agent and UI tests that CI runs on every
+**1,071 tests** currently pass — 726 unit, API, agent and UI tests that CI runs on every
 push, plus 344 integration tests executed against the DEV Supabase project, plus one
 live provider test excluded from both.
 
@@ -324,7 +324,7 @@ Covers `PROGRESS §13`.
 
 ---
 
-### Phase 11 — Scheduler, Care Tasks & Home Dashboard → **PRs 17–18** — PR 17 ✅, PR 18 next
+### Phase 11 — Scheduler, Care Tasks & Home Dashboard → **PRs 17–18** — ✅
 Covers `PROGRESS §14` and **`§9` [audit — the Home Dashboard was absent from the first draft entirely]**.
 
 **PR 17 — Deterministic scheduling**
@@ -345,7 +345,7 @@ All twelve `PROGRESS §9` items against the `UI_DESIGN_TOKENS` "Home Dashboard" 
 
 ---
 
-### Phase 12 — Notifications → **PR 19**
+### Phase 12 — Notifications → **PR 19** — next
 Covers `PROGRESS §15`, `FINAL §14, §30`.
 
 - `notifications/service.py` → `EmailProvider` protocol → `ResendProvider` + `NullProvider` (CI default; tests never send mail).
@@ -555,6 +555,8 @@ made silently. Each entry below is also recorded in the spec document it affects
 | 17 | A newly activated rule uses `first_due()`, not `next_due()` from activation | A user who approves a nine-day watering plan should not wait nine days to hear anything — an approved plan that says nothing reads as broken |
 | 17 | `catch_up()` advances any stale occurrence before it is materialised | A safety net, not the main path: materialising something the sweep retires on sight is a loop that writes junk history on every tick. Advancing by whole intervals rather than to "now plus one" keeps a Monday-morning watering on Monday morning |
 | 17 | The tick's `403` is the generic forbidden error, with no mention of the secret | An endpoint that says "wrong secret" has told a prober it found the right endpoint |
+| 18 | "All caught up" and "no plants yet" are separate states, not one empty box | One is an achievement and the other an invitation. Sharing a component would waste the single moment the product gets to say well done, and would read as though the plants had disappeared |
+| 18 | Upcoming care is collapsed rather than listed inline | FINAL §5 asks for it on the page and also says the user should understand *what needs attention today* in seconds. Inline, it pushes today's work down — the tests assert the ordering rather than mere presence |
 
 ### Amendments to the specification
 
@@ -592,8 +594,10 @@ Recorded because each is a pattern worth remembering, not only an incident.
 | PR 16 | `list_for_user()` never filtered on `user_id`, leaning entirely on RLS — but `plants_select_admin` deliberately grants administrators read-all, so an admin's own **My Plants** page listed every user's plants, names included | Logging in as an administrator and looking at the page: 590 plants where there should have been one. Every user-facing plant read now scopes to the caller explicitly, and `owner_id` is a required argument so no call site can omit it |
 | PR 16 | `my_plants.py` rendered each card without an open action, so the plant dashboard — and with it every screen PR 16 built — was unreachable from the interface | Trying to click through to it. The component supported `on_open` and the page simply never passed it; everything worked and nothing could be got to |
 | PR 17 | A missed task was anchored on its own due date, so the next occurrence landed in the past, was retired as expired too, and the scheduler wrote a **MISSED event on every tick** — junk history for as long as the cron kept firing | An integration test asserting FINAL §13's "the next recurrence remains scheduled", which found zero pending tasks. The unit tests could not have caught it: the arithmetic was individually correct, and the loop only exists once materialisation and the sweep run against each other |
+| PR 18 | An expired session left the user on a signed-in-looking page with a red banner and no way forward but guessing to reload. `ApiError.is_auth_error` had existed since PR 9 and nothing acted on it | Leaving a browser tab open for two hours while testing. The sequencing is the bug: `access_token()` does clear the session when a refresh fails, but the shell has already routed for that run, so only a rerun sends the next pass to sign-in |
+| PR 18 | Upcoming care omitted the action type, so three rules on one plant rendered three word-for-word identical lines — "the monstera · tomorrow at 08:00", three times | Looking at the expanded section in the browser. Every assertion about upcoming care passed: the data was right, the line just did not say which of the three it was |
 
-The pattern: **mocks confirm the shape you assumed.** Sixteen of these twenty were only
+The pattern: **mocks confirm the shape you assumed.** Eighteen of these twenty-two were only
 findable by executing against the real thing — a live database, a real browser, a
 real API — which is why each phase applies its migrations to DEV, and why one
 live provider test is kept despite costing money to run.

@@ -10,6 +10,7 @@ from collections.abc import Callable
 
 import streamlit as st
 
+from app.ui.state import session
 from app.ui.state.api_client import ApiError
 
 
@@ -41,12 +42,27 @@ def empty_state(
 
 
 def show_error(error: ApiError) -> None:
-    """Render a failed call.
+    """Render a failed call, or return the user to sign-in if their session ended.
 
-    The request id is shown for a server-side failure only. It is what makes a
-    user report traceable in the logs (DEPLOYMENT §9), and it is noise for a
-    validation mistake the user can simply correct.
+    An expired session is not something to *report*. Sessions last an hour, so a
+    user who leaves a tab open over lunch comes back to a page that looks signed
+    in, shows a red banner, and offers no way forward but guessing to reload —
+    which is what happened in the browser after two hours of testing.
+
+    `session.access_token()` has already cleared the stored session by the time
+    this runs, but the shell decided the routing at the top of the run and is
+    still showing the signed-in navigation. Rerunning is what makes the next run
+    route to the sign-in page.
+
+    The request id is shown for a server-side failure only. It makes a user report
+    traceable in the logs (DEPLOYMENT §9), and it is noise for a validation
+    mistake the user can simply correct.
     """
+    if error.is_auth_error:
+        session.sign_out()
+        st.warning("פג תוקף החיבור. אפשר להתחבר מחדש.", icon=":material/lock_clock:")
+        st.rerun()
+
     st.error(error.message, icon=":material/error:")
     if error.request_id and (error.status or 0) >= 500:
         st.caption(f"מזהה בקשה: {error.request_id}")

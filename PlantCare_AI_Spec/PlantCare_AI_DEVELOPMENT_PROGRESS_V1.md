@@ -223,18 +223,18 @@ Remaining implementation documentation:
 
 # 9. Dashboard
 
-- [ ] Greeting
-- [ ] Plant count
-- [ ] Today's task count
-- [ ] Needs Attention count
-- [ ] Today's Care
-- [ ] Done/Skip
-- [ ] Upcoming care
-- [ ] Plants Needing Attention
-- [ ] Quick Health Check
-- [ ] My Plants preview
-- [ ] Add Plant CTA
-- [ ] All-caught-up state
+- [x] Greeting - personalised and time-aware; "good morning" at ten at night makes a page feel unattended
+- [x] Plant count
+- [x] Today's task count
+- [x] Needs Attention count
+- [x] Today's Care - first on the page, because it is the only thing the user can act on now
+- [x] Done/Skip - both always offered; the schedule treats a skip differently from silence
+- [x] Upcoming care - collapsed, so it never competes with today's work
+- [x] Plants Needing Attention
+- [~] Quick Health Check - the button is on Home and routes to the plant; the check itself is the Health Agent (PR 21)
+- [x] My Plants preview
+- [x] Add Plant CTA
+- [x] All-caught-up state - distinct from "no plants yet": one is an achievement, the other an invitation
 
 ---
 
