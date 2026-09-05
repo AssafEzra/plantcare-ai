@@ -70,12 +70,12 @@ Target: the Definition of Done in `FINAL_SPECIFICATION §35`.
 | 20 | 13 · Plant dashboard | Full view model, history timeline | ✅ |
 | 21 | 14 · Health Agent | Assessment, findings, sources, Python-computed trend | ✅ |
 | 22 | 15 · Admin panel | Monitoring, reports, audit log, anonymisation | ✅ |
-| 23 | 16 · Testing | Nine E2E journeys, RLS matrix, no-authoritative-record | ▶ next |
-| 24 | 17 · Deployment | Railway, PROD Supabase, cron tick, alerts, runbook | ☐ |
+| 23 | 16 · Testing | Nine E2E journeys, RLS matrix, no-authoritative-record | ✅ |
+| 24 | 17 · Deployment | Railway, PROD Supabase, cron tick, alerts, runbook | ▶ next |
 
-**1,304 tests** currently pass — 864 unit, API, agent and UI tests that CI runs on every
-push, plus 440 integration tests executed against the DEV Supabase project, plus one
-live provider test excluded from both.
+**1,461 tests** currently pass - 864 unit, API, agent and UI tests that CI runs on
+every push, plus 597 integration, journey and RLS-matrix tests executed against the
+DEV Supabase project, plus one live provider test excluded from both.
 
 ---
 
@@ -401,7 +401,7 @@ Covers `PROGRESS §18`, `FINAL §29`.
 
 ---
 
-### Phase 16 — Integration & E2E testing → **PR 23** — next
+### Phase 16 — Integration & E2E testing → **PR 23** — ✅
 Covers `PROGRESS §20`, `TESTING`.
 
 - `tests/e2e/` for the eight journeys in `PROGRESS §20` **plus the Knowledge-error reporting journey from `TESTING_STRATEGY §9` [audit]** (user reports → admin sees → draft/research → new published version) — nine total, driven through the API with `MockProvider` fixtures (valid, malformed, timeout, schema-invalid). **No test depends on a live LLM.**
@@ -413,7 +413,7 @@ Covers `PROGRESS §20`, `TESTING`.
 
 ---
 
-### Phase 17 — Production deployment → **PR 24**
+### Phase 17 — Production deployment → **PR 24** — next
 Covers `PROGRESS §21, §22`, `DEPLOYMENT`.
 
 - Dockerfiles; Railway services `plantcare-api`, `plantcare-ui`, plus a **cron service calling `/internal/tick`** every 15 min; private networking between UI and API.
@@ -573,6 +573,10 @@ made silently. Each entry below is also recorded in the spec document it affects
 | 22 | The anonymisation audit entry records no email and no display name | An audit trail that preserved what was erased would defeat the operation it describes |
 | 22 | Triaging a knowledge report does not itself start research | Acting on a report is the retry route, which may already be in flight. Coupling them would let a status imply a research run that never happened |
 | 22 | An administrator cannot anonymise their own account | It would revoke the role needed to undo it, and remove an administrator by accident |
+| 23 | The nine journeys drive the HTTP API, not the service layer | A journey that called workflows directly would skip authentication, RLS and response models - which is exactly where both of this PR's defects were |
+| 23 | `tests/e2e/` holds the per-agent no-authoritative-record cases, not `tests/agents/` | The plan put them under `tests/agents/`; they need the journey harness (a real database, a real request, four scripted providers), and duplicating that harness to honour a directory name would be worse than moving the file |
+| 23 | Journeys call the scheduler scoped to one user rather than `/v1/internal/tick` | The tick is global by design and takes ~25s against a DEV database holding a thousand plants. The route's own authentication and idempotency are covered in `test_scheduler.py` |
+| 23 | The AI rate limit is raised inside the journey harness | A journey compresses days of user actions into seconds and would otherwise hit A14's 3/minute. The limiter has its own unit tests |
 
 ### Amendments to the specification
 

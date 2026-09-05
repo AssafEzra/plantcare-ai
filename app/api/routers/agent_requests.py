@@ -9,6 +9,7 @@ values drive the processing display in the wireframes:
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, Request
@@ -29,6 +30,18 @@ class AgentRequestResponse(BaseModel):
     stage: AgentStage | None = None
     plant_id: UUID | None = None
     error_code: str | None = None
+    # Where the result is. A client that polls until COMPLETE has an agent
+    # request id and nothing else - there is no route from a plant to its
+    # identification - so without this the confirmation screen could never be
+    # reached. It shipped without it, and the Add Plant flow dead-ended at
+    # "not found" for every user who got that far.
+    #
+    # Identifiers and statuses only: `mark_succeeded` is called with a small
+    # explicit dict per workflow (identification id, version number, health
+    # status). No prompt and no reasoning is written to this column by anything,
+    # so exposing it to the request's owner cannot leak either - which is the
+    # same argument that keeps `agent_executions` admin-only.
+    output_summary: dict[str, Any] | None = None
     created_at: datetime
     updated_at: datetime
 

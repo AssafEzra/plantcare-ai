@@ -21,7 +21,7 @@ from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Query, Request, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from app.agents.knowledge.agent import KnowledgeAgent
 from app.api.dependencies import AdminDep, CurrentUserDep
@@ -72,6 +72,21 @@ class KnowledgeResponse(BaseModel):
     source_summary: dict[str, Any] = Field(default_factory=dict)
     published_at: datetime
     sources: list[SourceResponse] = Field(default_factory=list)
+
+    @field_validator("source_summary", mode="before")
+    @classmethod
+    def _absent_summary_is_empty(cls, value: Any) -> Any:
+        """`source_summary` is nullable, and a default does not cover an explicit
+        None - it applies only when the key is absent.
+
+        Publication always builds the object, so this never fires for a version
+        the product created. It fires for every version created any other way:
+        the PR 6 seed, and 131 of the 238 current versions in DEV, all of which
+        turned this endpoint into a 500. The provenance of a published version is
+        already in `knowledge_sources`; this summary is a convenience, and its
+        absence is not a reason to refuse to render the article.
+        """
+        return {} if value is None else value
 
 
 class DraftResponse(BaseModel):

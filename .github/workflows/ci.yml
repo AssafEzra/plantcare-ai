@@ -41,6 +41,58 @@ jobs:
       - name: Tests
         run: uv run pytest -m "not live and not integration and not e2e"
 
+  integration:
+    name: integration · journeys · RLS matrix
+    needs: quality
+    # Only on a merge into `dev`. These tests write to a real database, so
+    # running them from a fork's pull request would hand a stranger the
+    # project's credentials.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/dev'
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      INTERNAL_TICK_SECRET: ${{ secrets.INTERNAL_TICK_SECRET }}
+      # A key is required for the app to boot; no test spends it, because every
+      # agent is driven by a scripted provider and `-m "not live"` excludes the
+      # one test that is not.
+      AI_API_KEY: ${{ secrets.AI_API_KEY }}
+      IDENTIFICATION_MODEL: claude-sonnet-5
+      KNOWLEDGE_MODEL: claude-sonnet-5
+      CARE_MODEL: claude-sonnet-5
+      HEALTH_MODEL: claude-sonnet-5
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.13
+
+      - name: Install dependencies
+        run: uv sync --all-groups
+
+      # Skipped rather than failed when the DEV secrets are not configured: a red
+      # X on every merge teaches people to ignore red Xs.
+      - name: Check for DEV credentials
+        id: creds
+        run: |
+          if [ -n "$SUPABASE_URL" ] && [ -n "$SUPABASE_DB_PASSWORD" ]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::DEV Supabase secrets are not configured; integration tests skipped."
+            echo "available=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Integration, journeys and the RLS matrix
+        if: steps.creds.outputs.available == 'true'
+        run: uv run pytest -m "integration and not live" -q
+
   secret-scan:
     name: no committed secrets
     runs-on: ubuntu-latest
