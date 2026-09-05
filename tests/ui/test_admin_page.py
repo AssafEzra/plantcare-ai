@@ -95,6 +95,19 @@ def page(monkeypatch: pytest.MonkeyPatch):
                 return drafts
             if "approved-sources" in path:
                 return sources or []
+            if path.endswith("/overview"):
+                # PR 22 added the overview tab, which reads an object rather than
+                # a list. A stub that returned `[]` for everything made the page
+                # raise before it rendered a draft at all.
+                return {
+                    "window_days": 7,
+                    "drafts_awaiting_review": len(drafts),
+                    "open_knowledge_reports": 0,
+                    "failed_agent_requests": 0,
+                    "failed_notifications": 0,
+                    "agent_stats": [],
+                    "total_estimated_cost": 0.0,
+                }
             return []
 
         monkeypatch.setattr(api_client, "get", fake_get)
@@ -240,3 +253,40 @@ def test_the_publish_confirmation_survives_the_rerun(page):
     assert "3 צמחים" in shown
     # And it is consumed, so it does not follow the administrator around.
     assert "admin_flash" not in app.session_state
+
+
+# --- the tabs PR 22 added ---------------------------------------------------------
+
+
+def test_the_overview_leads_with_what_needs_action(page):
+    """Failures first, then things waiting on a person, then volume. An overview
+    ordered by volume would put the biggest number where the urgent one belongs.
+    """
+    app = page([])
+    app.run()
+
+    assert not app.exception, [str(e) for e in app.exception]
+    labels = [m.label for m in app.metric]
+    assert labels[:2] == ["בקשות AI שנכשלו", "תזכורות שנכשלו"]
+
+
+def test_the_monitoring_tab_says_that_prompts_are_not_stored(page):
+    """FINAL §23 forbids storing chain-of-thought. Saying so where an
+    administrator would look for it is how the absence reads as deliberate
+    rather than as a missing feature."""
+    app = page([])
+    app.run()
+
+    captions = " ".join(str(c.value) for c in app.caption)
+    assert "אינו נשמר" in captions
+
+
+def test_anonymisation_explains_that_nothing_is_deleted(page):
+    """§21: accounts are never physically deleted. An administrator about to
+    close an account should know what the action actually does."""
+    app = page([])
+    app.run()
+
+    captions = " ".join(str(c.value) for c in app.caption)
+    assert "אינם נמחקים" in captions
+    assert "משמרת את ההיסטוריה" in captions

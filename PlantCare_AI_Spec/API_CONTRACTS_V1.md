@@ -427,13 +427,35 @@ refusing is a good way to lose an account, and the digest returns tomorrow.
 ## Admin monitoring
 Admin-only:
 ```text
-GET /v1/admin/agent-executions
-GET /v1/admin/agent-requests
-GET /v1/admin/knowledge-reports
-GET /v1/admin/notification-deliveries
+GET  /v1/admin/overview
+GET  /v1/admin/agent-executions
+GET  /v1/admin/agent-requests
+GET  /v1/admin/knowledge-reports
+POST /v1/admin/knowledge-reports/{id}/review
+GET  /v1/admin/notification-deliveries
+GET  /v1/admin/audit-log
+GET  /v1/admin/accounts
+POST /v1/admin/accounts/{user_id}/anonymize
 ```
 
 Expose model, prompt version, duration, token usage and estimated cost. Never expose chain-of-thought.
+
+`agent_executions` has no column for prompts or reasoning, so the monitoring view cannot
+leak them however it is queried. That is the enforcement; the sentence above is the intent.
+
+`/overview` is ordered by what would make an administrator act — failures first, then the
+queues waiting on a human, then volume — not by table.
+
+`review` records triage on a reported knowledge error (`status`, `admin_note`). It does
+**not** start research: acting on a report is the existing draft-retry route, and that
+research may already be in flight. Coupling them would let a status imply a research run
+that never happened.
+
+`anonymize` is FINAL §21, and its `reason` is required — see that section for what the
+operation does and why the audit entry records none of what it erased.
+
+`/audit-log` reads a table that refuses UPDATE and DELETE for every role. Append-only is
+a property of the table, not a convention of the endpoint.
 
 ## AI failure contract
 Structured output is schema-validated. Invalid output gets up to 2 automatic retries, then a failed execution is recorded and no authoritative record is created.
