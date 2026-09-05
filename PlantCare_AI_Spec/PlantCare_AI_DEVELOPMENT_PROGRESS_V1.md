@@ -173,16 +173,16 @@ Remaining implementation documentation:
 # 6. Storage
 
 - [x] Create Supabase Storage bucket(s) — `plant-images`, private, created by migration so PROD is identical
-- [ ] Implement image validation
+- [x] Implement image validation - decodes with Pillow; declared type and extension are never trusted
 - [-] Enforce 10 MB maximum — bucket-level cap in place; application-level validation lands in Phase 6
 - [-] Support JPG/JPEG/PNG/WEBP — bucket MIME allow-list in place; Pillow-based content validation lands in Phase 6
-- [ ] Process/resize/compress
-- [ ] Generate thumbnail
-- [ ] Store original + processed + thumbnail
+- [x] Process/resize/compress - 1600px long edge at q85
+- [x] Generate thumbnail - 400px long edge
+- [x] Store original + processed + thumbnail - original byte-for-byte, derivatives EXIF-free
 - [x] Implement logical paths — `{user_id}/{plant_id}/{gallery|identification|health}/`, enforced by policies on the first path segment
 - [x] Implement owner-only access — select/insert/update/delete scoped to the owner; admins read-only across owners for retained AI images
-- [ ] Implement hidden retention for AI-used images
-- [ ] Implement metadata persistence
+- [-] Implement hidden retention for AI-used images - enforced in the database (delete policy excludes ai_used); the hide action lands with the endpoint
+- [-] Implement metadata persistence - plant_images rows are written when the upload endpoint lands with plants CRUD
 - [x] Test Storage RLS/access behavior — 13 integration tests covering cross-user read/write denial, anonymous denial and admin read
 
 ---
