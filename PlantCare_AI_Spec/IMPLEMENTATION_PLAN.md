@@ -73,8 +73,8 @@ Target: the Definition of Done in `FINAL_SPECIFICATION §35`.
 | 23 | 16 · Testing | Nine E2E journeys, RLS matrix, no-authoritative-record | ☐ |
 | 24 | 17 · Deployment | Railway, PROD Supabase, cron tick, alerts, runbook | ☐ |
 
-**1,048 tests** currently pass — 706 unit, API, agent and UI tests that CI runs on every
-push, plus 342 integration tests executed against the DEV Supabase project, plus one
+**1,051 tests** currently pass — 706 unit, API, agent and UI tests that CI runs on every
+push, plus 344 integration tests executed against the DEV Supabase project, plus one
 live provider test excluded from both.
 
 ---
