@@ -181,8 +181,8 @@ Remaining implementation documentation:
 - [x] Store original + processed + thumbnail - original byte-for-byte, derivatives EXIF-free
 - [x] Implement logical paths — `{user_id}/{plant_id}/{gallery|identification|health}/`, enforced by policies on the first path segment
 - [x] Implement owner-only access — select/insert/update/delete scoped to the owner; admins read-only across owners for retained AI images
-- [-] Implement hidden retention for AI-used images - enforced in the database (delete policy excludes ai_used); the hide action lands with the endpoint
-- [-] Implement metadata persistence - plant_images rows are written when the upload endpoint lands with plants CRUD
+- [x] Implement hidden retention for AI-used images
+- [x] Implement metadata persistence
 - [x] Test Storage RLS/access behavior — 13 integration tests covering cross-user read/write denial, anonymous denial and admin read
 
 ---
@@ -240,30 +240,30 @@ Remaining implementation documentation:
 
 # 10. My Plants
 
-- [ ] Plant grid
-- [ ] Plant card
-- [ ] Main image
-- [ ] Plant Name
+- [x] Plant grid
+- [x] Plant card
+- [x] Main image - first gallery upload becomes the main image
+- [x] Plant Name
 - [ ] Species
-- [ ] Health status
+- [x] Health status
 - [ ] Nearest task
 - [ ] Attention indicator
-- [ ] Search
-- [ ] Basic sort/filter
+- [x] Search - pattern syntax neutralised so a wildcard cannot match everything
+- [-] Basic sort/filter - health filter done; sort follows with the scheduler
 - [ ] Click → Plant Dashboard
-- [ ] Empty state
-- [ ] Loading state
+- [x] Empty state - distinguishes an empty search from an empty account
+- [x] Loading state
 
 ---
 
 # 11. Add Plant & Identification
 
-- [ ] Add Plant flow
-- [ ] 1–4 identification photos
-- [ ] Photo preview
+- [x] Add Plant flow - step 1: create plant, upload identification photos
+- [x] 1-4 identification photos
+- [x] Photo preview
 - [ ] Remove/add photo
-- [ ] Photo guidance
-- [ ] Optional user note
+- [x] Photo guidance
+- [x] Optional user note
 - [ ] Identification Agent contract
 - [ ] Multimodal model integration
 - [ ] Structured output

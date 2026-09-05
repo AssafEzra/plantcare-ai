@@ -270,6 +270,19 @@ Yes → ACTIVE                     Knowledge Draft
 
 If the user archives a plant, its history remains and the plant can be restored.
 
+**Clarified during implementation, per §37 — what a restored plant's status becomes.**
+TESTING_STRATEGY §3 lists `ARCHIVED → ACTIVE`, but archiving is the user's replacement for
+deletion and is therefore allowed from any status, including a plant that was never
+identified. Restoring such a plant straight to `ACTIVE` would produce an active plant with no
+species and no care plan.
+
+The restored status is therefore **recomputed** from the plant's own data rather than
+remembered: no confirmed species → `PENDING_IDENTIFICATION`; species with published knowledge
+→ `ACTIVE`; species without → `KNOWLEDGE_PENDING`. This needs no extra column, cannot drift
+out of sync, and yields the documented `ARCHIVED → ACTIVE` for the ordinary case. It also
+means a plant whose species gained published knowledge while it was archived comes back
+`ACTIVE` rather than waiting again.
+
 ---
 
 # 8. Add Plant

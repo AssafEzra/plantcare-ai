@@ -19,7 +19,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from app.api.routers import profile
+from app.api.routers import plant_images, plants, profile
 from app.common.errors import AppError, NotFoundError, ValidationFailedError
 from app.config.logging import configure_logging, get_logger
 from app.config.settings import get_settings
@@ -156,6 +156,8 @@ def create_app() -> FastAPI:
         return JSONResponse(status_code=200, content={"status": "ok", "checks": {"database": "ok"}})
 
     app.include_router(profile.router, prefix="/v1")
+    app.include_router(plants.router, prefix="/v1")
+    app.include_router(plant_images.router, prefix="/v1")
     return app
 
 
