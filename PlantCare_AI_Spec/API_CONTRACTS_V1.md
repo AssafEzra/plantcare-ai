@@ -101,14 +101,54 @@ Suggested UI stages:
 
 `POST /v1/identifications/{identification_id}/confirm`
 ```json
-{"confirmed_species_id":"uuid"}
+{"candidate_id":"uuid","name":"מונסטרה של דנה"}
 ```
 
+**Amended in PR 13** (`FINAL_SPECIFICATION §37`). The payload was
+`{"confirmed_species_id":"uuid"}`, which presumes a `species` row already exists
+for every candidate. It must not: materialising a species per candidate would let
+every low-confidence hallucinated binomial permanently enter a taxonomy table
+shared by all users, and two of the three candidates on a typical identification
+are wrong by construction. The candidate carries the raw `scientific_name` and
+`common_name`; the species row is created — or matched, on `normalized_name` — at
+confirmation, from the candidate the user actually chose. `name` is optional; when
+absent the plant takes the candidate's common name (A2: `plants.name` is nullable
+only until this point).
+
 Orchestration:
-- published Knowledge exists → `ACTIVE`;
-- otherwise create Species if necessary, create Knowledge Draft, queue research, set plant `KNOWLEDGE_PENDING`.
+- published Knowledge exists for `(species_id, language)` → `IDENTIFIED` → `ACTIVE`;
+- otherwise create Species if necessary, create Knowledge Draft, queue research,
+  plant goes `IDENTIFIED` → `KNOWLEDGE_PENDING`.
+
+The plant passes **through `IDENTIFIED`** rather than jumping from
+`PENDING_IDENTIFICATION` to its destination. `FINAL_SPECIFICATION §7` and
+`TESTING_STRATEGY §3` both model `IDENTIFIED` as a real state, and the lifecycle
+table refuses the skip. **Amended in PR 13:** the workflow walks the path.
+
+**Re-identification of an already-`ACTIVE` plant (A21, resolved in PR 13).** The
+plant keeps its current status and its live plan while the new species is
+researched — it does not regress to `KNOWLEDGE_PENDING`, and outstanding tasks are
+not cancelled. Regressing would silence a working care schedule for a plant whose
+care needs have not changed just because its label did. A care-plan proposal is
+raised when the new knowledge publishes.
+
+**Confidence (A18, resolved in PR 13).** `confidence_score` is `0.000`–`1.000` with
+three decimal places. `confidence_level` is **derived in Python**, never taken from
+the model: `HIGH >= 0.85`, `MEDIUM >= 0.60`, otherwise `LOW`. A model asked to
+self-report a label picks the one that sounds right for its answer rather than the
+one its evidence supports; a number it must commit to first, and a threshold it
+does not know, keep the two independent.
 
 `POST /v1/identifications/{identification_id}/correct`
+```json
+{"candidate_id":"uuid","scientific_name":"Monstera adansonii","note":"החורים בעלים"}
+```
+
+**Specified in PR 13** (A13) — the endpoint was listed with no request body. Exactly
+one of `candidate_id` (an alternative already offered) or `scientific_name` (a name
+the user supplies themselves) is required; `note` is optional and free text. A
+correction is **history only**: it appends an identification row and never mutates
+the previous one, per the append-only rule in `FINAL_SPECIFICATION §9`.
 
 (Aligned to the flat `/v1/identifications/{identification_id}` convention already used by `confirm` and `GET`; ownership is still derived from the JWT plus the identification's `plant_id`, so no `plant_id` path segment is needed.)
 

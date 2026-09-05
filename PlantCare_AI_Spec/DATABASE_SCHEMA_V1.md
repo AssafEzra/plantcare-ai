@@ -292,6 +292,18 @@ can be distinguished from a genuine retry and answered with 409. Uniqueness on
 `(user_id, idempotency_key)` is scoped per user, since keys are client-generated and will
 collide across users.
 
+**Corrected in PR 13, per FINAL §37 (migration `0011`):** `agent_requests` was given a SELECT
+policy for the owner and an ALL policy for administrators, and **no INSERT policy for anyone
+else** - so no user could start an AI request at all. The rule below reads "AI monitoring is
+Admin-only except minimal request status for the request owner", which governs *reading*; it is
+silent on who creates the row, and the row is created by the user, when they press the button.
+The gap was invisible until identification was wired end to end, because nothing before that had
+created one of these rows through a user's client. The added policy admits an INSERT only when
+`user_id = auth.uid()`, the `plant_id` is null or the caller's own plant, and `status = 'QUEUED'`:
+a user starts work but does not get to declare it finished. There is deliberately still **no
+UPDATE policy** - `status` and `stage` after `QUEUED` are written by the background task through
+the service role, so a client cannot fabricate a `SUCCEEDED` request carrying an invented result.
+
 ### `agent_executions`
 `id`, `agent_request_id`, `agent_type`, `model`, `model_version`, `prompt_version`, `status`, `attempt`, `started_at`, `completed_at`, `input_tokens`, `output_tokens`, `estimated_cost`, `latency_ms`, `error_code`, `error_message`, `created_at`.
 

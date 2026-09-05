@@ -60,8 +60,8 @@ Target: the Definition of Done in `FINAL_SPECIFICATION §35`.
 | 10 | 6 · Image pipeline | Validation, EXIF handling, derivatives, storage adapter | ✅ |
 | 11 | 7 · Add Plant slice | Plants CRUD, archive/restore, environment, image endpoints, grid | ✅ |
 | 12 | 8 · AI Gateway | Provider abstraction, gateway, prompts, request lifecycle | ✅ |
-| 13 | 8 · Identification | `IdentificationAgent`, Wikipedia verification, confirm workflow | ▶ next |
-| 14 | 9 · Knowledge Agent | Research, deterministic source verification | ☐ |
+| 13 | 8 · Identification | `IdentificationAgent`, Wikipedia verification, confirm workflow | ✅ |
+| 14 | 9 · Knowledge Agent | Research, deterministic source verification | ▶ next |
 | 15 | 9 · Knowledge admin | Review, publication, fan-out to pending plants | ☐ |
 | 16 | 10 · Care Agent | Context assembly, proposals, operational adjustment | ☐ |
 | 17 | 11 · Scheduler | Deterministic recurrence, tasks, events, `/internal/tick` | ☐ |
@@ -73,7 +73,7 @@ Target: the Definition of Done in `FINAL_SPECIFICATION §35`.
 | 23 | 16 · Testing | Nine E2E journeys, RLS matrix, no-authoritative-record | ☐ |
 | 24 | 17 · Deployment | Railway, PROD Supabase, cron tick, alerts, runbook | ☐ |
 
-**601 tests** currently pass — unit, API, UI, integration against DEV, plus one
+**680 tests** currently pass — unit, API, UI, integration against DEV, plus one
 live provider test excluded from CI.
 
 ---
@@ -257,7 +257,7 @@ Covers `PROGRESS §10`, `§11` (non-AI half).
 
 ---
 
-### Phase 8 — AI Gateway + Identification Agent → **PRs 12–13** — PR 12 ✅, PR 13 next
+### Phase 8 — AI Gateway + Identification Agent → **PRs 12–13** — ✅
 Covers `PROGRESS §19`, `§11` (AI half).
 
 **PR 12 — AI infrastructure**
@@ -283,7 +283,7 @@ Covers `PROGRESS §19`, `§11` (AI half).
 
 ---
 
-### Phase 9 — Species / Knowledge workflow → **PRs 14–15**
+### Phase 9 — Species / Knowledge workflow → **PRs 14–15** — PR 14 next
 Covers `PROGRESS §12`.
 
 **PR 14 — Knowledge Agent + deterministic source verification**
@@ -534,6 +534,9 @@ made silently. Each entry below is also recorded in the spec document it affects
 | 9 | Timezone detection needs no JS component | `st.context.timezone` exposes the browser's IANA zone natively (`FINAL §15`) |
 | 10 | Image endpoints deferred to PR 11 | `POST /v1/plants/{id}/images` needs a plant to exist, and plants CRUD is PR 11 |
 | 12 | `verify_wikipedia_page()` and `retrieve_source()` are not on the `AIProvider` protocol | Neither is a model call. Putting them there would force every provider to carry identical HTTP code, and would blur the line between what the model said and what we verified — the line `§23` draws when it makes verification authoritative |
+| 13 | The agent returns raw names; `species` rows are created at **confirm**, not at identification | Materialising a species per candidate would let every low-confidence hallucinated binomial permanently enter a taxonomy table shared by all users, and two of three candidates are wrong by construction. Recorded in `API_CONTRACTS`, which specified `confirmed_species_id` |
+| 13 | The model is never asked for a Wikipedia URL | There is then none to discard. The link is resolved and verified separately against Wikipedia's REST API — and a 200 is not enough, since Wikipedia redirects generously: the returned title must actually name the same species. A confident link to the wrong plant is worse than no link |
+| 13 | `IdentificationAgent` re-sorts and de-duplicates its own candidates, and downgrades an empty `SUCCESS` | The model is asked for descending confidence and usually obliges, but a UI that trusts `candidates[0]` must not depend on that. A `SUCCESS` carrying nothing would render an empty confirmation screen inviting the user to confirm air |
 
 ### Amendments to the specification
 
@@ -542,6 +545,7 @@ made silently. Each entry below is also recorded in the spec document it affects
 | `DATABASE_SCHEMA` | Nine additions, each with its reasoning: `care_rule_action_type` and `system_event_type` enums, `species.normalized_name`, `notification_preferences` defaults, `health_assessment_sources`, `admin_audit_log`, `notification_deliveries.dedupe_key`, `language` columns, nullable `identification_candidates.species_id` and `plants.name`. Plus the constraints that turn spec rules into database guarantees |
 | `PROJECT_STRUCTURE` | §12 records `migrations/` → `supabase/migrations/` (Supabase CLI constraint); §13 records `pages/` → `app_pages/`; §14 records where UI styling lives |
 | `FINAL_SPECIFICATION` | §7 records how a restored plant's status is determined |
+| `API_CONTRACTS` | Identification amended in PR 13: `confirm` takes `candidate_id` (not `confirmed_species_id`); `correct` gains the request body it never had (A13); confidence scale and thresholds recorded (A18); re-identification of an ACTIVE plant defined (A21); confirmation documented as passing **through** `IDENTIFIED` |
 | `DEVELOPMENT_PROGRESS` | Checkboxes updated in the PR that completed each item, with `[~]` for anything blocked and the reason |
 
 ### Bugs found by running the code rather than reading it
@@ -556,8 +560,12 @@ Recorded because each is a pattern worth remembering, not only an incident.
 | PR 9 | The theme silently did not apply — a Google Fonts URL with two families makes Streamlit reject the **whole** `[theme]` block and report it only in the server log | Opening a browser and looking at it |
 | PR 11 | PostgREST rewrites `*` to the SQL wildcard, so searching `*` returned every plant; neutralising it to empty then meant "no filter", which returned everything again | An integration test asserting that pattern syntax cannot alter a filter |
 | PR 12 | The SDK exposes parsed output as `parsed_output`, not `parsed` — every mocked test passed while every real agent call would have failed | One live call against the real API |
+| PR 13 | `agent_requests` had a SELECT policy for the owner and an ALL policy for admins, but **no INSERT policy** — so no user could start an AI request at all. Every AI-triggering endpoint would have failed at its first write | Wiring identification end to end. Nothing before it had created one of those rows through a user's client |
+| PR 13 | The repository helpers assumed PostgREST always returns a list. An RPC returning a single composite returns a bare dict, so `first_row()` raised `KeyError: 0` and confirmation failed | The first RPC call made through the repository layer |
+| PR 13 | The confirm workflow moved a plant straight from `PENDING_IDENTIFICATION` to `ACTIVE`, which my own lifecycle table refuses — and was right to refuse | An integration test against DEV, contradicting a unit test I had written myself asserting the skip is illegal |
+| PR 13 | The binomial validator accepted any two words, so `"unknown plant"` or a whole sentence would have created a species row | Adversarial contract tests written against the validator rather than against the happy path |
 
-The pattern: **mocks confirm the shape you assumed.** Four of these six were only
+The pattern: **mocks confirm the shape you assumed.** Seven of these ten were only
 findable by executing against the real thing — a live database, a real browser, a
 real API — which is why each phase applies its migrations to DEV, and why one
 live provider test is kept despite costing money to run.
