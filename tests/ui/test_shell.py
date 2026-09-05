@@ -89,7 +89,7 @@ def test_registration_rejects_a_short_password(app: AppTest):
     app.text_input(key="ru_email").set_value("someone@example.com")
     app.text_input(key="ru_password").set_value("short")
 
-    register_button = [b for b in app.button if b.label == "הרשמה"][0]
+    register_button = next(b for b in app.button if b.label == "הרשמה")
     register_button.click().run()
 
     warnings = " ".join(w.value for w in app.warning)
@@ -101,7 +101,7 @@ def test_password_reset_does_not_reveal_whether_an_account_exists(app: AppTest):
     app.run()
     app.text_input(key="rp_email").set_value("definitely-not-registered@example.com")
 
-    reset_button = [b for b in app.button if "איפוס" in b.label][0]
+    reset_button = next(b for b in app.button if "איפוס" in b.label)
     reset_button.click().run()
 
     success = " ".join(s.value for s in app.success)
