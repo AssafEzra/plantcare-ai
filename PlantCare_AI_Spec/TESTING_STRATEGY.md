@@ -273,6 +273,16 @@ that makes it is the component every test replaces. Two rules follow:
    never requested for display. That file is cheap, runs in CI, and covers the
    surface the `live` test was carrying alone at a cost that keeps it out of CI.
 
+**Added in PR 30 — a test whose scope is "the page" is a test that will lie to
+you twice.** Two care-plan tests asserted `FINAL §12`'s real rule — the
+professional advice has no input beside it — as "this page has no number inputs
+and no text areas". True when the plant dashboard had none anywhere, and it went
+red the moment an unrelated section further down grew a form, having caught
+nothing: the advice was still uneditable. The reverse is the dangerous direction,
+and it is the same mistake: a page-wide assertion passes because *something else*
+on the page satisfies it. Both now render the card alone through
+`AppTest.from_function`, which is what they always meant.
+
 ## 13. Acceptance Gate
 
 A feature is considered complete only when:
