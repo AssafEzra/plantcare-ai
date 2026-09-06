@@ -81,11 +81,22 @@ Operational notes:
 - Tests and CI set it to `0`. A background timer inside a test process writes to
   DEV on its own schedule and makes failures irreproducible.
 - **Duration scales with the number of plans, not with traffic.** Measured against
-  DEV on 2026-09-06 — polluted with ~1,400 test accounts — one full sweep took
-  **6m11s** (39 materialised, 34 marked overdue, 6 reminders deduplicated). That is
-  uncomfortably close to the 900s interval; the loop sleeps *between* runs so two
-  cannot overlap, but the headroom is thin. Purge test accounts before reading
-  anything into the figure, and keep the interval well above the observed duration.
+  DEV on 2026-09-06, before and after purging the accounts the integration suite
+  had left behind:
+
+  | DEV state | Accounts | One full sweep |
+  |---|---|---|
+  | Polluted | 1,504 | **6m11s** (39 materialised, 34 marked overdue) |
+  | Purged | 10 | **5.2s** |
+
+  The first figure is the one to plan against, not the second: it is what the
+  sweep costs when the database is full, and 6m11s against a 900s interval is
+  thin headroom. The loop sleeps *between* runs so two can never overlap, but a
+  production database will grow past DEV's worst case. Re-measure before raising
+  the interval's workload, and watch the `scheduler.timer_tick` duration in logs.
+
+  A second run immediately after the first materialised **0** tasks, which is the
+  idempotence the two-driver design depends on.
 - **A rule already holding an open task is skipped** — PENDING *or* OVERDUE. The
   original guard and index covered PENDING alone, so the first sweep that marked a
   task overdue freed its rule and every tick after that added a copy. Corrected in

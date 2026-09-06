@@ -54,7 +54,23 @@ POOLER_HOST = "aws-0-eu-central-1.pooler.supabase.com"
 # them.
 TEST_EMAIL_PATTERNS = ("%@example.com", "%@example.test")
 
+# Two kinds of table block the delete, and the second was missed until the purge
+# was first run for real (PR 32).
+#
+# The row-immutable ones refuse the DELETE that cascades from `auth.users`.
+#
+# The *content*-immutable ones are never deleted at all - they are the target of a
+# foreign key declared `ON DELETE SET NULL`, so removing an account makes Postgres
+# issue `UPDATE knowledge_versions SET published_by = NULL`, and the trigger
+# refuses that too:
+#
+#     Column knowledge_versions.published_by is immutable once written;
+#     create a new version instead.
+#
+# Which is correct - provenance is exactly what those triggers exist to protect.
+# It only has to yield to delete a *test* account on a development database.
 IMMUTABLE_TRIGGERS = [
+    # Row-immutable: refuse the cascading DELETE.
     ("system_events", "system_events_immutable"),
     ("care_events", "care_events_immutable"),
     ("health_assessments", "health_assessments_immutable"),
@@ -63,7 +79,40 @@ IMMUTABLE_TRIGGERS = [
     ("health_recommendations", "health_recommendations_immutable"),
     ("health_assessment_sources", "health_assessment_sources_immutable"),
     ("admin_audit_log", "admin_audit_log_immutable"),
+    # Content-immutable: refuse the `ON DELETE SET NULL` the cascade performs.
+    # Found with a query over pg_constraint rather than by guessing: every FK into
+    # profiles/auth.users with confdeltype = 'n' whose table also carries an
+    # immutability trigger.
+    ("care_plan_versions", "care_plan_versions_content_immutable"),
+    ("knowledge_versions", "knowledge_versions_content_immutable"),
 ]
+
+
+# Constraint triggers that would fire while the cascade takes an assessment apart.
+# Both assert an invariant about a *live* assessment - 1-4 images - which is
+# meaningless while the assessment itself is being deleted.
+CONSTRAINT_TRIGGERS = [
+    ("health_assessment_images", "health_assessment_images_count"),
+    ("health_assessments", "health_assessments_require_images"),
+]
+
+# The one non-CASCADE foreign key that blocks a user delete. `plant_images` and
+# `health_assessment_images` both cascade from the account, but by different paths
+# - images from `user_id`, assessment images from `health_assessments` - and
+# Postgres does not order the two, so it reached `plant_images` first and refused:
+#
+#     update or delete on table "plant_images" violates foreign key constraint
+#     "health_assessment_images_plant_image_id_fkey"
+#
+# Found by listing every FK between public tables whose confdeltype is not 'c',
+# rather than by discovering them one failed run at a time.
+PRE_DELETE = """
+delete from public.health_assessment_images
+ where health_assessment_id in (
+   select id from public.health_assessments
+    where user_id in (select id from auth.users where {where})
+ )
+"""
 
 
 def dsn() -> str:
@@ -120,18 +169,31 @@ def purge(conn: psycopg.Connection) -> int:
 
     One transaction so a failure halfway leaves nothing half-deleted, and so the
     triggers are re-enabled by the rollback if anything raises. They are also
-    re-enabled explicitly, because relying on a rollback to restore a safety
-    mechanism is not a safety mechanism.
+    re-enabled explicitly on the success path, because relying on a rollback to
+    restore a safety mechanism is not a safety mechanism.
     """
     with conn.transaction():
-        for table, trigger in IMMUTABLE_TRIGGERS:
+        for table, trigger in IMMUTABLE_TRIGGERS + CONSTRAINT_TRIGGERS:
             conn.execute(f"alter table public.{table} disable trigger {trigger}")
-        try:
-            result = conn.execute(f"delete from auth.users where {_where()}")
-            deleted = result.rowcount
-        finally:
-            for table, trigger in IMMUTABLE_TRIGGERS:
-                conn.execute(f"alter table public.{table} enable trigger {trigger}")
+
+        # Break the one FK the cascade cannot order around, before it runs.
+        conn.execute(PRE_DELETE.format(where=_where()))
+
+        # Deliberately no `finally` around the delete. Postgres aborts the whole
+        # transaction on the first error, so re-enabling the triggers here would
+        # itself raise `InFailedSqlTransaction` - and that exception, thrown from
+        # a finally block, *replaces* the real one. The first real run of this
+        # script reported "current transaction is aborted" and said nothing about
+        # the immutable column that actually refused.
+        #
+        # The triggers are restored regardless: `ALTER TABLE ... DISABLE TRIGGER`
+        # is transactional in Postgres, so the rollback undoes it. Verified after
+        # that failure - all eleven were still enabled.
+        result = conn.execute(f"delete from auth.users where {_where()}")
+        deleted = result.rowcount
+
+        for table, trigger in IMMUTABLE_TRIGGERS + CONSTRAINT_TRIGGERS:
+            conn.execute(f"alter table public.{table} enable trigger {trigger}")
     return deleted
 
 
