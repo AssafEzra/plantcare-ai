@@ -38,12 +38,20 @@ def page(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setitem(settings_module.Settings.model_config, "env_file", None)
     settings_module.get_settings.cache_clear()
 
-    def _build(preferences: dict[str, Any] | None = None) -> AppTest:
+    def _build(
+        preferences: dict[str, Any] | None = None,
+        deliveries: list[dict[str, Any]] | None = None,
+    ) -> AppTest:
         from app.ui.state import api_client
 
         def fake_get(path: str, **kwargs: Any) -> Any:
             if "notification-preferences" in path:
                 return preferences if preferences is not None else PREFERENCES
+            if "notification-deliveries" in path:
+                # PR 31 put the delivery log on this page. A stub that answered
+                # every unknown path with the profile made the page read a string
+                # as a list of deliveries.
+                return deliveries or []
             return PROFILE
 
         monkeypatch.setattr(api_client, "get", fake_get)

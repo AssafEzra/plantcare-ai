@@ -280,10 +280,10 @@ in recoverability, and the release-checklist item it creates.
 - [x] Wikipedia link validation - verified against Wikipedia's REST API; a redirect to a different subject is rejected
 - [x] User confirmation - the only point at which a species becomes authoritative, and the point at which the plant is named (PR 28)
 - [x] Re-identification - an ACTIVE plant stays active while the new species is researched (A21)
-- [x] Identification history - append-only; a correction adds a row
+- [x] Identification history - append-only; a correction adds a row, and from PR 31 a user can actually file one (A13; the endpoint had no caller)
 - [x] New Species creation - at confirm, from the chosen candidate
 - [x] Knowledge Pending state - research draft opened, plant remains usable
-- [x] Existing Knowledge lookup - published knowledge activates the plant immediately
+- [x] Existing Knowledge lookup - published knowledge activates the plant immediately, and from PR 31 queues its first care proposal too (A3). Until then this road into ACTIVE produced a plant with no plan at all
 - [x] Graceful failure states - FAILED and NEEDS_MORE_INFORMATION both surface without an authoritative record
 
 ---
@@ -366,7 +366,7 @@ in recoverability, and the release-checklist item it creates.
 - [x] Email on/off - respected before a message is built, not by discarding one afterwards
 - [x] Preferred reminder time - A10: this governs when we may *write*, not when a task is due
 - [x] Daily digest - honoured as a preference; the plan's first draft chose by task count, which made the setting inert
-- [x] Delivery logging - user-visible, so "we did email you" is checkable rather than trusted
+- [x] Delivery logging - user-visible from PR 31, in Settings. The claim was written in PR 19 and was false until then: the endpoint existed and no screen called it
 - [x] Duplicate-send prevention - the row is reserved *before* the provider call, so a second tick dies on the unique index with nothing in flight
 - [x] Timezone-aware sending - the dedupe key carries the user's local date, so changing zone cannot produce two digests on one of their days
 
@@ -402,17 +402,18 @@ in recoverability, and the release-checklist item it creates.
 
 - [x] Overview - one `GET /v1/plants/{id}/dashboard`; the §17 sections would otherwise be eight round trips
 - [x] Species
-- [x] Personal name
+- [x] Personal name - and editable from PR 31: `PATCH /v1/plants/{id}` shipped in PR 11 and no screen ever called it, so a plant kept whatever name confirmation gave it forever
 - [x] Health status - with trend, from the latest assessment
 - [x] Environment
-- [x] Care summary
-- [x] Gallery - signed as the caller, short-lived; the bucket stays private
+- [x] Care summary - due tasks are completable here from PR 31; `care_task_card` draws Done/Skip only when given the callbacks and this page gave none, so the same task was actionable on Home and read-only on the plant
+- [x] Gallery - signed as the caller, short-lived; the bucket stays private. Images can be removed from PR 31, with FINAL §20's hide-vs-delete outcome reported to the user
 - [x] Care section
 - [x] Schedule section
 - [x] Health section - findings, evidence, and the UNKNOWN path (PR 21)
 - [x] History section - merged from five tables on read, so the timeline cannot drift from the data
 - [x] Health Check CTA - opens the check inline; images from the plant's own gallery
 - [x] Environment update - editable from the plant dashboard, every field optional; a save requests an ENVIRONMENT_CHANGE proposal when the plant has a plan (PR 30 - shipped read-only in PR 20, and the note promising a plan review was the only part that worked)
+- [x] Knowledge display with provenance (PR 31) - version, publication date and the verified sources. The endpoint always returned them; only the prose was ever rendered
 - [x] Knowledge error report - report, never edit (FINAL §10)
 - [x] Archive/restore - history survives both
 - [x] Manual history event - the four user-created kinds only; the rest are written by the actions that cause them
@@ -427,14 +428,15 @@ in recoverability, and the release-checklist item it creates.
 - [x] Knowledge Drafts
 - [x] Draft sources - unverified citations shown first, above the approve button
 - [x] Approve/reject
+- [x] Notification deliveries (PR 31) - what was actually sent, and what failed
 - [x] Admin notes
 - [x] Published Knowledge
 - [x] Version history
 - [x] Approved Sources
 - [x] Reported Errors - triage is recorded; acting on one is the separate retry route, so a status cannot imply research that never ran
-- [x] AI/Agent Monitoring - model, prompt version, duration, tokens, cost
+- [x] AI/Agent Monitoring - model, prompt version, duration, tokens, cost; plus the agent *requests* those executions belong to (PR 31), because the two can disagree and that gap is exactly how PR 30's regression hid
 - [x] Agent execution logs - no column exists for prompts or reasoning, so the view cannot leak them however it is queried
-- [x] Audit Log - append-only; the table refuses UPDATE and DELETE for everyone
+- [x] Audit Log - append-only; the table refuses UPDATE and DELETE for everyone, and from PR 31 an administrator can read it. An audit log nobody can open records everything and proves nothing
 - [x] Admin action logging - one entry per consequential action, asserted per action
 - [~] Appropriate access to retained AI-used images - the rows are retained and flagged `ai_used`; the admin gallery view is Future, since nothing in the MVP needs to look at them
 - [x] Anonymized-account administration - FINAL §21 in one transaction: identity cleared, access disabled, history kept, action audited without recording what was erased
@@ -461,6 +463,7 @@ in recoverability, and the release-checklist item it creates.
 - [x] Latency metadata
 - [x] No chain-of-thought persistence - the execution record has no field that could hold it
 - [x] Async/background-compatible architecture - AgentExecutor seam; swapping in a worker changes one file
+- [x] Abandoned-run recovery (PR 31) - the tick fails any request past its agent's budget, because a restart kills in-flight background work and left the row PROCESSING forever
 
 ---
 

@@ -21,9 +21,10 @@ from app.ui.components.environment_form import FIELD_LABELS, describe, environme
 from app.ui.components.health_card import render_assessment, render_history
 from app.ui.components.identification_card import identification_card
 from app.ui.components.layout import empty_state, guarded, page_header, show_error
+from app.ui.components.sources import render_sources
 from app.ui.components.status import status_badge, trend_badge
 from app.ui.components.timeline import render_timeline
-from app.ui.state.api_client import ApiError, get, post, put
+from app.ui.state.api_client import ApiError, delete, get, patch, post, put
 
 SELECTED = "pc_selected_plant"
 FLASH = "plant_flash"
@@ -162,14 +163,70 @@ with facts:
                 kind="info",
             )
 
-if len(gallery) > 1:
+
+def rename_plant(name: str, notes: str) -> None:
+    """PATCH /v1/plants/{id}. Shipped in PR 11 and reachable from nowhere until
+    PR 31, so a plant kept whatever name confirmation gave it forever."""
+    try:
+        patch(
+            f"/v1/plants/{plant_id}",
+            json={"name": name.strip() or None, "notes": notes.strip() or None},
+        )
+        flash("הפרטים נשמרו.")
+        st.rerun()
+    except ApiError as exc:
+        show_error(exc)
+
+
+def remove_image(image_id: str) -> None:
+    """DELETE /v1/plants/{id}/images/{id}, also unreachable until PR 31.
+
+    FINAL §20 decides what "delete" means and the endpoint implements it: an image
+    the AI has used is hidden rather than destroyed, because an assessment that
+    cited it must stay legible. The user is told which of the two happened.
+    """
+    try:
+        result = delete(f"/v1/plants/{plant_id}/images/{image_id}")
+    except ApiError as exc:
+        show_error(exc)
+        return
+
+    if result.get("outcome") == "hidden":
+        flash(
+            "התמונה הוסרה מהגלריה. היא נשמרת כראיה לניתוח שהתבסס עליה.",
+            kind="info",
+            icon=":material/visibility_off:",
+        )
+    else:
+        flash("התמונה נמחקה.")
+    st.rerun()
+
+
+with st.expander("עריכת פרטי הצמח", icon=":material/edit:"), st.form("pd_rename", border=False):
+    new_name = st.text_input(
+        "שם הצמח", value=data.get("name") or "", max_chars=120, key="pd_rename_name"
+    )
+    new_notes = st.text_area(
+        "הערות", value=data.get("notes") or "", max_chars=2000, key="pd_rename_notes"
+    )
+    if st.form_submit_button("שמירה", type="primary", icon=":material/save:"):
+        rename_plant(new_name, new_notes)
+
+if gallery:
     with st.expander(f"גלריה ({len(gallery)})", icon=":material/photo_library:"):
         for row_start in range(0, len(gallery), 3):
             for column, image in zip(
                 st.columns(3), gallery[row_start : row_start + 3], strict=False
             ):
-                if image.get("thumbnail_url"):
-                    column.image(image["thumbnail_url"], width="stretch")
+                with column:
+                    if image.get("thumbnail_url"):
+                        st.image(image["thumbnail_url"], width="stretch")
+                    if image.get("is_main"):
+                        st.caption(":material/star: תמונה ראשית")
+                    if st.button(
+                        "מחיקה", key=f"pd_img_del_{image['id']}", icon=":material/delete:"
+                    ):
+                        remove_image(image["id"])
 
 st.divider()
 
@@ -191,9 +248,28 @@ if pending_identification:
         except ApiError as exc:
             show_error(exc)
 
+    def report_wrong_identification(scientific_name: str | None, note: str) -> None:
+        try:
+            post(
+                f"/v1/identifications/{pending_id}/correct",
+                json={"scientific_name": scientific_name, "note": note or None},
+            )
+        except ApiError as exc:
+            show_error(exc)
+            return
+        flash(
+            "הדיווח נשמר. אפשר לנסות שוב עם תמונות אחרות.",
+            kind="info",
+            icon=":material/flag:",
+        )
+        st.rerun()
+
     st.subheader("זיהינו את הצמח — האם זה נכון?", anchor=False)
     identification_card(
-        pending_identification, on_confirm=confirm_identification, key_prefix="pd_ident"
+        pending_identification,
+        on_confirm=confirm_identification,
+        on_correct=report_wrong_identification,
+        key_prefix="pd_ident",
     )
     st.divider()
 
@@ -274,11 +350,34 @@ if data.get("open_proposals"):
         for proposal in proposals:
             proposal_card(proposal, on_approve=approve, on_reject=reject)
 
+
+def complete_task(task_id: str, action: str) -> None:
+    """Done and Skip, from the plant's own page.
+
+    `care_task_card` renders those buttons only when it is given the callbacks,
+    and this page never gave them - so a task that was due today was read-only
+    here and had to be completed from Home. The two are the same action against
+    the same endpoint; only one screen offered it.
+    """
+    try:
+        post(f"/v1/care-tasks/{task_id}/{action}")
+    except ApiError as exc:
+        show_error(exc)
+        return
+    flash("נרשם." if action == "done" else "דילגנו על המשימה.")
+    st.rerun()
+
+
 upcoming = data.get("upcoming_tasks") or []
 if upcoming:
     st.subheader("הטיפול הקרוב", anchor=False)
     for task in upcoming[:5]:
-        care_task_card(task, key_prefix="pd")
+        care_task_card(
+            task,
+            key_prefix="pd",
+            on_done=lambda task_id: complete_task(task_id, "done"),
+            on_skip=lambda task_id: complete_task(task_id, "skip"),
+        )
 
 plan = data.get("care_plan")
 if plan:
@@ -504,6 +603,20 @@ if species:
                 # An empty box reads as a broken page. Saying so is worse news and
                 # better information.
                 st.caption("המידע המקצועי אינו זמין להצגה כרגע.")
+
+            # Where it came from, which is the half of `KnowledgeResponse` that
+            # reached nobody until PR 31. The endpoint has always returned
+            # `sources`, and the whole point of PR 14's deterministic verification
+            # is that a reader can tell a fetched, approved page from something
+            # the model asserted. Rendering only the prose left them trusting all
+            # of it equally.
+            st.divider()
+            st.caption(
+                f"גרסה {knowledge.get('version_number')} · "
+                f"פורסם {str(knowledge.get('published_at') or '')[:10]}"
+            )
+            with st.expander(f"מקורות ({len(knowledge.get('sources') or [])})"):
+                render_sources(knowledge.get("sources") or [])
 
             # FINAL §10: users report errors; they never edit.
             with st.form("knowledge_report"):

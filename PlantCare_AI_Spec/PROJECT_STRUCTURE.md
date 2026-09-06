@@ -86,7 +86,11 @@ plantcare-ai/
 │   ├── agents/
 │   ├── ui/              # AppTest; added in PR 9, absent from this tree until PR 23
 │   ├── security/        # the RLS matrix (PR 23)
-│   └── e2e/             # the nine journeys (PR 23)
+│   ├── e2e/             # the nine journeys (PR 23)
+│   └── browser/         # PR 31: real Chromium, real API, live model. Marked
+│                        # `browser` and excluded from CI - it is the only layer
+│                        # that renders and calls at the same time, which is
+│                        # where every serious defect in this build has lived
 │
 ├── docs/
 ├── scripts/

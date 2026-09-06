@@ -122,3 +122,26 @@ if not preferences.get("email_enabled", True):
     # Said plainly rather than left to be inferred from a toggle: a user who
     # turned reminders off should know the work is still tracked in the app.
     st.caption("התזכורות במייל כבויות. המשימות עדיין מופיעות במסך הבית.")
+
+
+# --- what we actually sent --------------------------------------------------------
+
+# `GET /v1/notification-deliveries` shipped in PR 19 and had no screen until PR 31,
+# though `PROGRESS §15` ticked it as "user-visible, so 'we did email you' is
+# checkable rather than trusted". It was neither visible nor checkable. On a
+# deployment with no mail provider configured the honest answer is "we sent
+# nothing", and a user comparing that against an empty inbox deserves to see it.
+with st.expander("התראות שנשלחו", icon=":material/mark_email_read:"):
+    deliveries = guarded(lambda: get("/v1/notification-deliveries", params={"limit": 20}))
+    if deliveries is not None:
+        if not deliveries:
+            st.caption("עדיין לא נשלחו אליך התראות.")
+        for delivery in deliveries:
+            status = delivery.get("status")
+            icon = {"SENT": ":material/check:", "FAILED": ":material/error:"}.get(
+                status, ":material/schedule:"
+            )
+            when = str(delivery.get("sent_at") or delivery.get("scheduled_at") or "")[:16]
+            st.markdown(f"{icon} {when}")
+            if delivery.get("error_message"):
+                st.caption(delivery["error_message"])

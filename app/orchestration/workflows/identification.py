@@ -25,6 +25,7 @@ from app.agents.identification.contract import IdentificationRequest, Identifica
 from app.common.enums import (
     AgentStage,
     AgentType,
+    CarePlanVersionSourceType,
     IdentificationMethod,
     IdentificationStatus,
     KnowledgeDraftStatus,
@@ -354,6 +355,8 @@ def confirm(
     if target is PlantStatus.KNOWLEDGE_PENDING:
         research = _start_research(UUID(species_id), user_id)
 
+    initial_plan = _start_initial_plan(client, user_id=user_id, plant_id=plant_id, target=target)
+
     plants_repo.record_event(
         client,
         user_id=user_id,
@@ -370,6 +373,10 @@ def confirm(
     return {
         "plant_id": str(plant_id),
         "name": chosen_name,
+        # Present when the plant landed ACTIVE and had no plan. The caller submits
+        # it, for the same reason `research` is handled that way: confirmation must
+        # not block on a model call that takes a minute and a half.
+        "initial_plan": initial_plan,
         "species_id": species_id,
         "scientific_name": species["scientific_name"],
         "status": target.value,
@@ -379,6 +386,47 @@ def confirm(
         # user's plant is already usable without it.
         "research": research,
     }
+
+
+def _start_initial_plan(
+    client: Client, *, user_id: UUID, plant_id: UUID, target: PlantStatus
+) -> dict[str, str] | None:
+    """A3: a plant that becomes ACTIVE gets a care plan proposal.
+
+    The fan-out on publication has done this since PR 16 - for plants that waited
+    in KNOWLEDGE_PENDING. The other route into ACTIVE is this one: confirming a
+    species whose knowledge is *already* published, which is the "existing species
+    reuses published Knowledge" journey and the common case once the library
+    fills up. Nothing queued a proposal there, so those plants arrived ACTIVE with
+    no plan, no schedule and no reminders, and the only way to a plan was for the
+    user to notice an empty state and press a button.
+
+    Found by walking the product in a browser (PR 31). Every layer below passed:
+    the journey asserts the plant is ACTIVE, which it was.
+    """
+    if target is not PlantStatus.ACTIVE:
+        return None
+
+    from app.orchestration.workflows import care as care_workflow
+
+    # Re-identification of a plant that already has a working plan is a different
+    # flow with a different source type, and must not be given a second INITIAL_PLAN.
+    if care_workflow.plan_for_plant(client, plant_id=plant_id):
+        return None
+
+    try:
+        request = care_workflow.start_proposal(
+            client,
+            user_id=user_id,
+            plant_id=plant_id,
+            reason=CarePlanVersionSourceType.INITIAL_PLAN,
+        )
+    except ValidationFailedError:
+        # A proposal is already pending, or the plant cannot take one yet. The
+        # confirmation itself succeeded and must not be undone by this.
+        return None
+
+    return {"request_id": str(request.id), "plant_id": str(plant_id)}
 
 
 def _fallback_name(candidate: dict[str, Any]) -> str:

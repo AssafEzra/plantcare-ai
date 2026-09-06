@@ -34,6 +34,7 @@ dev = [
     "pglast>=8.4",
     "psycopg[binary]>=3.3.5",
     "pytest-httpx>=0.36.2",
+    "pytest-playwright>=0.5",
 ]
 
 [build-system]
@@ -95,6 +96,7 @@ markers = [
     "live: tests that call a real external provider (slow, costly, excluded from CI)",
     "integration: tests requiring a live DEV Supabase project",
     "e2e: end-to-end journey tests",
+    "browser: drives the real UI against the real API in a real browser (slow, live model, excluded from CI)",
 ]
 addopts = "-q --strict-markers"
 

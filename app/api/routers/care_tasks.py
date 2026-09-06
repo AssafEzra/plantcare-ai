@@ -33,6 +33,7 @@ from app.config.settings import get_settings
 from app.domain.rules import recurrence
 from app.infrastructure.supabase.client import service_client
 from app.notifications import service as notifications
+from app.orchestration.services import agent_requests as agent_requests_service
 from app.orchestration.services import scheduler
 from app.repositories.base import rows
 
@@ -93,6 +94,8 @@ class TickResponse(BaseModel):
     materialised: int
     marked_overdue: int
     missed: int
+    # Agent runs whose worker never came back — see `reap_abandoned`.
+    abandoned: int = 0
     emails_sent: int = 0
     emails_skipped: int = 0
     emails_failed: int = 0
@@ -247,6 +250,9 @@ async def internal_tick(
 
     created = scheduler.materialise(admin, now_utc=now)
     swept = scheduler.sweep_overdue(admin, now_utc=now)
+    # Before the reminders: a request abandoned by a restarted worker should read
+    # as failed on this tick, not as still running for one more cycle.
+    abandoned = agent_requests_service.reap_abandoned(now)
     # After the sweep, so the reminders describe the state this run settled
     # rather than the one it started from.
     dispatched = notifications.dispatch_due(admin, now_utc=now)
@@ -256,6 +262,7 @@ async def internal_tick(
         materialised=created,
         marked_overdue=swept.marked_overdue,
         missed=swept.missed,
+        abandoned=abandoned,
         emails_sent=dispatched.sent,
         emails_failed=dispatched.failed,
     )
@@ -265,6 +272,7 @@ async def internal_tick(
             materialised=created,
             marked_overdue=swept.marked_overdue,
             missed=swept.missed,
+            abandoned=abandoned,
             emails_sent=dispatched.sent,
             emails_skipped=dispatched.skipped,
             emails_failed=dispatched.failed,

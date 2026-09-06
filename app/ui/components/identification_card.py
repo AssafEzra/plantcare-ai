@@ -40,6 +40,7 @@ def identification_card(
     *,
     on_confirm: Callable[[str, str | None], None],
     on_restart: Callable[[], None] | None = None,
+    on_correct: Callable[[str | None, str], None] | None = None,
     restart_label: str = "נסה שוב",
     key_prefix: str = "ident",
     wikipedia_url: str | None = None,
@@ -115,3 +116,29 @@ def identification_card(
             restart_label, icon=":material/refresh:", key=f"{key_prefix}_restart"
         ):
             on_restart()
+
+    # A13, and the endpoint that had no caller until PR 31: the user can say the
+    # model is wrong. It records history and changes nothing - FINAL §8 keeps
+    # confirmation as the only thing that moves a plant - so the copy has to be
+    # honest that this is a report rather than a correction that takes effect.
+    if on_correct:
+        with st.expander("אף אחת מהאפשרויות אינה נכונה", icon=":material/flag:"):
+            st.caption(
+                "הדיווח נשמר בהיסטוריה של הצמח ומסייע לנו להשתפר. "
+                "הוא אינו קובע את המין - לשם כך צריך לאשר אפשרות או לנסות תמונות אחרות."
+            )
+            with st.form(f"{key_prefix}_correct", border=False):
+                guess = st.text_input(
+                    "אם ידוע לך, מה המין?",
+                    placeholder="למשל: Monstera deliciosa",
+                    max_chars=200,
+                    key=f"{key_prefix}_correct_name",
+                )
+                note = st.text_area(
+                    "מה לא מתאים?", max_chars=1000, key=f"{key_prefix}_correct_note"
+                )
+                if st.form_submit_button("שליחת דיווח", icon=":material/send:"):
+                    if not guess.strip() and not note.strip():
+                        st.warning("יש למלא שם מין או הערה.", icon=":material/info:")
+                    else:
+                        on_correct(guess.strip() or None, note.strip())

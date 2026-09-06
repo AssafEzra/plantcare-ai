@@ -283,6 +283,47 @@ and it is the same mistake: a page-wide assertion passes because *something else
 on the page satisfies it. Both now render the card alone through
 `AppTest.from_function`, which is what they always meant.
 
+## The browser layer, and why it had to exist (PR 31)
+
+**Added in PR 31 per `FINAL §37`, and it revises A15.** `tests/browser/` drives a
+real Chromium against the running Streamlit, the running API, the DEV database and
+a **live model** — the product as it ships.
+
+The three layers below it each test a half, and the halves were never joined:
+
+| Layer | Real | Stubbed |
+|---|---|---|
+| `tests/ui` (`AppTest`) | the Streamlit script | `api_client` |
+| `tests/e2e` (journeys) | the HTTP API, the database | the model, and there is no interface at all |
+| `tests/browser` | everything | nothing |
+
+Every serious defect in this build lived in the seam between the first two. A stub
+returning `thumbnail_url` proved the card renders an image while the endpoint
+never set the key; both suites stayed green for weeks and every card in the grid
+said "אין תמונה".
+
+**Three rules this layer keeps.**
+
+1. *Assert on what a person can read or press.* `expect(main).to_contain_text(...)`
+   over a rendered page, never a response body. "The field is in the payload" and
+   "the photograph is on the card" are different claims, and for six weeks they
+   disagreed.
+2. *The model is live.* This is the only layer that can catch a timeout budget or
+   a provider-shaped regression, both of which reached a user in one week. It is
+   also why the suite is marked `browser`, excluded from CI, and run deliberately.
+3. *Fixtures must be able to exercise the thing under test.* The first run
+   uploaded a flat green rectangle and identification correctly answered "we could
+   not identify this"; the second picked the newest image in DEV, which is always
+   one of this project's own solid-colour uploads. It now picks the largest, since
+   a photograph dwarfs a flat JPEG. A fixture that looks like data but cannot
+   drive the feature turns a green suite into a lie.
+
+Streamlit needs two accommodations, both harness facts rather than product ones:
+every tab's content is in the DOM even when hidden, so lookups are scoped to a
+form or panel; and a field with help text has a "?" button carrying
+`aria-label="Help for <label>"`, so fields are found by role rather than by label
+alone.
+
 ## 13. Acceptance Gate
 
 A feature is considered complete only when:

@@ -18,6 +18,7 @@ from typing import Any, Literal
 import streamlit as st
 
 from app.ui.components.layout import empty_state, guarded, page_header, show_error
+from app.ui.components.sources import render_sources
 from app.ui.state.api_client import ApiError, get, patch, post
 
 SECTION_LABELS: dict[str, str] = {
@@ -49,12 +50,6 @@ DRAFT_STATUS_LABELS: dict[str, tuple[str, BadgeColour]] = {
     "FAILED": ("נכשל", "red"),
 }
 
-SOURCE_CLASS_LABELS: dict[str, tuple[str, BadgeColour]] = {
-    "APPROVED": ("מקור מאושר", "green"),
-    "EXTERNAL_UNAPPROVED": ("מקור חיצוני לא מאושר", "orange"),
-    "AI_GENERATED_REQUIRES_VERIFICATION": ("נוצר ב-AI — דורש אימות", "red"),
-}
-
 # Below this, a section is surfaced to the reviewer rather than left to be found.
 WEAK_SECTION = 0.5
 
@@ -80,18 +75,28 @@ def show_flash() -> None:
     {"success": st.success, "info": st.info, "warning": st.warning}[kind](message, icon=icon)
 
 
-overview_tab, drafts_tab, published_tab, sources_tab, reports_tab, monitoring_tab, accounts_tab = (
-    st.tabs(
-        [
-            "סקירה",
-            "טיוטות ידע",
-            "ידע מפורסם",
-            "מקורות מאושרים",
-            "דיווחי משתמשים",
-            "ניטור סוכנים",
-            "חשבונות",
-        ]
-    )
+(
+    overview_tab,
+    drafts_tab,
+    published_tab,
+    sources_tab,
+    reports_tab,
+    monitoring_tab,
+    deliveries_tab,
+    audit_tab,
+    accounts_tab,
+) = st.tabs(
+    [
+        "סקירה",
+        "טיוטות ידע",
+        "ידע מפורסם",
+        "מקורות מאושרים",
+        "דיווחי משתמשים",
+        "ניטור סוכנים",
+        "התראות שנשלחו",
+        "יומן פעולות",
+        "חשבונות",
+    ]
 )
 
 
@@ -134,34 +139,6 @@ with overview_tab:
 def status_badge(status: str) -> None:
     label, colour = DRAFT_STATUS_LABELS.get(status, (status, "gray"))
     st.badge(label, color=colour)
-
-
-def render_sources(sources: list[dict[str, Any]]) -> None:
-    """Provenance, with the unverified claims impossible to miss.
-
-    Ordered worst-first rather than as the model listed them. A reviewer needs to
-    see what is *not* backed by a fetched page before deciding whether the text
-    resting on it can be published.
-    """
-    if not sources:
-        st.caption("לא צורפו מקורות.")
-        return
-
-    order = {"AI_GENERATED_REQUIRES_VERIFICATION": 0, "EXTERNAL_UNAPPROVED": 1, "APPROVED": 2}
-    for source in sorted(sources, key=lambda s: order.get(s.get("source_class", ""), 9)):
-        label, colour = SOURCE_CLASS_LABELS.get(
-            source.get("source_class", ""), (source.get("source_class", ""), "gray")
-        )
-        with st.container(border=True):
-            st.badge(label, color=colour)
-            if source.get("title"):
-                st.write(f"**{source['title']}**")
-            if source.get("publisher"):
-                st.caption(source["publisher"])
-            if source.get("url"):
-                st.link_button("פתיחת המקור", source["url"], icon=":material/open_in_new:")
-            if source.get("notes"):
-                st.caption(source["notes"])
 
 
 def render_sections(sections: dict[str, Any]) -> None:
@@ -473,6 +450,108 @@ with monitoring_tab:
                 )
                 if execution.get("error_code"):
                     st.caption(f"שגיאה: {execution['error_code']}")
+
+    # The requests those executions belong to. An execution row says a model call
+    # happened; a request says whether the *user's* operation finished. They can
+    # disagree - a run whose provider error escaped the gateway leaves a FAILED
+    # request and no execution at all, which is precisely how PR 30's regression
+    # hid - and only this view makes that visible.
+    st.divider()
+    st.subheader("בקשות סוכן", anchor=False)
+    st.caption("מה שהמשתמש ביקש, לעומת הקריאות למודל שלמעלה. פער ביניהן הוא סימן לתקלה.")
+
+    request_params: dict[str, Any] = {"limit": 50}
+    if st.toggle("רק כשלים", key="admin_only_failed_requests"):
+        request_params["status"] = "FAILED"
+
+    requests = guarded(lambda: get("/v1/admin/agent-requests", params=request_params))
+    if requests is not None:
+        if not requests:
+            st.caption("אין בקשות להצגה.")
+        for agent_request in requests:
+            with st.container(border=True):
+                if agent_request["status"] == "FAILED":
+                    st.badge("נכשל", color="red")
+                st.markdown(f"**{agent_request['agent_type']}** · {agent_request['status']}")
+                st.caption(
+                    f"{str(agent_request['created_at'])[:16]}"
+                    + (f" · שלב {agent_request['stage']}" if agent_request.get("stage") else "")
+                    + (
+                        f" · {agent_request['error_code']}"
+                        if agent_request.get("error_code")
+                        else ""
+                    )
+                )
+
+
+# --- notification deliveries ------------------------------------------------------
+
+with deliveries_tab:
+    # `GET /v1/admin/notification-deliveries` shipped in PR 19 and had no screen
+    # until PR 31, which made "did we actually email anyone?" a question only a
+    # database query could answer - on a system whose email provider is currently
+    # a null provider, so the honest answer is "no", and nobody could see it.
+    st.caption(
+        "כל שליחה נרשמת לפני הקריאה לספק, כך שהיומן מראה גם ניסיונות שנכשלו. "
+        "כשלא מוגדר ספק דואר, המערכת אינה שולחת דבר וזה ייראה כאן."
+    )
+
+    failures_only = st.toggle("רק כשלים", key="admin_delivery_failures")
+    delivery_params: dict[str, Any] = {"limit": 50}
+    if failures_only:
+        delivery_params["status"] = "FAILED"
+
+    deliveries = guarded(lambda: get("/v1/admin/notification-deliveries", params=delivery_params))
+    if deliveries is not None:
+        if not deliveries:
+            st.caption("לא נשלחו התראות.")
+        for delivery in deliveries:
+            with st.container(border=True):
+                if delivery["status"] == "FAILED":
+                    st.badge("נכשל", color="red")
+                elif delivery["status"] == "SENT":
+                    st.badge("נשלח", color="green")
+                else:
+                    st.badge(delivery["status"], color="gray")
+                st.caption(
+                    f"{delivery['dedupe_key']} · תוזמן {str(delivery['scheduled_at'])[:16]}"
+                    + (
+                        f" · נשלח {str(delivery['sent_at'])[:16]}"
+                        if delivery.get("sent_at")
+                        else ""
+                    )
+                )
+                if delivery.get("error_message"):
+                    st.caption(f"שגיאה: {delivery['error_message']}")
+
+
+# --- audit log --------------------------------------------------------------------
+
+with audit_tab:
+    # Append-only at the table, unreadable in the product: `GET /v1/admin/audit-log`
+    # had no screen either. An audit log nobody can open records everything and
+    # proves nothing.
+    st.caption(
+        "כל פעולת ניהול מהותית נרשמת כאן. הטבלה מסרבת לעדכון ולמחיקה עבור כל תפקיד, "
+        "כך שהרישום אינו ניתן לשינוי בדיעבד."
+    )
+
+    entries = guarded(lambda: get("/v1/admin/audit-log", params={"limit": 50}))
+    if entries is not None:
+        if not entries:
+            st.caption("אין רישומים.")
+        for entry in entries:
+            with st.container(border=True):
+                st.markdown(f"**{entry['action']}**")
+                target = " · ".join(
+                    part
+                    for part in (entry.get("target_table"), str(entry.get("target_id") or "")[:8])
+                    if part
+                )
+                st.caption(f"{str(entry['created_at'])[:16]}" + (f" · {target}" if target else ""))
+                if entry.get("payload"):
+                    with st.expander("פרטים"):
+                        st.json(entry["payload"])
 
 
 # --- accounts ---------------------------------------------------------------------
