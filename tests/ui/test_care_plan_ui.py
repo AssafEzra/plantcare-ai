@@ -263,3 +263,91 @@ def test_the_source_of_a_proposal_is_named(page):
     app.run()
 
     assert "בעקבות בדיקת בריאות" in rendered(app)
+
+
+# --- why the save button is disabled (PR 33) -----------------------------------
+#
+# Reported from real use: "manual changing in שינוי תדירות או שעה does nothing, it
+# wont let you save changes". Both conditions were real - a version after the
+# first cannot be written without a change summary, and an adjustment with no
+# override is not an adjustment - but the screen enforced them in silence. A
+# greyed-out primary button with no reason beside it is indistinguishable from a
+# broken one.
+
+
+def _adjust_form(card: dict) -> AppTest:
+    def render(card):
+        from app.ui.components.care_plan import active_plan_card
+
+        active_plan_card(card, on_adjust=lambda *_: None)
+
+    app = AppTest.from_function(render, kwargs={"card": card}, default_timeout=30)
+    app.run()
+    assert not app.exception, [str(e) for e in app.exception]
+    return app
+
+
+def _save(app: AppTest):
+    return next(b for b in app.button if "שמירת השינוי" in b.label)
+
+
+def _reasons(app: AppTest) -> str:
+    return " ".join(str(c.value) for c in app.caption)
+
+
+def test_the_field_is_marked_required():
+    """The blocker was invisible in two ways at once: the button gave no reason,
+    and the field it was waiting on did not look mandatory."""
+    app = _adjust_form(version(status="ACTIVE"))
+
+    assert any("חובה" in t.label for t in app.text_input)
+
+
+def test_an_untouched_form_says_what_is_missing():
+    app = _adjust_form(version(status="ACTIVE"))
+
+    assert _save(app).disabled
+    assert "תדירות" in _reasons(app)
+    assert "לתאר" in _reasons(app)
+
+
+def test_changing_a_number_leaves_only_the_description_outstanding():
+    """The exact sequence that was reported: change 7 to 5, look for the save
+    button, find it still greyed out with nothing explaining why."""
+    app = _adjust_form(version(status="ACTIVE"))
+    app.number_input[0].set_value(5).run()
+
+    assert _save(app).disabled
+    assert "יש לתאר את השינוי כדי לשמור." in _reasons(app)
+
+
+def test_describing_the_change_alone_is_not_enough():
+    """A description with no changed interval is not an adjustment, and the
+    message says which half is missing rather than repeating itself."""
+    app = _adjust_form(version(status="ACTIVE"))
+    app.text_input[0].set_value("הדירה חמה יותר").run()
+
+    assert _save(app).disabled
+    assert "תדירות" in _reasons(app)
+    assert "לתאר" not in _reasons(app)
+
+
+def test_both_together_enable_it_and_the_reason_goes_away():
+    app = _adjust_form(version(status="ACTIVE"))
+    app.number_input[0].set_value(5).run()
+    app.text_input[0].set_value("הדירה חמה יותר").run()
+
+    assert not _save(app).disabled
+    assert "כדי לשמור" not in _reasons(app)
+
+
+def test_the_form_says_the_change_becomes_a_proposal():
+    """The other half of "manual changing does nothing": an adjustment produces a
+    proposal, and the schedule does not move until it is approved. The caption
+    said the professional recommendations are preserved - true, and not the thing
+    the user was about to be surprised by."""
+    app = _adjust_form(version(status="ACTIVE"))
+
+    caption = _reasons(app)
+    assert "הצעה" in caption
+    assert "לוח הזמנים" in caption

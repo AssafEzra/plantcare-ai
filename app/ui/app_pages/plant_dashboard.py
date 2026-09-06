@@ -308,8 +308,12 @@ def adjust(version_id: str, overrides: dict[str, Any], summary: str) -> None:
             f"/v1/care-plan-versions/{version_id}/operational-adjustment",
             json={"operational_preferences": overrides, "change_summary": summary},
         )
+        # Says what happened *and* what still has to happen. "אפשר לאשר אותה
+        # למטה" was also pointing the wrong way: open proposals render above the
+        # plan card, not below it.
         flash(
-            "השינוי נשמר כהצעה חדשה. אפשר לאשר אותה למטה.",
+            "השינוי נשמר כהצעה. לוח הזמנים יתעדכן אחרי שתאשרו אותה — "
+            "ההצעה מופיעה למעלה, מעל תוכנית הטיפול.",
             kind="info",
             icon=":material/pending_actions:",
         )

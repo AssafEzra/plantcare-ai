@@ -564,6 +564,20 @@ A structured Care Plan Proposal containing professional recommendations and oper
 
 ### User approval
 
+**A blocked save says why (PR 33), per §37.** Reported from real use: *"manual
+changing in שינוי תדירות או שעה does nothing, it wont let you save changes"*. The
+save button required both a changed interval and a description, and enforced both
+in silence — so a user who changed 7 days to 5 found a greyed-out primary button
+and no reason beside it, which is indistinguishable from a broken one. Both
+conditions are real (a version after the first cannot be written without a change
+summary, and an adjustment with no override is not an adjustment); the field is
+now marked mandatory and the missing half is named under the button.
+
+Worth restating here because it is the other half of the same report: an
+operational adjustment produces a **proposal**, not an applied change. The
+schedule moves when that proposal is approved — which is what cancels the
+outstanding tasks (A5) and materialises the new ones.
+
 **Presented in a window, with what changes (revised PR 33), per §37.** The
 approve/reject decision sat inline on the plant page beside the health card and
 the timeline, and showed the proposed plan in full without ever saying how it

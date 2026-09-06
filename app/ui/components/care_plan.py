@@ -121,6 +121,24 @@ def render_recommendations(recommendations: dict[str, Any]) -> None:
 # shape that let two screens disagree about the same task in PR 31.
 
 
+def _why_not_saveable(overrides: dict[str, Any], summary: str) -> str | None:
+    """What is still missing before an adjustment can be saved.
+
+    Returns the sentence to show, or None when the button should be live. Split
+    out so the message is a value the tests can assert on rather than a string
+    buried in a render branch — and so the two conditions can be told apart: a
+    user who typed a description but changed no number needs different words from
+    one who did the opposite.
+    """
+    if not overrides and not summary.strip():
+        return "יש לשנות תדירות של טיפול אחד לפחות ולתאר את השינוי כדי לשמור."
+    if not overrides:
+        return "יש לשנות תדירות של טיפול אחד לפחות כדי לשמור."
+    if not summary.strip():
+        return "יש לתאר את השינוי כדי לשמור."
+    return None
+
+
 def active_plan_card(plan: dict[str, Any], *, on_adjust=None, key_prefix: str = "plan") -> None:
     """The plan in force, and the one thing the user may change about it.
 
@@ -146,9 +164,14 @@ def active_plan_card(plan: dict[str, Any], *, on_adjust=None, key_prefix: str = 
             return
 
         with st.expander("שינוי תדירות או שעה", icon=":material/tune:"):
+            # What the control does, before it is used. It said the professional
+            # recommendations are preserved - true, and not the thing a user is
+            # about to be surprised by. An adjustment produces a *proposal*: the
+            # schedule does not move until it is approved, and the second half of
+            # "manual changing does nothing" was exactly that expectation.
             st.caption(
-                "אפשר לשנות מתי מזכירים לך. ההמלצות המקצועיות נשארות כפי שהן "
-                "ונשמרות במלואן בגרסה החדשה."
+                "אפשר לשנות מתי מזכירים לך. ההמלצות המקצועיות נשארות כפי שהן. "
+                "השינוי נשמר כהצעה שממתינה לאישור שלכם — לוח הזמנים מתעדכן רק אחרי שתאשרו אותה."
             )
             overrides: dict[str, Any] = {}
             for rule in plan.get("rules") or []:
@@ -164,14 +187,28 @@ def active_plan_card(plan: dict[str, Any], *, on_adjust=None, key_prefix: str = 
                     overrides[rule["action_type"]] = {"interval_days": int(days)}
 
             summary = st.text_input(
-                "מה השתנה?",
+                "מה השתנה? (חובה)",
                 key=f"{key_prefix}_summary",
                 placeholder="למשל: הדירה חמה יותר בקיץ",
+                help="נשמר בהיסטוריית הגרסאות, כדי שיהיה אפשר להבין מאוחר יותר למה השתנה משהו.",
             )
+
+            # Why the button is disabled, said out loud. Reported from real use:
+            # "manual changing in שינוי תדירות או שעה does nothing, it wont let
+            # you save changes". Both conditions were real - a version after the
+            # first cannot be written without a change summary, and an adjustment
+            # with no override is not an adjustment - but the screen enforced them
+            # in silence. A greyed-out primary button with no reason beside it is
+            # indistinguishable from a broken one.
+            blocked = _why_not_saveable(overrides, summary)
+
             if st.button(
                 "שמירת השינוי",
                 key=f"{key_prefix}_adjust",
                 type="primary",
-                disabled=not overrides or not summary.strip(),
+                disabled=bool(blocked),
             ):
                 on_adjust(plan["id"], overrides, summary.strip())
+
+            if blocked:
+                st.caption(blocked)
