@@ -10,6 +10,7 @@ rests on, so a user can disagree with the reasoning rather than only the verdict
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import Any
 
 import streamlit as st
@@ -25,6 +26,25 @@ SEVERITY_LABELS: dict[int, str] = {
 }
 
 
+def assessed_at(assessment: dict[str, Any]) -> str:
+    """When the check ran, in the reader's own timezone.
+
+    `created_at` has been on `AssessmentResponse` since PR 21 and no screen read
+    it. Rendered as an absolute date and time rather than "3 days ago": a user
+    comparing this check with the previous one needs to place them, and a relative
+    phrase makes that arithmetic their problem.
+    """
+    raw = assessment.get("created_at")
+    if not raw:
+        return ""
+    try:
+        parsed = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+    except ValueError:  # pragma: no cover - the API returns ISO-8601
+        return ""
+    local = parsed.astimezone() if parsed.tzinfo else parsed.replace(tzinfo=UTC).astimezone()
+    return f"נבדק ב-{local:%d/%m/%Y} בשעה {local:%H:%M}"
+
+
 def render_assessment(assessment: dict[str, Any], *, on_adjust_plan=None) -> None:
     """One assessment in full."""
     status = assessment.get("overall_status", "UNKNOWN")
@@ -36,6 +56,13 @@ def render_assessment(assessment: dict[str, Any], *, on_adjust_plan=None) -> Non
         header, badges = st.columns([2, 1])
         with header:
             st.subheader("תוצאות הבדיקה", anchor=False)
+            # When the check was run. A health assessment is a statement about a
+            # moment - "the lower leaves are yellowing" means something different
+            # from a week ago than from an hour ago - and the card carried no date
+            # at all, so a stale result was indistinguishable from a fresh one.
+            when = assessed_at(assessment)
+            if when:
+                st.caption(when)
         with badges:
             status_badge(status)
             if assessment.get("trend"):
@@ -125,4 +152,7 @@ def render_history(entries: list[dict[str, Any]]) -> None:
             status_badge(entry.get("overall_status", "UNKNOWN"))
             if entry.get("trend"):
                 trend_badge(entry["trend"])
-            st.caption(str(entry.get("created_at", ""))[:16].replace("T", " "))
+            # Through the same helper as the card above, so a check reads the
+            # same in both places and in the reader's own zone. The raw
+            # `created_at` was UTC with a T in the middle.
+            st.caption(assessed_at(entry) or str(entry.get("created_at", ""))[:16])

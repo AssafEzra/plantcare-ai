@@ -127,9 +127,12 @@ def rendered(app: AppTest) -> str:
 
 
 def _render_proposal(card: dict) -> None:
-    from app.ui.components.care_plan import proposal_card
+    # No annotations, and every import inside: `AppTest.from_function` execs the
+    # source in a bare module, so a name from this file would be undefined.
+    from app.ui.components.proposal_dialog import open_dialog, proposal_dialog
 
-    proposal_card(card, on_approve=lambda _: None, on_reject=lambda _: None)
+    open_dialog(str(card["id"]))
+    proposal_dialog([card], on_approve=lambda _: None, on_reject=lambda _: None)
 
 
 def _render_active(card: dict) -> None:
@@ -180,17 +183,17 @@ def test_the_active_plan_offers_frequency_and_nothing_else():
     assert "השקיה" not in " ".join(t.label for t in app.text_input if "מה השתנה" not in t.label)
 
 
-def test_the_recommendations_are_shown_in_full(page):
-    app = page(proposals=[version()])
-    app.run()
+def test_the_recommendations_are_shown_in_full():
+    """Inside the dialog since PR 33. The plant page shows a one-line summary and
+    a button; the decision itself gets the screen to itself."""
+    app = card_only(_render_proposal, version())
 
     assert RECOMMENDATIONS["summary"] in rendered(app)
 
 
-def test_a_warning_from_the_recommendations_is_surfaced(page):
+def test_a_warning_from_the_recommendations_is_surfaced():
     """Toxicity is the case that matters: a user with a cat has to see it."""
-    app = page(proposals=[version()])
-    app.run()
+    app = card_only(_render_proposal, version())
 
     assert "רעיל לחתולים" in " ".join(str(w.value) for w in app.warning)
 
@@ -198,19 +201,17 @@ def test_a_warning_from_the_recommendations_is_surfaced(page):
 # --- the schedule --------------------------------------------------------------
 
 
-def test_intervals_are_written_the_way_a_person_says_them(page):
+def test_intervals_are_written_the_way_a_person_says_them():
     """ "כל שבוע", not "כל 7 ימים". Correct either way; only one is memorable."""
-    app = page(proposals=[version()])
-    app.run()
+    app = card_only(_render_proposal, version())
 
     text = rendered(app)
     assert "כל שבוע" in text
     assert "כל 7 ימים" not in text
 
 
-def test_each_rule_shows_its_action_and_time(page):
-    app = page(proposals=[version()])
-    app.run()
+def test_each_rule_shows_its_action_and_time():
+    app = card_only(_render_proposal, version())
 
     text = rendered(app)
     assert "השקיה" in text
@@ -221,11 +222,10 @@ def test_each_rule_shows_its_action_and_time(page):
 # --- A20 -----------------------------------------------------------------------
 
 
-def test_missing_context_is_shown_as_information_not_a_question(page):
+def test_missing_context_is_shown_as_information_not_a_question():
     """A20: the MVP cannot carry an answer back, so nothing here may look like a
     prompt. It renders as "what would have helped", with no input to answer it."""
-    app = page(proposals=[version()])
-    app.run()
+    app = card_only(_render_proposal, version())
 
     text = rendered(app)
     assert "גודל העציץ" in text

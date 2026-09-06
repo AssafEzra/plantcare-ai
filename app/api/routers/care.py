@@ -67,6 +67,13 @@ class VersionResponse(BaseModel):
     care_plan_id: UUID
     version_number: int
     knowledge_version_id: UUID | None = None
+    # PR 33: a plan may be built from research that has not been reviewed yet.
+    # Exactly one of the two ids is set; a check constraint refuses both.
+    knowledge_draft_id: UUID | None = None
+    # "reviewed" | "pending" | "rejected", derived from the draft's current status
+    # rather than stored, so an approval or rejection changes what every plan
+    # built from it reports without touching an immutable row.
+    knowledge_review: str = "reviewed"
     status: CarePlanVersionStatus
     professional_recommendations: dict[str, Any]
     operational_preferences: dict[str, Any] | None = None
@@ -74,6 +81,9 @@ class VersionResponse(BaseModel):
     source_type: CarePlanVersionSourceType
     created_at: datetime
     rules: list[RuleResponse] = Field(default_factory=list)
+    # The rules currently in force, so the approval dialog can show what actually
+    # changes. Empty for a first plan, which is correct - nothing to diff.
+    current_rules: list[RuleResponse] = Field(default_factory=list)
 
 
 class ProposalRequest(BaseModel):

@@ -27,6 +27,7 @@ from app.common.enums import (
     AgentType,
     CarePlanVersionSourceType,
     CarePlanVersionStatus,
+    KnowledgeDraftStatus,
 )
 from app.common.errors import NotFoundError, ValidationFailedError
 from app.config.logging import get_logger
@@ -39,7 +40,7 @@ from supabase import Client
 log = get_logger(__name__)
 
 VERSION_COLUMNS = (
-    "id, care_plan_id, version_number, knowledge_version_id, status, "
+    "id, care_plan_id, version_number, knowledge_version_id, knowledge_draft_id, status, "
     "professional_recommendations, operational_preferences, change_summary, "
     "source_type, created_by_user_id, created_at"
 )
@@ -109,7 +110,7 @@ def execute_proposal(
 
     try:
         requests_service.mark_stage(request_id, AgentStage.CONTEXT_LOADED.value)
-        context, knowledge_version_id = care_context.build(client, plant_id=plant_id)
+        context, origin = care_context.build(client, plant_id=plant_id)
         plan = ensure_plan(client, user_id=user_id, plant_id=plant_id)
         current = active_version(client, plan["id"])
 
@@ -129,7 +130,7 @@ def execute_proposal(
             client,
             user_id=user_id,
             plan_id=plan["id"],
-            knowledge_version_id=knowledge_version_id,
+            origin=origin,
             reason=reason,
             proposal=proposal,
         )
@@ -157,7 +158,7 @@ def _store_proposal(
     *,
     user_id: UUID,
     plan_id: str,
-    knowledge_version_id: str | None,
+    origin: care_context.KnowledgeOrigin,
     reason: CarePlanVersionSourceType,
     proposal: CarePlanProposal,
 ) -> Row:
@@ -169,7 +170,12 @@ def _store_proposal(
             {
                 "care_plan_id": plan_id,
                 "version_number": next_number,
-                "knowledge_version_id": knowledge_version_id,
+                # Exactly one of the two, refused by a check constraint
+                # otherwise. A plan built from an unreviewed draft says so in its
+                # own provenance rather than in a flag somewhere else that could
+                # drift away from it.
+                "knowledge_version_id": origin.version_id,
+                "knowledge_draft_id": origin.draft_id,
                 "status": CarePlanVersionStatus.PROPOSED.value,
                 "professional_recommendations": proposal.recommendations.model_dump(),
                 # A20: recorded with the proposal so the card can show what would
@@ -334,7 +340,11 @@ def operational_adjustment(
             {
                 "care_plan_id": plan_id,
                 "version_number": _next_version_number(client, plan_id),
+                # Carried across, not recomputed. An operational adjustment
+                # changes frequency and time; it must not silently re-point the
+                # plan at newer knowledge nobody has read.
                 "knowledge_version_id": source.get("knowledge_version_id"),
+                "knowledge_draft_id": source.get("knowledge_draft_id"),
                 "status": CarePlanVersionStatus.PROPOSED.value,
                 # Verbatim. Not regenerated, not re-serialised through a model.
                 "professional_recommendations": source["professional_recommendations"],
@@ -449,6 +459,42 @@ def active_version(client: Client, plan_id: str) -> Row | None:
     )
 
 
+def knowledge_state(client: Client, version: Row) -> dict[str, Any]:
+    """Whether the knowledge behind a plan has been reviewed, and how it went.
+
+    Derived from the draft's current status rather than copied onto the plan, so
+    there is no second record of the fact to drift out of date - an administrator
+    approving or rejecting a draft changes what every plan built from it reports,
+    without touching a single `care_plan_versions` row (which are
+    content-immutable anyway).
+
+    Three states a screen has to tell apart:
+
+    * `reviewed` - built from a published version, the ordinary case;
+    * `pending` - built from finished research nobody has approved yet (PR 33);
+    * `rejected` - an administrator judged that research wrong. The plan keeps
+      running, because leaving the plant with no schedule at all is worse, but
+      the user is told and a corrected version is on the way.
+    """
+    draft_id = version.get("knowledge_draft_id")
+    if not draft_id:
+        return {"knowledge_review": "reviewed"}
+
+    draft = first_row(
+        client.table("knowledge_drafts").select("id, status").eq("id", draft_id).execute()
+    )
+    status = (draft or {}).get("status")
+
+    if status == KnowledgeDraftStatus.APPROVED.value:
+        # Approved after this plan was built. The plan still cites the draft -
+        # provenance is immutable - but there is nothing provisional about the
+        # content any more.
+        return {"knowledge_review": "reviewed"}
+    if status == KnowledgeDraftStatus.REJECTED.value:
+        return {"knowledge_review": "rejected"}
+    return {"knowledge_review": "pending"}
+
+
 def plan_for_plant(client: Client, *, plant_id: UUID) -> dict[str, Any] | None:
     """The plant's active plan with its rules, or None if nothing is active yet."""
     plan = first_row(
@@ -466,6 +512,7 @@ def plan_for_plant(client: Client, *, plant_id: UUID) -> dict[str, Any] | None:
 
     return {
         **version,
+        **knowledge_state(client, version),
         "rules": rows(
             client.table("care_rules")
             .select(RULE_COLUMNS)
@@ -493,6 +540,12 @@ def proposals_for_plant(client: Client, *, plant_id: UUID) -> list[Row]:
         .execute()
     )
 
+    # The rules the *active* plan installs, so the dialog can show what actually
+    # changes rather than only what the new version says. `current_rules` is empty
+    # for a first plan, which is exactly right: there is nothing to diff against.
+    active = active_version(client, plan["id"])
+    current_rules = _rule_payloads(client, active["id"]) if active else []
+
     for proposal in proposals:
         proposal["rules"] = rows(
             client.table("care_rules")
@@ -501,6 +554,8 @@ def proposals_for_plant(client: Client, *, plant_id: UUID) -> list[Row]:
             .order("action_type")
             .execute()
         )
+        proposal["current_rules"] = current_rules
+        proposal.update(knowledge_state(client, proposal))
     return proposals
 
 
@@ -545,6 +600,95 @@ def _rule_payloads(client: Client, version_id: str) -> list[dict[str, Any]]:
 
 
 # --- the deferred fan-out hook (PR 15) ------------------------------------------
+
+
+def reconcile_missing_plans(*, executor, agent: CareAgent, limit: int = 25) -> int:
+    """Give a care plan to any ACTIVE plant that has none (PR 33).
+
+    A reconciliation step, not a new road into ACTIVE. Every road is *supposed* to
+    queue an INITIAL_PLAN, and twice now one has not: the identification-confirm
+    route shipped without it (A3, fixed in PR 31), and finished research releases
+    plants from a background task that has no request-scoped executor to submit
+    with. Both were invisible - the plant looked active and correct, and simply
+    never reminded anybody of anything.
+
+    So rather than add a third place that must remember, the tick asserts the
+    invariant directly: an ACTIVE plant has a plan, or one is being prepared. Any
+    future road into ACTIVE is covered by construction.
+
+    `limit` because this runs on a timer against every user's plants, and a
+    backlog should drain over several ticks rather than start twenty-five model
+    calls in one.
+    """
+    admin = service_client()
+
+    candidates = rows(
+        admin.table("plants")
+        .select("id, user_id, species_id")
+        .eq("status", "ACTIVE")
+        .not_.is_("species_id", "null")
+        .order("created_at", desc=True)
+        .limit(200)
+        .execute()
+    )
+
+    queued = 0
+    for plant in candidates:
+        if queued >= limit:
+            break
+
+        plan = first_row(
+            admin.table("care_plans").select("id").eq("plant_id", plant["id"]).execute()
+        )
+        if plan and (active_version(admin, plan["id"]) or _pending_proposal(admin, plan["id"])):
+            continue
+        if _request_in_flight(admin, plant["id"]):
+            # A proposal already being generated. Without this the tick would
+            # start a second model call every fifteen minutes for as long as the
+            # first one ran - and care takes ~100 seconds.
+            continue
+
+        try:
+            request = start_proposal(
+                admin,
+                user_id=UUID(plant["user_id"]),
+                plant_id=UUID(plant["id"]),
+                reason=CarePlanVersionSourceType.INITIAL_PLAN,
+            )
+        except ValidationFailedError:
+            # No knowledge for the species yet, published or drafted. The plant is
+            # not ready for a plan and this is not an error.
+            continue
+
+        # Nobody is logged in: this runs on a timer, minutes or days after the
+        # owner last had a session.
+        executor.submit(
+            execute_proposal_as_service,
+            request_id=request.id,
+            user_id=UUID(plant["user_id"]),
+            plant_id=UUID(plant["id"]),
+            reason=CarePlanVersionSourceType.INITIAL_PLAN,
+            note=None,
+            agent=agent,
+        )
+        queued += 1
+
+    if queued:
+        log.info("care.reconciled_missing_plans", queued=queued)
+    return queued
+
+
+def _request_in_flight(admin: Client, plant_id: str) -> Row | None:
+    """A care proposal already queued or running for this plant."""
+    return first_row(
+        admin.table("agent_requests")
+        .select("id")
+        .eq("plant_id", plant_id)
+        .eq("agent_type", AgentType.CARE.value)
+        .in_("status", ["QUEUED", "PROCESSING"])
+        .limit(1)
+        .execute()
+    )
 
 
 def queue_initial_plans(species_id: UUID, *, executor, agent: CareAgent) -> int:
@@ -628,7 +772,7 @@ def execute_proposal_as_service(
 
     try:
         requests_service.mark_stage(request_id, AgentStage.CONTEXT_LOADED.value)
-        context, knowledge_version_id = care_context.build(admin, plant_id=plant_id)
+        context, origin = care_context.build(admin, plant_id=plant_id)
         plan = ensure_plan(admin, user_id=user_id, plant_id=plant_id)
 
         requests_service.mark_stage(request_id, AgentStage.ANALYZING.value)
@@ -642,7 +786,7 @@ def execute_proposal_as_service(
             admin,
             user_id=user_id,
             plan_id=plan["id"],
-            knowledge_version_id=knowledge_version_id,
+            origin=origin,
             reason=reason,
             proposal=proposal,
         )

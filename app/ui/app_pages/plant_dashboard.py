@@ -15,7 +15,7 @@ from typing import Any
 import streamlit as st
 
 from app.ui.components.agent_progress import await_request
-from app.ui.components.care_plan import active_plan_card, proposal_card
+from app.ui.components.care_plan import SOURCE_LABELS, active_plan_card
 from app.ui.components.care_task_card import care_task_card, due_text, is_due
 from app.ui.components.environment_form import FIELD_LABELS, describe, environment_form
 from app.ui.components.health_card import render_assessment, render_history
@@ -24,6 +24,9 @@ from app.ui.components.health_check_dialog import health_check_dialog
 from app.ui.components.health_check_dialog import open_dialog as open_health_dialog
 from app.ui.components.identification_card import identification_card
 from app.ui.components.layout import empty_state, guarded, page_header, show_error
+from app.ui.components.proposal_dialog import open_dialog as open_proposal_dialog
+from app.ui.components.proposal_dialog import proposal_dialog
+from app.ui.components.review_badge import review_badge
 from app.ui.components.sources import render_sources
 from app.ui.components.status import status_badge, trend_badge
 from app.ui.components.timeline import render_timeline
@@ -351,7 +354,28 @@ if data.get("open_proposals"):
     if proposals:
         st.subheader("ממתין לאישור שלך", anchor=False)
         for proposal in proposals:
-            proposal_card(proposal, on_approve=approve, on_reject=reject)
+            # A summary on the page, the decision in a window. The card used to
+            # carry the whole proposal and both buttons, which put an approve/
+            # reject choice in the middle of a scrolling page beside the health
+            # card and the timeline.
+            with st.container(border=True):
+                st.markdown(
+                    f"**{SOURCE_LABELS.get(proposal['source_type'], proposal['source_type'])}**"
+                    f" · גרסה {proposal['version_number']}"
+                )
+                if proposal.get("change_summary"):
+                    st.caption(proposal["change_summary"])
+                review_badge(proposal.get("knowledge_review"))
+                if st.button(
+                    "הצעת עדכון לתוכנית טיפול",
+                    key=f"pd_open_proposal_{proposal['id']}",
+                    type="primary",
+                    icon=":material/open_in_full:",
+                ):
+                    open_proposal_dialog(str(proposal["id"]))
+                    st.rerun()
+
+        proposal_dialog(proposals, on_approve=approve, on_reject=reject)
 
 
 def complete_task(task_id: str, action: str) -> None:
@@ -395,6 +419,7 @@ if upcoming:
 
 plan = data.get("care_plan")
 if plan:
+    review_badge(plan.get("knowledge_review"))
     active_plan_card(plan, on_adjust=adjust)
 elif not data.get("open_proposals") and empty_state(
     "אין עדיין תוכנית טיפול",
@@ -591,6 +616,16 @@ if species:
                 show_error(exc)
 
         if knowledge:
+            provisional = knowledge.get("review") == "pending"
+            if provisional:
+                # PR 33: the plant no longer waits for review before it gets
+                # knowledge and a plan. That is only honest if the page says what
+                # the user is reading.
+                st.warning(
+                    "המידע הזה נוצר על ידי הסוכן וממתין לאישור מומחה. "
+                    "ייתכנו בו אי-דיוקים, והוא עשוי להשתנות אחרי הבדיקה.",
+                    icon=":material/hourglass_top:",
+                )
             sections = knowledge.get("content") or {}
             rendered_any = False
             for name, label in SECTION_LABELS.items():
@@ -613,10 +648,17 @@ if species:
             # the model asserted. Rendering only the prose left them trusting all
             # of it equally.
             st.divider()
-            st.caption(
-                f"גרסה {knowledge.get('version_number')} · "
-                f"פורסם {str(knowledge.get('published_at') or '')[:10]}"
-            )
+            if provisional:
+                # No version number, because there is no published version yet,
+                # and no source list, because verification is part of the review
+                # this has not had. Claiming either would be the overclaiming the
+                # badge exists to prevent.
+                st.caption(f"נוצר {str(knowledge.get('published_at') or '')[:10]} · ממתין לאישור")
+            else:
+                st.caption(
+                    f"גרסה {knowledge.get('version_number')} · "
+                    f"פורסם {str(knowledge.get('published_at') or '')[:10]}"
+                )
             with st.expander(f"מקורות ({len(knowledge.get('sources') or [])})"):
                 render_sources(knowledge.get("sources") or [])
 

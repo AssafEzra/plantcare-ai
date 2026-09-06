@@ -436,3 +436,40 @@ create index idx_notification_deliveries_schedule on notification_deliveries(sta
 
 ## Account deletion
 An account is anonymized rather than physically deleted: disable access, remove identifying profile fields, set `anonymized_at`, preserve anonymized history, and restrict it to Admin access.
+
+
+---
+
+## Added in PR 33 — a care plan may cite unreviewed research
+
+Migration `20260906000200_provisional_knowledge.sql`. See `FINAL §10` for why the
+review gate still holds.
+
+**`care_plan_versions.knowledge_draft_id`** — nullable FK to `knowledge_drafts`,
+`ON DELETE RESTRICT`. A version cites the draft it was built from *or* the
+published version, never both:
+
+```sql
+check (knowledge_draft_id is null or knowledge_version_id is null)
+```
+
+Both columns join the content-immutability trigger's protected list. Which
+knowledge a plan rests on is the whole point of recording it, and a plan that
+could be quietly re-pointed at a published version would stop reporting that it
+was provisional. `created_by_user_id` was **dropped** from that list in the same
+migration: it is an `ON DELETE SET NULL` target, and protecting it makes deleting
+an account impossible — the failure that blocked the DEV purge in PR 32, one
+table over. Who pressed the button is already in `system_events` and the audit
+log.
+
+**`care_rule_action_type` unchanged; `care_plan_version_source_type` gains
+`KNOWLEDGE_REVISED`** — raised when an administrator approves a draft with edits,
+so a plan running on the draft's content is reconciled by proposal rather than by
+a silent swap.
+
+**RLS policy `knowledge_drafts_select_own_species`** — the first non-admin read of
+unreviewed AI content, and scoped as narrowly as the feature allows: status
+`READY_FOR_REVIEW` only, only where the reader owns a plant of that species,
+SELECT only. Every write stays admin-only.
+
+**Index** `idx_care_plan_versions_draft` on `(knowledge_draft_id) where not null`.

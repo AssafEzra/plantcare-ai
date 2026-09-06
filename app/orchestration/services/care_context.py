@@ -17,6 +17,7 @@ assembled for the user asking for it, out of rows they can already see.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any
 from uuid import UUID
 
@@ -49,12 +50,38 @@ PLAN_RELEVANT_SECTIONS = (
 )
 
 
-def build(client: Client, *, plant_id: UUID) -> tuple[CareContext, str | None]:
-    """Assemble the context, and the knowledge version it was built from.
+@dataclass(frozen=True)
+class KnowledgeOrigin:
+    """Which knowledge a plan was built from, and whether a human has read it.
 
-    The version id is returned alongside because `care_plan_versions` records it:
-    a plan has to be traceable to the exact knowledge it was derived from, or
-    "why does my plan say this?" has no answer after the knowledge is revised.
+    `care_plan_versions` records exactly one of the two ids, and a check
+    constraint refuses both. That is what makes "why does my plan say this?"
+    answerable a month later, and it is what lets the interface mark a plan whose
+    source is still awaiting review.
+    """
+
+    version_id: str | None = None
+    draft_id: str | None = None
+
+    @property
+    def is_provisional(self) -> bool:
+        return self.draft_id is not None
+
+
+def build(client: Client, *, plant_id: UUID) -> tuple[CareContext, KnowledgeOrigin]:
+    """Assemble the context, and the knowledge it was built from.
+
+    The origin is returned alongside because `care_plan_versions` records it: a
+    plan has to be traceable to the exact knowledge it was derived from, or "why
+    does my plan say this?" has no answer after the knowledge is revised.
+
+    A published version is preferred always. A draft is used only when no
+    published version exists — a species whose research has finished but whose
+    review has not. Until PR 33 that plant sat in KNOWLEDGE_PENDING with no
+    knowledge, no plan and no schedule until an administrator happened to look,
+    which for a single-operator MVP is indistinguishable from the product not
+    working. The gate itself is unchanged: nothing here publishes, and the plan
+    carries the draft id so every screen can say it is not yet reviewed.
     """
     plant = first_row(
         client.table("plants")
@@ -80,10 +107,17 @@ def build(client: Client, *, plant_id: UUID) -> tuple[CareContext, str | None]:
         raise NotFoundError("המין לא נמצא.")
 
     knowledge = _current_knowledge(client, plant["species_id"])
+    origin = KnowledgeOrigin(version_id=knowledge["id"]) if knowledge else None
+
     if knowledge is None:
-        # The plant should not have reached ACTIVE without published knowledge,
-        # so this is a real inconsistency rather than a user-facing state.
-        raise ValidationFailedError("אין עדיין מידע מקצועי מאושר עבור המין הזה.")
+        draft = _reviewable_draft(client, plant["species_id"])
+        if draft is None:
+            # No published version and no finished research. The plant should not
+            # have reached ACTIVE in that state, so this is an inconsistency
+            # rather than something the user can act on.
+            raise ValidationFailedError("אין עדיין מידע מקצועי עבור המין הזה.")
+        knowledge = draft
+        origin = KnowledgeOrigin(draft_id=draft["id"])
 
     profile = first_row(
         client.table("profiles").select("timezone").eq("id", plant["user_id"]).execute()
@@ -108,7 +142,8 @@ def build(client: Client, *, plant_id: UUID) -> tuple[CareContext, str | None]:
         user_preferences=_preferences(client),
         timezone=(profile or {}).get("timezone") or get_settings().default_timezone,
     )
-    return context, knowledge["id"]
+    assert origin is not None  # set on both branches above
+    return context, origin
 
 
 def _current_knowledge(client: Client, species_id: str) -> Row | None:
@@ -122,6 +157,33 @@ def _current_knowledge(client: Client, species_id: str) -> Row | None:
         .limit(1)
         .execute()
     )
+
+
+def _reviewable_draft(client: Client, species_id: str) -> Row | None:
+    """Finished research that no administrator has approved yet.
+
+    `READY_FOR_REVIEW` only. A `DRAFT` is empty, `RESEARCHING` is half-written,
+    and `FAILED`/`REJECTED` are content nobody should build a schedule from — a
+    rejected draft in particular may have been rejected precisely because it was
+    wrong.
+
+    Newest first, so a species researched twice uses the later attempt.
+    """
+    settings = get_settings()
+    row = first_row(
+        client.table("knowledge_drafts")
+        .select("id, content, status, updated_at")
+        .eq("species_id", species_id)
+        .eq("language", settings.default_content_language)
+        .eq("status", "READY_FOR_REVIEW")
+        .order("updated_at", desc=True)
+        .limit(1)
+        .execute()
+    )
+    # A draft stores its sections under `content.sections`, the same shape the
+    # admin review screen reads; a published version stores them at the top
+    # level. `_sections` goes through `knowledge_content`, which handles both.
+    return row
 
 
 def _sections(knowledge: Row) -> dict[str, str]:

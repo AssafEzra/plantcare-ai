@@ -115,65 +115,10 @@ def render_recommendations(recommendations: dict[str, Any]) -> None:
         st.warning(warning, icon=":material/warning:")
 
 
-def proposal_card(
-    proposal: dict[str, Any],
-    *,
-    on_approve,
-    on_reject,
-    key_prefix: str = "proposal",
-) -> None:
-    """One open proposal, with the two decisions the user actually has.
-
-    `missing_context` (A20) is rendered as "what would have helped", not as a
-    question. The MVP has no status, table or endpoint that could carry an answer
-    back, so phrasing it as a question would promise a conversation that cannot
-    happen.
-    """
-    version_id = proposal["id"]
-    recommendations = proposal.get("professional_recommendations") or {}
-    preferences = proposal.get("operational_preferences") or {}
-    missing = preferences.get("missing_context") or []
-
-    with st.container(border=True):
-        header, badge = st.columns([3, 1])
-        with header:
-            st.subheader(
-                SOURCE_LABELS.get(proposal["source_type"], proposal["source_type"]), anchor=False
-            )
-            st.caption(f"גרסה {proposal['version_number']}")
-        with badge:
-            label, colour = STATUS_LABELS.get(proposal["status"], (proposal["status"], "gray"))
-            st.badge(label, color=colour)
-
-        if proposal.get("change_summary"):
-            st.info(proposal["change_summary"], icon=":material/edit_note:")
-
-        st.markdown("**ההמלצות המקצועיות**")
-        render_recommendations(recommendations)
-
-        st.markdown("**מה נתזמן עבורך**")
-        render_rules(proposal.get("rules") or [])
-
-        if missing:
-            # Not a question. Nothing here waits on an answer.
-            st.caption("מידע שהיה עוזר לדייק את התוכנית: " + " · ".join(missing))
-
-        actions = st.container(horizontal=True)
-        with actions:
-            if st.button(
-                "אישור התוכנית",
-                key=f"{key_prefix}_approve_{version_id}",
-                type="primary",
-                icon=":material/check:",
-            ):
-                on_approve(version_id)
-
-            if st.button(
-                "דחייה",
-                key=f"{key_prefix}_reject_{version_id}",
-                icon=":material/block:",
-            ):
-                on_reject(version_id)
+# `proposal_card` lived here until PR 33 and is gone deliberately rather than
+# left unused. The approve/reject decision moved into `proposal_dialog`, which
+# also shows what changes; a second renderer of the same proposal is exactly the
+# shape that let two screens disagree about the same task in PR 31.
 
 
 def active_plan_card(plan: dict[str, Any], *, on_adjust=None, key_prefix: str = "plan") -> None:
