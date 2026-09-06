@@ -218,14 +218,39 @@ def test_running_the_tick_twice_produces_one_task(api, admin_sdk, scheduled):
     assert len(tasks_of(admin_sdk, scheduled["plant_id"], "PENDING")) == 1
 
 
-def test_the_one_pending_per_rule_invariant_is_enforced_by_the_database(api, admin_sdk, scheduled):
-    """Tested through the service role: if even that cannot create a second
-    pending task, no scheduler bug can."""
+def test_the_one_open_task_per_rule_invariant_is_enforced_by_the_database(
+    api, admin_sdk, scheduled
+):
+    """Tested through the service role: if even that cannot create a second open
+    task, no scheduler bug can."""
     from postgrest.exceptions import APIError
 
     tick(api)
     with pytest.raises(APIError):
         make_task(admin_sdk, scheduled, due=datetime.now(UTC) + timedelta(days=3))
+
+
+def test_an_overdue_task_does_not_free_its_rule_to_be_scheduled_again(api, admin_sdk, scheduled):
+    """The backlog FINAL §13 forbids, found in DEV the first time the tick was
+    actually run: the PENDING-only guard let a rule whose task had gone OVERDUE be
+    materialised again, and because a rule with no events computes the same due
+    date every time, the new row was a copy rather than a following occurrence.
+    Four rules had become eight identical overdue tasks after two ticks."""
+    tick(api)
+    task = tasks_of(admin_sdk, scheduled["plant_id"], "PENDING")[0]
+    admin_sdk.table("care_tasks").update(
+        {"status": "OVERDUE", "overdue_since": datetime.now(UTC).isoformat()}
+    ).eq("id", task["id"]).execute()
+
+    tick(api)
+    tick(api)
+
+    open_tasks = [
+        row
+        for row in tasks_of(admin_sdk, scheduled["plant_id"])
+        if row["status"] in {"PENDING", "OVERDUE"}
+    ]
+    assert len(open_tasks) == 1, f"the rule was scheduled again while still overdue: {open_tasks}"
 
 
 def test_an_archived_plant_is_not_scheduled(api, admin_sdk, scheduled):

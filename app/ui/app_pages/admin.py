@@ -297,21 +297,116 @@ with drafts_tab:
 
 # --- published knowledge ------------------------------------------------------
 
-with published_tab:
-    st.caption("היסטוריית הגרסאות של מין. גרסאות שפורסמו אינן ניתנות לעריכה או למחיקה.")
-    species_id = st.text_input("מזהה מין", key="admin_species_id", placeholder="UUID של המין")
+OPEN_VERSION = "admin_open_version"
 
-    if species_id.strip():
-        versions = guarded(lambda: get(f"/v1/admin/knowledge-versions/{species_id.strip()}"))
-        if versions is not None:
-            if not versions:
-                st.caption("אין עדיין גרסאות מפורסמות למין הזה.")
-            for version in versions:
+
+def open_version(version_id: str) -> None:
+    st.session_state[OPEN_VERSION] = version_id
+
+
+def render_version(version_id: str) -> None:
+    """The article itself, with everything an administrator reviews it for.
+
+    The tab used to show a version number, a date and a badge — never the text.
+    Its own endpoint has always returned the content and the sources; the screen
+    read neither, so "published knowledge" could be confirmed to exist and never
+    read.
+    """
+    detail = guarded(lambda: get(f"/v1/admin/knowledge-versions/detail/{version_id}"))
+    if not detail:
+        return
+
+    header = st.container(horizontal=True)
+    with header:
+        st.markdown(f"### גרסה {detail['version_number']} · {detail['language']}")
+        if st.button("סגירה", key="admin_close_version", icon=":material/close:"):
+            st.session_state.pop(OPEN_VERSION, None)
+            st.rerun()
+
+    st.caption(f"פורסם: {str(detail.get('published_at') or '')[:16]}")
+    if detail.get("is_current"):
+        st.badge("הגרסה הנוכחית", color="green")
+
+    content = detail.get("content") or {}
+    if not content:
+        st.info("לגרסה הזו אין תוכן.", icon=":material/info:")
+    for key, label in SECTION_LABELS.items():
+        section = content.get(key)
+        if not section:
+            continue
+        text = section.get("text") if isinstance(section, dict) else str(section)
+        if not text:
+            continue
+        with st.expander(label, icon=":material/article:"):
+            st.write(text)
+            # Confidence is per section and is the reason a reviewer looks at one
+            # section rather than another.
+            if isinstance(section, dict) and section.get("confidence") is not None:
+                st.caption(f"רמת ביטחון: {section['confidence']}")
+
+    render_sources(detail.get("sources") or [])
+
+
+with published_tab:
+    if st.session_state.get(OPEN_VERSION):
+        render_version(st.session_state[OPEN_VERSION])
+    else:
+        st.caption("כל המינים שיש להם ידע מפורסם. גרסאות שפורסמו אינן ניתנות לעריכה או למחיקה.")
+        search = st.text_input(
+            "חיפוש מין",
+            key="admin_knowledge_search",
+            placeholder="שם מדעי או שם עברי",
+        )
+
+        catalogue = guarded(
+            lambda: get(
+                "/v1/admin/knowledge-versions",
+                params={"q": search.strip()} if search.strip() else None,
+            )
+        )
+        if catalogue is not None:
+            if not catalogue:
+                st.caption("לא נמצאו מינים עם ידע מפורסם.")
+            for entry in catalogue:
                 with st.container(border=True):
-                    st.write(f"**גרסה {version['version_number']}** · {version['language']}")
-                    st.caption(f"פורסם: {version['published_at'][:16]}")
-                    if version["is_current"]:
-                        st.badge("הגרסה הנוכחית", color="green")
+                    title = st.container(horizontal=True)
+                    with title:
+                        st.markdown(
+                            f"**{entry.get('common_name') or entry['scientific_name']}**"
+                            f" · :gray[_{entry['scientific_name']}_]"
+                        )
+                        if st.button(
+                            "פתיחת הידע",
+                            key=f"admin_open_{entry['id']}",
+                            icon=":material/menu_book:",
+                        ):
+                            open_version(entry["id"])
+                            st.rerun()
+                    st.caption(
+                        f"גרסה {entry['version_number']} · {entry['language']} · "
+                        f"פורסם {str(entry.get('published_at') or '')[:10]} · "
+                        f"{entry.get('plant_count', 0)} צמחים"
+                    )
+
+            with st.expander("היסטוריית גרסאות לפי מזהה מין", icon=":material/history:"):
+                species_id = st.text_input(
+                    "מזהה מין", key="admin_species_id", placeholder="UUID של המין"
+                )
+                if species_id.strip():
+                    versions = guarded(
+                        lambda: get(f"/v1/admin/knowledge-versions/{species_id.strip()}")
+                    )
+                    for version in versions or []:
+                        row = st.container(horizontal=True)
+                        with row:
+                            st.write(
+                                f"**גרסה {version['version_number']}** · "
+                                f"{str(version.get('published_at') or '')[:10]}"
+                                + (" · נוכחית" if version["is_current"] else "")
+                            )
+                            if st.button("פתיחה", key=f"admin_hist_{version['id']}"):
+                                open_version(version["id"])
+                                st.rerun()
 
 
 # --- approved sources ---------------------------------------------------------

@@ -81,6 +81,12 @@ class Settings(BaseSettings):
     internal_tick_secret: str = Field(
         ..., description="Shared secret guarding POST /v1/internal/tick"
     )
+    # How often the API runs the sweep itself. PR 24 plans a Railway cron hitting
+    # the endpoint; this exists so an API deployed without one is not silently
+    # inert - no tasks, no overdue transitions, no reminders. 0 disables it, which
+    # is what the test suite and CI use: a background timer inside a test process
+    # writes to DEV on its own schedule and makes failures irreproducible.
+    internal_tick_interval_seconds: int = 900
 
     # --- UI → API ---
     api_base_url: str = "http://localhost:8000"

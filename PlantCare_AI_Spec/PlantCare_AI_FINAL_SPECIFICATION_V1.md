@@ -209,6 +209,17 @@ The user should understand in seconds what needs attention today.
 - Upcoming care
 - All-caught-up state
 
+**Upcoming care is on the page (revised PR 32), per §37.** It shipped inside a
+collapsed expander, which for a dashboard whose whole promise is "understand in
+seconds" is the same as not being on it. The **next three** are rendered outright
+beneath today's work; anything further stays one click away, so nothing is lost
+and the plant grid stays on the first screen.
+
+They carry no Done or Skip. Completing a task before it is due anchors the entire
+recurrence to today (A8), so a button there would quietly move the schedule — the
+plant dashboard applies the same rule, offering the actions only on work that is
+actually due or overdue.
+
 ---
 
 # 6. My Plants
@@ -653,6 +664,35 @@ The next recurrence remains scheduled.
 
 Multiple overdue items can be summarized.
 
+**Corrected in PR 32, per §37 — nothing was calling the scheduler**
+
+Reported from real use: *"after creating a care plan it doesnt any schedule
+tasks"*. Confirmed against DEV: an account with three active plants, two active
+plan versions and eight active care rules had **zero rows** in `care_tasks`.
+
+`scheduler.materialise` was reachable from exactly one place — `POST
+/v1/internal/tick` — and nothing called it, because PR 24 (the Railway cron
+service) is parked. So the entire scheduler was built, tested, and unreachable:
+no tasks, no OVERDUE transitions, no MISSED events, and no reminders.
+
+Two changes, because fixing only the first leaves the app broken a week later:
+
+1. **Approving a plan materialises immediately.** `care.approve` calls
+   `scheduler.materialise` scoped to the plan's owner, so the first task exists by
+   the time the response is written — which is when the user looks. It is
+   idempotent and deliberately non-fatal: the version is genuinely ACTIVE by then,
+   and the tick materialises the same rules on its next pass, so a transient
+   failure must not turn an approved plan into an error.
+
+2. **The API runs the sweep itself.** The tick body moved out of the router into
+   `app/orchestration/services/tick.py`, and the FastAPI lifespan starts a timer
+   that calls it every `INTERNAL_TICK_INTERVAL_SECONDS` (default 900; `0` disables
+   it, which is what tests and CI use). This is a deviation from the deployment
+   plan's cron-only design and is recorded in `DEPLOYMENT_AND_OPERATIONS §5`: the
+   cron does not replace the timer so much as make it redundant, since `run_tick`
+   is idempotent and either alone produces the same state. An API deployed without
+   a cron must not be silently inert.
+
 **Specified during implementation (PR 17), per §37**
 
 *Scheduling is day arithmetic in the user's timezone,* not seconds added to a UTC instant. A
@@ -833,6 +873,29 @@ Previous assessments remain unchanged.
 
 If information is insufficient, save an `UNKNOWN` assessment with the reason.
 
+**How a check is started (revised PR 32), per §37**
+
+Reported from real use: *"when starting a health check it should lead to a new
+window and give option to load pic, not just select one"*.
+
+The first implementation offered a multiselect over images already in the plant's
+gallery and nothing else. That is the wrong shape for what this section describes:
+a health check is prompted by something the user has *just noticed*, and the
+photograph that shows it does not exist yet. A plant whose gallery was empty
+reached a dead end — "you need to upload a photograph first", with nothing there
+to upload with.
+
+The check now opens in a dialog offering both: photographs taken now, uploaded on
+submit under `context_type=health`, and any existing gallery images the user also
+wants included — up to four in total, which is the limit this section already
+sets. A dialog rather than a page because the result lands on the plant page the
+user is already looking at; sending them elsewhere and back would lose the context
+that makes the answer meaningful.
+
+Health images are uploaded as `health`, not `gallery`: evidence for one assessment
+is not a portrait of the plant. See §20 for why the four-image cap counts a
+submission rather than the plant's history.
+
 ### Trend
 
 Simple MVP trend:
@@ -983,6 +1046,25 @@ They remain for history/audit purposes but are hidden from the user and not disp
 
 Admin may access retained AI-used images when needed.
 
+**Marking is the agent's job, and Health was not doing it (fixed PR 32).** Only the
+identification workflow set `plant_images.ai_used`, so a health assessment could
+cite a photograph the user was then permitted to hard-delete — the retention rule
+above was enforced for one agent out of two. Health now marks its images on a
+successful assessment, in the same place identification does.
+
+### Upload limits are per submission, not per plant
+
+Four images per context is the ceiling on **one submission**, not on the plant's
+lifetime. Counting every image a plant had ever had in a context made the *second*
+health check impossible: four health images already existed, so the fifth upload
+was refused with "אפשר להעלות עד 4 תמונות" — and would have been refused for the
+life of the plant.
+
+The cap now counts only images not yet consumed by an agent (`ai_used = false`).
+A gallery image is permanent by nature and always counts; health and
+identification images are evidence for one run and stop occupying a slot once the
+assessment or identification that used them exists.
+
 ---
 
 # 21. Privacy and Account Deletion
@@ -1068,6 +1150,32 @@ MVP:
 - Email verification
 - Password reset
 - Session handling
+
+**Session persistence across a browser refresh (added PR 32).**
+Reported from real use: reloading the page signed the user out. `st.session_state`
+lives for one Streamlit session and a refresh starts a new one, so the auth session
+— held there and nowhere else — vanished on F5.
+
+Decision: the Supabase **refresh token** is persisted in a browser cookie
+(`pc_refresh_token`, `SameSite=Lax`, `Secure` over https, 30 days) and the session
+is rebuilt from it before routing.
+
+- A cookie rather than `localStorage` because Streamlit reads cookies from the
+  connection headers, so the value is available on the **first script run** of a
+  new session. Reading `localStorage` requires a component to report back, which
+  costs a rerun — and a rerun means either a flash of the sign-in form or a blank
+  page while the browser answers.
+- Streamlit can read cookies but cannot write them, so the write is done by a
+  small Custom Component v2 (`app/ui/components/session_store.py`). Because the
+  cookie is written by JavaScript it cannot be `HttpOnly`; the exposure is the
+  same as `supabase-js` accepts by default in every browser app.
+- Only the *refresh* token is stored — never the access token, never the password,
+  never the email. An access token is short-lived and re-derived on load, so the
+  stored value is one round trip from being useless rather than immediately
+  authoritative.
+- The token rotates on every renewal and the cookie is rewritten each time; a
+  stale copy would otherwise produce a delayed version of the same logout.
+- Cleared on sign-out, and discarded the moment Supabase rejects it.
 
 Authorization:
 - regular user
@@ -1451,6 +1559,22 @@ Admin-only.
 - history
 - source provenance
 - no deletion of historical published versions
+
+**Browsable, not lookup-only (revised PR 32).** The screen originally shipped as a
+single text box asking for a species UUID, which on a database of hundreds of
+species made the published catalogue unreachable unless the administrator already
+knew an id — and once found it showed a version number, a date and a badge, never
+the text. `GET /v1/species/{id}/knowledge` had returned both content and sources
+since PR 15; the admin screen read neither.
+
+The tab now lists every species that has published knowledge — scientific and
+common name, language, version, publication date, and the number of plants
+depending on it — searchable by either name, each opening a reader with the full
+sections, per-section confidence, and every source with its class. Lookup by
+species id remains, as history for one species.
+
+New endpoints: `GET /v1/admin/knowledge-versions` (the catalogue, optional `q`)
+and `GET /v1/admin/knowledge-versions/detail/{version_id}` (one version in full).
 
 ### Approved Sources
 - add

@@ -249,8 +249,9 @@ def test_upcoming_care_never_appears_above_todays_work(page):
     sections reversed, so this checks which comes first — and that upcoming is
     rendered muted rather than as another card.
 
-    (`AppTest` does not expose an `st.expander` that carries an `icon`, so the
-    collapse itself is verified in the browser.)
+    Since PR 32 the next three are rendered outright rather than inside a
+    collapsed expander, so the marker is the section itself rather than the muted
+    styling it used to carry.
     """
     app = page(
         dashboard(
@@ -263,7 +264,7 @@ def test_upcoming_care_never_appears_above_todays_work(page):
 
     blocks = [str(m.value) for m in app.markdown]
     today_at = next(i for i, b in enumerate(blocks) if "השקיה" in b)
-    upcoming_at = next(i for i, b in enumerate(blocks) if b.startswith(":gray["))
+    upcoming_at = next(i for i, b in enumerate(blocks) if "דישון" in b)
 
     assert today_at < upcoming_at
 
@@ -320,10 +321,9 @@ def test_upcoming_lines_name_the_action(page):
     )
     app.run()
 
-    upcoming_lines = [str(m.value) for m in app.markdown if str(m.value).startswith(":gray[")]
-    assert len(upcoming_lines) == 3
-    assert len(set(upcoming_lines)) == 3, "each line must be distinguishable"
-    joined = " ".join(upcoming_lines)
+    lines = [str(m.value) for m in app.markdown if "·" in str(m.value)]
+    assert len(set(lines)) == 3, f"each line must be distinguishable: {lines}"
+    joined = " ".join(lines)
     assert "השקיה" in joined and "דישון" in joined and "בדיקה" in joined
 
 
@@ -346,3 +346,62 @@ def test_a_task_with_no_action_label_does_not_render_asterisks(page):
     text = rendered(app)
     assert "****" not in text
     assert "טיפול" in text
+
+
+# --- upcoming work is on the page, not behind a click (PR 32) --------------------
+
+
+def _rendered(app) -> str:
+    parts = [str(e.value) for e in app.markdown]
+    parts += [str(e.value) for e in app.caption]
+    parts += [str(e.value) for e in app.subheader]
+    parts += [e.label for e in app.expander]
+    return " ".join(parts)
+
+
+def test_the_next_three_upcoming_tasks_are_visible(page):
+    """Reported: *"home screen should include upcoming 3 tasks"*. They were in the
+    payload and rendered inside a collapsed expander, which for a dashboard whose
+    whole promise is "understand in seconds" is the same as not being there."""
+    upcoming = [
+        task("WATERING", hours=30, plant="קלתיאה"),
+        task("FERTILIZING", hours=54, plant="מונסטרה"),
+        task("PRUNING", hours=78, plant="פיקוס"),
+        task("ROTATING", hours=102, plant="סנסיביירה"),
+    ]
+    app = page(dashboard(upcoming_care=upcoming, counts={"active_plants": 4}))
+    app.run()
+
+    assert not app.exception, [str(e) for e in app.exception]
+    text = _rendered(app)
+
+    assert "בקרוב" in text
+    for name in ("קלתיאה", "מונסטרה", "פיקוס"):
+        assert name in text, f"{name} is among the next three and is not on the page"
+
+
+def test_the_rest_stay_behind_an_expander(page):
+    """Three on the page, the remainder one click away — nothing is lost and the
+    plant grid stays on the first screen."""
+    upcoming = [task("WATERING", hours=30 + 24 * i, plant=f"צמח {i}") for i in range(5)]
+    app = page(dashboard(upcoming_care=upcoming, counts={"active_plants": 5}))
+    app.run()
+
+    # `AppTest` does not expose an `st.expander` that carries an `icon`, so the
+    # overflow is identified by the muted styling its lines carry instead. The
+    # collapse itself is verified in the browser.
+    muted = [str(m.value) for m in app.markdown if str(m.value).startswith(":gray[")]
+    assert len(muted) == 2, f"the tasks past the first three are not reachable: {muted}"
+    assert "צמח 3" in " ".join(muted) and "צמח 4" in " ".join(muted)
+
+
+def test_upcoming_tasks_are_not_actionable(page):
+    """No Done or Skip on work that is not due. Completing a task early anchors
+    the whole recurrence to today (A8), so a button here would quietly move the
+    schedule."""
+    app = page(dashboard(upcoming_care=[task("WATERING", hours=48)], counts={"active_plants": 1}))
+    app.run()
+
+    labels = [b.label for b in app.button]
+    assert "בוצע" not in labels
+    assert "דילוג" not in labels

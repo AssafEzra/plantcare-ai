@@ -14,6 +14,13 @@ Sessions expire after an hour. Without renewal the app would simply start
 returning 401s mid-session, which reads to a user as the app breaking rather than
 as a session ending. `access_token()` refreshes shortly before expiry, so callers
 never have to think about it.
+
+Surviving a refresh
+-------------------
+`st.session_state` lives for one Streamlit session and a browser reload starts a
+new one, so holding the session only there made F5 identical to signing out.
+`restore()` rebuilds it from a refresh token kept in the browser - see
+`app/ui/components/session_store.py` for what is stored and why only that.
 """
 
 from __future__ import annotations
@@ -25,9 +32,15 @@ from datetime import UTC, datetime, timedelta
 import streamlit as st
 
 from app.config.settings import get_settings
+from app.ui.components import session_store as store
 from supabase import create_client
 
 _SESSION_KEY = "pc_auth_session"
+# A refresh token waiting to be written to the browser. Held for a moment
+# because `_store` is called from inside `sign_in`, which may run in a
+# callback where mounting a component is not allowed.
+_PENDING_WRITE = "pc_auth_pending_write"
+_RESTORE_TRIED = "pc_auth_restore_tried"
 
 # Refresh this far ahead of expiry, so a request never leaves with a token that
 # expires while it is in flight.
@@ -52,7 +65,7 @@ def _client():
     return create_client(settings.supabase_url, settings.supabase_anon_key)
 
 
-def _store(session) -> AuthSession:
+def _store(session, *, persist: bool = True) -> AuthSession:
     stored = AuthSession(
         user_id=session.user.id,
         email=session.user.email or "",
@@ -61,7 +74,57 @@ def _store(session) -> AuthSession:
         expires_at=datetime.fromtimestamp(session.expires_at, tz=UTC),
     )
     st.session_state[_SESSION_KEY] = stored
+    if persist:
+        # Every renewal rotates the refresh token, so the browser copy has to be
+        # rewritten or the next reload would present a token Supabase has already
+        # retired - which is a delayed version of the same logout.
+        st.session_state[_PENDING_WRITE] = stored.refresh_token
     return stored
+
+
+# --- surviving a browser refresh ------------------------------------------------
+
+
+def restore() -> AuthSession | None:
+    """Rebuild the session from the browser's cookie, if it has one to give.
+
+    Called once per rerun from the entry point, before routing. The cookie is
+    readable synchronously on the first run of a new Streamlit session, so a
+    refresh never shows the sign-in form to somebody who is signed in - there is
+    no intermediate state to flash.
+
+    A stored token that Supabase rejects is discarded rather than retried: it is
+    revoked, expired, or from another deployment, and all three mean sign in
+    again.
+    """
+    pending = st.session_state.pop(_PENDING_WRITE, None)
+    if pending is not None:
+        store.write(pending)
+
+    if is_signed_in():
+        return current()
+
+    # Once per Streamlit session. A failed restore must not re-attempt on every
+    # rerun: it is a network call, and it would fail the same way each time.
+    if st.session_state.get(_RESTORE_TRIED):
+        return None
+    st.session_state[_RESTORE_TRIED] = True
+
+    token = store.read()
+    if not token:
+        return None
+
+    try:
+        restored = _client().auth.refresh_session(token)
+    except Exception:
+        store.clear()
+        return None
+
+    if not restored or not restored.session:
+        store.clear()
+        return None
+
+    return _store(restored.session)
 
 
 # --- public API ---------------------------------------------------------------
@@ -132,3 +195,8 @@ def sign_out() -> None:
         with contextlib.suppress(Exception):
             _client().auth.sign_out()
     st.session_state.pop(_SESSION_KEY, None)
+    st.session_state.pop(_PENDING_WRITE, None)
+    # Marked as tried so the cookie - which the browser has not dropped yet, the
+    # component runs on the *next* render - cannot immediately sign them back in.
+    st.session_state[_RESTORE_TRIED] = True
+    store.clear()

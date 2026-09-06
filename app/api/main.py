@@ -8,10 +8,14 @@ are already the versions those will build on.
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import time
 import uuid
 from collections.abc import Awaitable, Callable
 from contextlib import asynccontextmanager
+from dataclasses import asdict
+from datetime import UTC, datetime
 
 import structlog
 from fastapi import FastAPI, Request
@@ -41,13 +45,58 @@ from app.infrastructure.supabase.client import anon_client
 log = get_logger(__name__)
 
 
+async def _tick_loop(interval_seconds: int) -> None:
+    """Run the scheduler sweep forever, every `interval_seconds`.
+
+    PR 24 plans a Railway cron service calling `POST /v1/internal/tick`, and until
+    that ships nothing calls it at all: tasks are never materialised, nothing ever
+    goes OVERDUE, no MISSED event is written and no reminder is sent. A deployment
+    of the API alone should not be silently inert, so the API carries its own
+    timer.
+
+    The cron does not replace this so much as make it redundant: `run_tick` is
+    idempotent, so a cron firing while this loop runs produces the same state as
+    either alone. Setting `INTERNAL_TICK_INTERVAL_SECONDS=0` turns the timer off
+    for a deployment that would rather have only the cron.
+
+    Two things this must never do: block the event loop, and die. `run_tick` is
+    synchronous Supabase I/O, so it goes to a worker thread; every exception is
+    logged and swallowed, because a transient database error must not leave the
+    process with no scheduler until someone restarts it.
+    """
+    from app.orchestration.services import tick
+
+    while True:
+        await asyncio.sleep(interval_seconds)
+        try:
+            outcome = await asyncio.to_thread(tick.run_tick, now_utc=datetime.now(UTC))
+            log.info("scheduler.timer_tick", **asdict(outcome))
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            log.warning("scheduler.timer_failed", error_type=type(exc).__name__, error=str(exc))
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     settings = get_settings()
     configure_logging(environment=settings.app_env, debug=settings.app_debug)
     log.info("api.startup", environment=settings.app_env, debug=settings.app_debug)
-    yield
-    log.info("api.shutdown")
+
+    timer: asyncio.Task[None] | None = None
+    interval = settings.internal_tick_interval_seconds
+    if interval > 0:
+        timer = asyncio.create_task(_tick_loop(interval))
+        log.info("scheduler.timer_started", interval_seconds=interval)
+
+    try:
+        yield
+    finally:
+        if timer is not None:
+            timer.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await timer
+        log.info("api.shutdown")
 
 
 def create_app() -> FastAPI:

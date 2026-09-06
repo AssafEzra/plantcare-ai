@@ -198,6 +198,8 @@ GET  /v1/admin/knowledge-drafts/{draft_id}
 POST /v1/admin/knowledge-drafts/{draft_id}/approve
 POST /v1/admin/knowledge-drafts/{draft_id}/reject
 POST /v1/admin/knowledge-drafts/{draft_id}/retry
+GET  /v1/admin/knowledge-versions
+GET  /v1/admin/knowledge-versions/detail/{version_id}
 GET  /v1/admin/knowledge-versions/{species_id}
 GET  /v1/admin/approved-sources
 POST /v1/admin/approved-sources
@@ -206,6 +208,29 @@ POST /v1/admin/approved-sources/{source_id}/disable
 ```
 
 Approval creates an immutable Published Knowledge Version.
+
+**Added in PR 32, per FINAL §37 — the catalogue and the reader**
+
+`GET /v1/admin/knowledge-versions?q=` lists every species holding a current
+published version: `id`, `species_id`, `scientific_name`, `common_name`,
+`language`, `version_number`, `published_at`, `plant_count`. `q` filters on either
+name. One row per species — listing every version would turn a catalogue into a
+log.
+
+`GET /v1/admin/knowledge-versions/detail/{version_id}` returns one version in
+full: the `content` sections, `source_summary`, and every `knowledge_sources` row
+with its class. `GET /v1/species/{id}/knowledge` is not a substitute — it returns
+only the *current* version, which is right for a user and wrong for an
+administrator comparing two.
+
+The detail route sits under `/detail/` rather than at
+`/admin/knowledge-versions/{version_id}` because that path already means "history
+for this **species**", and two UUID routes on one segment would resolve by
+declaration order rather than by intent.
+
+Reported from real use: the admin screen was a box asking for a species UUID, so
+on a database of hundreds of species the published catalogue was unreachable in
+practice.
 
 **Specified in PR 15, per FINAL §37**
 
@@ -324,6 +349,26 @@ promise a conversation that cannot happen. The plan is produced regardless.
 `POST /v1/care-tasks/{task_id}/skip`
 
 Done/Skip creates an immutable Care Event and advances scheduling. Duplicate action events are rejected.
+
+**The request body is optional (corrected PR 32, per FINAL §37).**
+
+```json
+{ "note": "string, optional, max 500" }
+```
+
+Both routes originally declared the body as required, so a call with no body was
+rejected with `422 VALIDATION_FAILED` before the scheduler was reached. Both UI
+screens post no body, so **every** press of "בוצע" and "דילוג" failed: no Care
+Event, no status change, the card redrawn unchanged. Reported from real use as
+*"done/skip at tasks doesnt seem to work. it doesnt creat a history log, and it
+still shows on screen after selecting"*.
+
+Every field of the body is optional, so the body itself must be. `extra: forbid`
+still applies — an unknown field is still a 422.
+
+*Why no test caught it:* every API test passed `json={}`, and the browser suite
+never pressed the button because no task had ever been materialised to press it on
+(see FINAL §13). The endpoint worked; the call the product actually makes did not.
 
 **Specified in PR 17, per FINAL §37**
 

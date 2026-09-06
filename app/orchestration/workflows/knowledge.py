@@ -457,6 +457,91 @@ def version_history(client: Client, *, species_id: UUID) -> list[Row]:
     )
 
 
+def published_catalogue(client: Client, *, query: str | None = None) -> list[Row]:
+    """Every species with published knowledge, with its name and its numbers.
+
+    The admin screen offered a box asking for a species UUID and nothing else, so
+    on a database with 857 species and fifty published articles there was no way
+    to reach any of them except by already knowing the id. The endpoint had
+    existed since PR 15; nothing could list it.
+
+    Three reads rather than a join: PostgREST embedding across knowledge, species
+    and plants is hard to follow and this runs once, for an administrator, over a
+    set the size of the published catalogue.
+    """
+    current = rows(
+        client.table("knowledge_versions")
+        .select("id, species_id, language, version_number, published_at")
+        .eq("is_current", True)
+        .order("published_at", desc=True)
+        .execute()
+    )
+    if not current:
+        return []
+
+    species_ids = list({str(v["species_id"]) for v in current})
+    species = {
+        row["id"]: row
+        for row in rows(
+            client.table("species")
+            .select("id, scientific_name, common_name")
+            .in_("id", species_ids)
+            .execute()
+        )
+    }
+
+    # How many plants each article is actually serving. It is the one number that
+    # says which entries matter, and it is why an admin opens this screen.
+    counts: dict[str, int] = {}
+    for plant in rows(
+        client.table("plants").select("species_id").in_("species_id", species_ids).execute()
+    ):
+        key = str(plant["species_id"])
+        counts[key] = counts.get(key, 0) + 1
+
+    catalogue = []
+    for version in current:
+        found = species.get(str(version["species_id"])) or {}
+        catalogue.append(
+            {
+                **version,
+                "scientific_name": found.get("scientific_name") or "",
+                "common_name": found.get("common_name"),
+                "plant_count": counts.get(str(version["species_id"]), 0),
+            }
+        )
+
+    if query:
+        needle = query.strip().lower()
+        catalogue = [
+            entry
+            for entry in catalogue
+            if needle in entry["scientific_name"].lower()
+            or needle in (entry["common_name"] or "").lower()
+        ]
+
+    return sorted(catalogue, key=lambda e: e["scientific_name"].lower())
+
+
+def version_detail(client: Client, *, version_id: UUID) -> Row:
+    """One published version in full, for the admin reader.
+
+    `GET /v1/species/{id}/knowledge` returns only the *current* version, which is
+    the right answer for a user and the wrong one for an administrator reviewing
+    what changed between two of them.
+    """
+    return require_row(
+        client.table("knowledge_versions")
+        .select(
+            "id, species_id, language, version_number, is_current, content, "
+            "source_summary, published_by, published_at"
+        )
+        .eq("id", str(version_id))
+        .execute(),
+        NotFoundError("הגרסה לא נמצאה."),
+    )
+
+
 def version_sources(client: Client, *, version_id: UUID) -> list[Row]:
     return rows(
         client.table("knowledge_sources")

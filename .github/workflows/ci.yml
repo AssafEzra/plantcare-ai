@@ -55,6 +55,7 @@ jobs:
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
       SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
       INTERNAL_TICK_SECRET: ${{ secrets.INTERNAL_TICK_SECRET }}
+      INTERNAL_TICK_INTERVAL_SECONDS: "0"
       # A key is required for the app to boot; no test spends it, because every
       # agent is driven by a scripted provider and `-m "not live"` excludes the
       # one test that is not.

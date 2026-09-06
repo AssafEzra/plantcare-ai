@@ -223,6 +223,34 @@ def count_images(client: Client, plant_id: UUID, context: ImageContextType) -> i
     return result.count or 0
 
 
+def count_uncommitted_images(client: Client, plant_id: UUID, context: ImageContextType) -> int:
+    """How many images are queued for the *next* submission in this context.
+
+    A gallery image is permanent, so every one of them counts. A health or
+    identification image is evidence for one run: once the assessment or the
+    identification that used it exists, it is history and must stop occupying a
+    slot. Counting them forever meant the second health check on a plant could
+    never attach a photograph - the endpoint refused the fifth upload, and would
+    have refused every upload after it for the life of the plant.
+
+    `ai_used` is the marker, set when an agent actually consumes an image, so
+    this needs no join and cannot disagree with what the agent did.
+    """
+    if context is ImageContextType.GALLERY:
+        return count_images(client, plant_id, context)
+
+    result = (
+        client.table("plant_images")
+        .select("id", count=CountMethod.exact)
+        .eq("plant_id", str(plant_id))
+        .eq("context_type", context.value)
+        .eq("user_visible", True)
+        .eq("ai_used", False)
+        .execute()
+    )
+    return result.count or 0
+
+
 # --- history ------------------------------------------------------------------
 
 

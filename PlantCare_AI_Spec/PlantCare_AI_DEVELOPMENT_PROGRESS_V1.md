@@ -202,6 +202,7 @@ in recoverability, and the release-checklist item it creates.
 - [x] Password reset - response is identical for known and unknown addresses
 - [x] Logout
 - [x] Session handling - JWKS-verified access tokens with clock-skew leeway
+- [x] Session survives a browser refresh (PR 32) - the refresh token is kept in a `SameSite=Lax` cookie and the session rebuilt from it before routing. Held only in `st.session_state`, which lives for one Streamlit session, F5 was indistinguishable from signing out (FINAL §22)
 - [x] User profile - GET and PATCH /v1/me
 - [x] Admin role - require_admin reads profiles.role server-side, never from the token
 - [x] RLS policies - proven end to end: a client built from the caller's JWT is scoped by RLS
@@ -234,8 +235,8 @@ in recoverability, and the release-checklist item it creates.
 - [x] Today's task count
 - [x] Needs Attention count
 - [x] Today's Care - first on the page, because it is the only thing the user can act on now
-- [x] Done/Skip - both always offered; the schedule treats a skip differently from silence
-- [x] Upcoming care - collapsed, so it never competes with today's work
+- [x] Done/Skip - both always offered; the schedule treats a skip differently from silence. **Reachable only from PR 32**: the endpoints declared a required request body and both screens send none, so every press returned 422 before the scheduler was reached - no event, no status change, the card unchanged
+- [x] Upcoming care - the next three on the page from PR 32, the rest behind an expander. Collapsed entirely, it never competed with today's work because nobody saw it
 - [x] Plants Needing Attention
 - [x] Quick Health Check - routes to the plant, where the check runs (PR 21)
 - [x] My Plants preview
@@ -343,7 +344,7 @@ in recoverability, and the release-checklist item it creates.
 - [x] Care Task schema
 - [x] Care Event schema
 - [x] Deterministic recurrence engine - day arithmetic in the user's zone, so DST cannot move a reminder
-- [x] Upcoming task calculation - 14-day horizon, at most one PENDING task per rule
+- [x] Upcoming task calculation - 14-day horizon, at most one PENDING task per rule. **Actually invoked from PR 32**: `materialise` was called only by `/v1/internal/tick`, which nothing called, so an approved plan produced zero tasks. Approving now materialises, and the API runs the sweep on its own timer
 - [x] Completed state - immutable event; next occurrence anchored on when it actually happened (A8)
 - [x] Skipped state - anchored on the original due date, so repeated skipping cannot push the schedule out
 - [x] Overdue state
@@ -411,7 +412,7 @@ in recoverability, and the release-checklist item it creates.
 - [x] Schedule section
 - [x] Health section - findings, evidence, and the UNKNOWN path (PR 21)
 - [x] History section - merged from five tables on read, so the timeline cannot drift from the data
-- [x] Health Check CTA - opens the check inline; images from the plant's own gallery
+- [x] Health Check CTA - opens a dialog from PR 32: photographs taken now *and* existing gallery images. It shipped as an inline chooser over the gallery alone, which is the wrong shape - a check is prompted by something just noticed, and an empty gallery was a dead end
 - [x] Environment update - editable from the plant dashboard, every field optional; a save requests an ENVIRONMENT_CHANGE proposal when the plant has a plan (PR 30 - shipped read-only in PR 20, and the note promising a plan review was the only part that worked)
 - [x] Knowledge display with provenance (PR 31) - version, publication date and the verified sources. The endpoint always returned them; only the prose was ever rendered
 - [x] Knowledge error report - report, never edit (FINAL §10)
@@ -430,7 +431,7 @@ in recoverability, and the release-checklist item it creates.
 - [x] Approve/reject
 - [x] Notification deliveries (PR 31) - what was actually sent, and what failed
 - [x] Admin notes
-- [x] Published Knowledge
+- [x] Published Knowledge - browsable from PR 32: every species with a current version, searchable by name, each opening the full text and its sources. It shipped as a box asking for a species UUID, so on 857 species none of it was reachable
 - [x] Version history
 - [x] Approved Sources
 - [x] Reported Errors - triage is recorded; acting on one is the separate retry route, so a status cannot imply research that never ran

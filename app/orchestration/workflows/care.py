@@ -16,6 +16,7 @@ and it is why there is no code path from those events to an ACTIVE version.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
@@ -31,7 +32,7 @@ from app.common.errors import NotFoundError, ValidationFailedError
 from app.config.logging import get_logger
 from app.infrastructure.supabase.client import service_client
 from app.orchestration.services import agent_requests as requests_service
-from app.orchestration.services import care_context
+from app.orchestration.services import care_context, scheduler
 from app.repositories.base import Row, first_row, require_row, rows
 from supabase import Client
 
@@ -228,10 +229,29 @@ def approve(client: Client, *, version_id: UUID) -> dict[str, Any]:
         client.rpc("activate_care_plan_version", {"p_version_id": str(version_id)}).execute()
     )
 
+    # A plan with no tasks is not a plan. `scheduler.materialise` was reachable
+    # from exactly one place - `POST /v1/internal/tick` - and nothing called it,
+    # so approving a proposal produced an ACTIVE version, a set of care rules and
+    # zero `care_tasks`: the user approved a schedule and Home stayed empty
+    # forever. Materialising here means the first task exists by the time the
+    # response is written, which is when the user looks.
+    #
+    # Idempotent, and deliberately not fatal: the tick materialises the same
+    # rules on its own schedule, and a plan that is genuinely active must not be
+    # rolled back because the first task could not be written.
+    created = 0
+    try:
+        created = scheduler.materialise(
+            client, now_utc=datetime.now(UTC), user_id=str(_owner_of_version(client, activated))
+        )
+    except Exception as exc:  # pragma: no cover - the tick is the safety net
+        log.warning("care.materialise_after_approve_failed", error_type=type(exc).__name__)
+
     log.info(
         "care.plan_activated",
         version_id=str(version_id),
         version_number=activated["version_number"],
+        tasks_created=created,
     )
 
     return {
@@ -239,7 +259,21 @@ def approve(client: Client, *, version_id: UUID) -> dict[str, Any]:
         "version_number": activated["version_number"],
         "status": activated["status"],
         "source_type": activated["source_type"],
+        "tasks_created": created,
     }
+
+
+def _owner_of_version(client: Client, version: Row) -> str:
+    """The user whose rules these are.
+
+    `materialise` is scoped to one user rather than run across everybody: this is
+    a request handler on a user's JWT, and a sweep of every plan in the database
+    is the tick's job, not an approval's.
+    """
+    plan = require_row(
+        client.table("care_plans").select("user_id").eq("id", version["care_plan_id"]).execute()
+    )
+    return str(plan["user_id"])
 
 
 def reject(client: Client, *, version_id: UUID, note: str | None = None) -> Row:

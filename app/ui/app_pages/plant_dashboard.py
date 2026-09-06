@@ -16,9 +16,12 @@ import streamlit as st
 
 from app.ui.components.agent_progress import await_request
 from app.ui.components.care_plan import active_plan_card, proposal_card
-from app.ui.components.care_task_card import care_task_card, due_text
+from app.ui.components.care_task_card import care_task_card, due_text, is_due
 from app.ui.components.environment_form import FIELD_LABELS, describe, environment_form
 from app.ui.components.health_card import render_assessment, render_history
+from app.ui.components.health_check_dialog import close_dialog as close_health_dialog
+from app.ui.components.health_check_dialog import health_check_dialog
+from app.ui.components.health_check_dialog import open_dialog as open_health_dialog
 from app.ui.components.identification_card import identification_card
 from app.ui.components.layout import empty_state, guarded, page_header, show_error
 from app.ui.components.sources import render_sources
@@ -29,7 +32,6 @@ from app.ui.state.api_client import ApiError, delete, get, patch, post, put
 SELECTED = "pc_selected_plant"
 FLASH = "plant_flash"
 HISTORY_SHOWN = "plant_history_shown"
-HEALTH_OPEN = "plant_health_open"
 
 SECTION_LABELS: dict[str, str] = {
     "identification": "זיהוי",
@@ -151,7 +153,8 @@ with facts:
     actions = st.container(horizontal=True)
     with actions:
         if st.button("בדיקת בריאות", icon=":material/health_and_safety:", key="pd_health"):
-            st.session_state[HEALTH_OPEN] = True
+            open_health_dialog()
+            st.rerun()
 
         if data.get("status") == "ARCHIVED":
             if st.button("שחזור", type="primary", icon=":material/unarchive:", key="pd_restore"):
@@ -360,11 +363,18 @@ def complete_task(task_id: str, action: str) -> None:
     the same endpoint; only one screen offered it.
     """
     try:
-        post(f"/v1/care-tasks/{task_id}/{action}")
+        result = post(f"/v1/care-tasks/{task_id}/{action}")
     except ApiError as exc:
         show_error(exc)
         return
-    flash("נרשם." if action == "done" else "דילגנו על המשימה.")
+
+    # Say when it comes round again. The scheduler creates the next occurrence
+    # immediately, so without this the list simply redraws with a card that looks
+    # like the one just completed and the action reads as having done nothing.
+    note = "נרשם." if action == "done" else "דילגנו על המשימה."
+    if result.get("next_due_at_utc"):
+        note += f" הפעם הבאה: {due_text({'due_at_utc': result['next_due_at_utc']})}."
+    flash(note)
     st.rerun()
 
 
@@ -372,11 +382,15 @@ upcoming = data.get("upcoming_tasks") or []
 if upcoming:
     st.subheader("הטיפול הקרוב", anchor=False)
     for task in upcoming[:5]:
+        # Done and Skip only on what is actually due. A task three days out drawn
+        # with the same buttons invites completing it early, which anchors the
+        # whole recurrence to today (A8) and quietly shifts the plan.
+        actionable = task.get("status") in {"PENDING", "OVERDUE"} and is_due(task)
         care_task_card(
             task,
             key_prefix="pd",
-            on_done=lambda task_id: complete_task(task_id, "done"),
-            on_skip=lambda task_id: complete_task(task_id, "skip"),
+            on_done=(lambda task_id: complete_task(task_id, "done")) if actionable else None,
+            on_skip=(lambda task_id: complete_task(task_id, "skip")) if actionable else None,
         )
 
 plan = data.get("care_plan")
@@ -422,14 +436,34 @@ def request_care_adjustment(assessment_id: str) -> None:
     await_proposal(started, waiting="מכינים הצעה לעדכון התוכנית…")
 
 
-def run_health_check(image_ids: list[str], note: str | None) -> None:
-    """Start the check and stay with it until it finishes.
+def run_health_check(uploads: list[Any], gallery_ids: list[str], note: str | None) -> None:
+    """Upload whatever is new, then start the check and stay with it.
 
     It used to fire the 202, promise that "the results will appear here in a
     moment", and never look again — so a failed run said nothing at all and a
     successful one appeared only if the user happened to reload. Reported as
     "did a health check and nothing happened".
+
+    The photographs are uploaded here rather than in the dialog because a health
+    check is prompted by something just noticed, and the picture of it does not
+    exist until now. They go in under `context_type=health`, which keeps them out
+    of the plant's gallery: evidence for one assessment is not a portrait.
     """
+    image_ids = list(gallery_ids)
+    try:
+        for upload in uploads:
+            created = post(
+                f"/v1/plants/{plant_id}/images",
+                files={
+                    "file": (upload.name, upload.getvalue(), upload.type),
+                    "context_type": (None, "health"),
+                },
+            )
+            image_ids.append(created["id"])
+    except ApiError as exc:
+        show_error(exc)
+        return
+
     try:
         started = post(
             f"/v1/plants/{plant_id}/health-checks",
@@ -445,7 +479,7 @@ def run_health_check(image_ids: list[str], note: str | None) -> None:
     if final is None:
         # Still running. Not a failure, and saying so would be a lie about a run
         # that is very likely about to succeed.
-        st.session_state.pop(HEALTH_OPEN, None)
+        close_health_dialog()
         flash(
             "הבדיקה נמשכת. התוצאה תופיע כאן ברגע שתהיה מוכנה.",
             kind="info",
@@ -459,7 +493,7 @@ def run_health_check(image_ids: list[str], note: str | None) -> None:
             icon=":material/error:",
         )
     else:
-        st.session_state.pop(HEALTH_OPEN, None)
+        close_health_dialog()
         flash("הבדיקה הושלמה.")
 
     st.rerun()
@@ -467,39 +501,7 @@ def run_health_check(image_ids: list[str], note: str | None) -> None:
 
 st.subheader("בריאות הצמח", anchor=False)
 
-if st.session_state.get(HEALTH_OPEN):
-    with st.container(border=True):
-        st.markdown("**בדיקת בריאות חדשה**")
-        st.caption("בוחרים עד ארבע תמונות מהגלריה של הצמח. תמונות חדות באור יום עוזרות מאוד.")
-
-        if not gallery:
-            st.info("צריך להעלות תמונה של הצמח לפני בדיקת בריאות.", icon=":material/info:")
-        else:
-            options = {image["id"]: str(image.get("created_at", ""))[:10] for image in gallery}
-            chosen = st.multiselect(
-                "תמונות לבדיקה",
-                options=list(options),
-                format_func=lambda key: f"תמונה מ-{options[key]}",
-                max_selections=4,
-                key="pd_health_images",
-            )
-            note = st.text_input(
-                "מה מטריד אותך? (אופציונלי)",
-                key="pd_health_note",
-                placeholder="למשל: העלים התחתונים מצהיבים כבר שבועיים",
-            )
-            actions = st.container(horizontal=True)
-            with actions:
-                if st.button(
-                    "שליחה לבדיקה",
-                    type="primary",
-                    disabled=not chosen,
-                    key="pd_health_submit",
-                ):
-                    run_health_check(list(chosen), note.strip() or None)
-                if st.button("ביטול", key="pd_health_cancel"):
-                    st.session_state.pop(HEALTH_OPEN, None)
-                    st.rerun()
+health_check_dialog(gallery, on_submit=run_health_check)
 
 latest_id = health.get("latest_assessment_id")
 if latest_id:
@@ -509,7 +511,7 @@ if latest_id:
 
     with st.expander("בדיקות קודמות", icon=":material/history:"):
         render_history(guarded(lambda: get(f"/v1/plants/{plant_id}/health-history")) or [])
-elif not st.session_state.get(HEALTH_OPEN):
+else:
     st.caption("עדיין לא בוצעה בדיקת בריאות לצמח הזה.")
 
 st.divider()

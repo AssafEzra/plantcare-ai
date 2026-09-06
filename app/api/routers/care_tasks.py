@@ -17,11 +17,12 @@ secret rather than a JWT, because a cron job has no session.
 from __future__ import annotations
 
 import hmac
+from dataclasses import asdict
 from datetime import UTC, datetime
 from typing import Annotated, Any
 from uuid import UUID
 
-from fastapi import APIRouter, Header, Query, Request
+from fastapi import APIRouter, Body, Header, Query, Request
 from pydantic import BaseModel, Field
 
 from app.api.dependencies import CurrentUserDep
@@ -31,10 +32,7 @@ from app.common.errors import ForbiddenError
 from app.config.logging import get_logger
 from app.config.settings import get_settings
 from app.domain.rules import recurrence
-from app.infrastructure.supabase.client import service_client
-from app.notifications import service as notifications
-from app.orchestration.services import agent_requests as agent_requests_service
-from app.orchestration.services import scheduler
+from app.orchestration.services import scheduler, tick
 from app.repositories.base import rows
 
 log = get_logger(__name__)
@@ -58,9 +56,23 @@ class TaskResponse(BaseModel):
 
 
 class ActionRequest(BaseModel):
+    """The optional note on a Done or a Skip.
+
+    Every field is optional, so the body as a whole must be too. Declared as a
+    required parameter it produced a 422 on every press of "בוצע" and "דילוג" from
+    both screens, which send no body: the scheduler was never reached, no event
+    was written, and the card came back unchanged. The API tests all passed
+    `json={}` and never saw it.
+    """
+
     model_config = {"extra": "forbid"}
 
     note: str | None = Field(default=None, max_length=500)
+
+
+# A body that may be omitted entirely. `= None` is what makes it optional to
+# FastAPI; the model's own defaults are not enough.
+OptionalAction = Annotated[ActionRequest | None, Body()]
 
 
 class OverdueSummaryResponse(BaseModel):
@@ -134,20 +146,24 @@ async def list_care_tasks(
 
 @router.post("/care-tasks/{task_id}/done", response_model=DataEnvelope[dict])
 async def complete_task(
-    request: Request, task_id: UUID, payload: ActionRequest, user: CurrentUserDep
+    request: Request, task_id: UUID, user: CurrentUserDep, payload: OptionalAction = None
 ) -> DataEnvelope[dict]:
     """Record a completed task and schedule the next one (A8: anchored on now)."""
-    result = scheduler.complete(user.client, task_id=task_id, user_id=user.id, note=payload.note)
+    result = scheduler.complete(
+        user.client, task_id=task_id, user_id=user.id, note=payload.note if payload else None
+    )
     return DataEnvelope(data=result, request_id=request.state.request_id)
 
 
 @router.post("/care-tasks/{task_id}/skip", response_model=DataEnvelope[dict])
 async def skip_task(
-    request: Request, task_id: UUID, payload: ActionRequest, user: CurrentUserDep
+    request: Request, task_id: UUID, user: CurrentUserDep, payload: OptionalAction = None
 ) -> DataEnvelope[dict]:
     """Skip a task. The next occurrence is anchored on the original due date, so
     skipping repeatedly cannot push the schedule out (A8)."""
-    result = scheduler.skip(user.client, task_id=task_id, user_id=user.id, note=payload.note)
+    result = scheduler.skip(
+        user.client, task_id=task_id, user_id=user.id, note=payload.note if payload else None
+    )
     return DataEnvelope(data=result, request_id=request.state.request_id)
 
 
@@ -245,37 +261,12 @@ async def internal_tick(
         # that says "wrong secret" tells a prober it found the right endpoint.
         raise ForbiddenError()
 
-    admin = service_client()
-    now = datetime.now(UTC)
-
-    created = scheduler.materialise(admin, now_utc=now)
-    swept = scheduler.sweep_overdue(admin, now_utc=now)
-    # Before the reminders: a request abandoned by a restarted worker should read
-    # as failed on this tick, not as still running for one more cycle.
-    abandoned = agent_requests_service.reap_abandoned(now)
-    # After the sweep, so the reminders describe the state this run settled
-    # rather than the one it started from.
-    dispatched = notifications.dispatch_due(admin, now_utc=now)
-
-    log.info(
-        "scheduler.tick",
-        materialised=created,
-        marked_overdue=swept.marked_overdue,
-        missed=swept.missed,
-        abandoned=abandoned,
-        emails_sent=dispatched.sent,
-        emails_failed=dispatched.failed,
-    )
+    # The work itself lives in `orchestration.services.tick`, because the
+    # in-process timer in `api.main` runs the same sweep and two copies of this
+    # ordering would drift.
+    outcome = tick.run_tick(now_utc=datetime.now(UTC))
 
     return DataEnvelope(
-        data=TickResponse(
-            materialised=created,
-            marked_overdue=swept.marked_overdue,
-            missed=swept.missed,
-            abandoned=abandoned,
-            emails_sent=dispatched.sent,
-            emails_skipped=dispatched.skipped,
-            emails_failed=dispatched.failed,
-        ),
+        data=TickResponse(**asdict(outcome)),
         request_id=request.state.request_id,
     )
