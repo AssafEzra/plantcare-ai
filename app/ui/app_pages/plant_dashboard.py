@@ -15,7 +15,7 @@ from typing import Any
 import streamlit as st
 
 from app.ui.components.agent_progress import await_request
-from app.ui.components.care_plan import active_plan_card, proposal_card
+from app.ui.components.care_plan import SOURCE_LABELS, active_plan_card
 from app.ui.components.care_task_card import care_task_card, due_text, is_due
 from app.ui.components.environment_form import FIELD_LABELS, describe, environment_form
 from app.ui.components.health_card import render_assessment, render_history
@@ -23,14 +23,23 @@ from app.ui.components.health_check_dialog import close_dialog as close_health_d
 from app.ui.components.health_check_dialog import health_check_dialog
 from app.ui.components.health_check_dialog import open_dialog as open_health_dialog
 from app.ui.components.identification_card import identification_card
-from app.ui.components.layout import empty_state, guarded, page_header, show_error
+from app.ui.components.layout import (
+    empty_state,
+    flash,
+    guarded,
+    page_header,
+    show_error,
+    show_flash,
+)
+from app.ui.components.proposal_dialog import open_dialog as open_proposal_dialog
+from app.ui.components.proposal_dialog import proposal_dialog
+from app.ui.components.review_badge import review_badge
 from app.ui.components.sources import render_sources
 from app.ui.components.status import status_badge, trend_badge
 from app.ui.components.timeline import render_timeline
 from app.ui.state.api_client import ApiError, delete, get, patch, post, put
 
 SELECTED = "pc_selected_plant"
-FLASH = "plant_flash"
 HISTORY_SHOWN = "plant_history_shown"
 
 SECTION_LABELS: dict[str, str] = {
@@ -55,23 +64,6 @@ LOGGABLE: dict[str, str] = {
     "PRUNED": "גיזמתי",
     "CUSTOM_NOTE": "הערה חופשית",
 }
-
-
-def flash(message: str, *, kind: str = "success", icon: str = ":material/check_circle:") -> None:
-    """Park a message across the rerun an action triggers.
-
-    `st.rerun()` discards anything written before it, so a confirmation shown and
-    immediately rerun away is one nobody sees.
-    """
-    st.session_state[FLASH] = (kind, message, icon)
-
-
-def show_flash() -> None:
-    parked = st.session_state.pop(FLASH, None)
-    if not parked:
-        return
-    kind, message, icon = parked
-    {"success": st.success, "info": st.info, "warning": st.warning}[kind](message, icon=icon)
 
 
 plant_id = st.session_state.get(SELECTED)
@@ -300,19 +292,39 @@ def reject(version_id: str) -> None:
 
 
 def adjust(version_id: str, overrides: dict[str, Any], summary: str) -> None:
+    """Save an operational change, and open the proposal it just created.
+
+    The adjustment form sits at the bottom of a long page, and the confirmation
+    was rendered at the top of it — where, after a rerun that keeps the scroll
+    position, the user demonstrably is not. Reported twice: first as "it wont let
+    you save", then as "it still doesnt show the string after i save".
+
+    So the confirmation is no longer the whole answer. A saved adjustment is a
+    decision waiting to be made, and the dialog is where that decision lives, so
+    saving opens it: the change summary, the diff of what actually moves, and
+    approve or decline. A modal cannot be scrolled past.
+
+    The flash and its toast stay for whoever closes the dialog.
+    """
     try:
-        post(
+        result = post(
             f"/v1/care-plan-versions/{version_id}/operational-adjustment",
             json={"operational_preferences": overrides, "change_summary": summary},
         )
-        flash(
-            "השינוי נשמר כהצעה חדשה. אפשר לאשר אותה למטה.",
-            kind="info",
-            icon=":material/pending_actions:",
-        )
-        st.rerun()
     except ApiError as exc:
         show_error(exc)
+        return
+
+    # After the rerun `open_proposals` is at least one, so the block above fetches
+    # the proposals and renders whichever the dialog has been pointed at - the
+    # same path the "open a waiting proposal" button uses.
+    open_proposal_dialog(str(result["version_id"]))
+    flash(
+        "השינוי נשמר כהצעה. לוח הזמנים יתעדכן רק אחרי שתאשרו אותה.",
+        kind="info",
+        icon=":material/pending_actions:",
+    )
+    st.rerun()
 
 
 def await_proposal(started: dict, *, waiting: str) -> None:
@@ -351,7 +363,28 @@ if data.get("open_proposals"):
     if proposals:
         st.subheader("ממתין לאישור שלך", anchor=False)
         for proposal in proposals:
-            proposal_card(proposal, on_approve=approve, on_reject=reject)
+            # A summary on the page, the decision in a window. The card used to
+            # carry the whole proposal and both buttons, which put an approve/
+            # reject choice in the middle of a scrolling page beside the health
+            # card and the timeline.
+            with st.container(border=True):
+                st.markdown(
+                    f"**{SOURCE_LABELS.get(proposal['source_type'], proposal['source_type'])}**"
+                    f" · גרסה {proposal['version_number']}"
+                )
+                if proposal.get("change_summary"):
+                    st.caption(proposal["change_summary"])
+                review_badge(proposal.get("knowledge_review"))
+                if st.button(
+                    "הצעת עדכון לתוכנית טיפול",
+                    key=f"pd_open_proposal_{proposal['id']}",
+                    type="primary",
+                    icon=":material/open_in_full:",
+                ):
+                    open_proposal_dialog(str(proposal["id"]))
+                    st.rerun()
+
+        proposal_dialog(proposals, on_approve=approve, on_reject=reject)
 
 
 def complete_task(task_id: str, action: str) -> None:
@@ -395,6 +428,7 @@ if upcoming:
 
 plan = data.get("care_plan")
 if plan:
+    review_badge(plan.get("knowledge_review"))
     active_plan_card(plan, on_adjust=adjust)
 elif not data.get("open_proposals") and empty_state(
     "אין עדיין תוכנית טיפול",
@@ -591,6 +625,16 @@ if species:
                 show_error(exc)
 
         if knowledge:
+            provisional = knowledge.get("review") == "pending"
+            if provisional:
+                # PR 33: the plant no longer waits for review before it gets
+                # knowledge and a plan. That is only honest if the page says what
+                # the user is reading.
+                st.warning(
+                    "המידע הזה נוצר על ידי הסוכן וממתין לאישור מומחה. "
+                    "ייתכנו בו אי-דיוקים, והוא עשוי להשתנות אחרי הבדיקה.",
+                    icon=":material/hourglass_top:",
+                )
             sections = knowledge.get("content") or {}
             rendered_any = False
             for name, label in SECTION_LABELS.items():
@@ -613,10 +657,17 @@ if species:
             # the model asserted. Rendering only the prose left them trusting all
             # of it equally.
             st.divider()
-            st.caption(
-                f"גרסה {knowledge.get('version_number')} · "
-                f"פורסם {str(knowledge.get('published_at') or '')[:10]}"
-            )
+            if provisional:
+                # No version number, because there is no published version yet,
+                # and no source list, because verification is part of the review
+                # this has not had. Claiming either would be the overclaiming the
+                # badge exists to prevent.
+                st.caption(f"נוצר {str(knowledge.get('published_at') or '')[:10]} · ממתין לאישור")
+            else:
+                st.caption(
+                    f"גרסה {knowledge.get('version_number')} · "
+                    f"פורסם {str(knowledge.get('published_at') or '')[:10]}"
+                )
             with st.expander(f"מקורות ({len(knowledge.get('sources') or [])})"):
                 render_sources(knowledge.get("sources") or [])
 

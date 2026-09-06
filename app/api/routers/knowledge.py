@@ -68,6 +68,10 @@ class KnowledgeResponse(BaseModel):
     species_id: UUID
     language: str
     version_number: int
+    # "published" or "pending" (PR 33). A pending article is finished research
+    # that no administrator has approved; it carries no sources, because source
+    # verification is part of the review this has not had.
+    review: str = "published"
     content: dict[str, Any]
     source_summary: dict[str, Any] = Field(default_factory=dict)
     published_at: datetime
@@ -225,13 +229,37 @@ async def get_species_knowledge(
     user: CurrentUserDep,
     language: str | None = Query(default=None, max_length=2),
 ) -> DataEnvelope[KnowledgeResponse]:
-    """The current published version. Drafts are never visible here."""
+    """The knowledge a user may read for this species.
+
+    A published version when there is one. Since PR 33, finished research that no
+    administrator has approved yet when there is not — marked `review: "pending"`,
+    which every screen showing it must surface. Before that, a plant whose species
+    was still in review had nothing to read at all and no plan either, until a
+    human happened to look.
+
+    RLS is what actually decides: the draft policy admits `READY_FOR_REVIEW` only,
+    and only for a species the caller owns a plant of. This route does not
+    re-check that, because a second copy of an authorisation rule is a second
+    place for it to be wrong.
+    """
     version = workflow.published_version(user.client, species_id=species_id, language=language)
+
     if version is None:
-        # KNOWLEDGE_PENDING is not an error state for the plant, but there is
-        # genuinely nothing to return yet, and an empty 200 would render as an
-        # article with no text.
-        raise NotFoundError("עדיין אין מידע מקצועי מאושר עבור המין הזה.")
+        pending = workflow.pending_draft(user.client, species_id=species_id, language=language)
+        if pending is None:
+            # Genuinely nothing yet: research has not finished, or the caller owns
+            # no plant of this species. An empty 200 would render as an article
+            # with no text.
+            raise NotFoundError("עדיין אין מידע מקצועי עבור המין הזה.")
+
+        pending["content"] = {
+            name: {"text": text}
+            for name, text in knowledge_content.as_sections(pending.get("content")).items()
+        }
+        return DataEnvelope(
+            data=KnowledgeResponse(**pending, sources=[]),
+            request_id=request.state.request_id,
+        )
 
     sources = workflow.version_sources(user.client, version_id=UUID(version["id"]))
 
@@ -350,10 +378,45 @@ async def approve_knowledge_draft(
     "/admin/knowledge-drafts/{draft_id}/reject", response_model=DataEnvelope[DraftResponse]
 )
 async def reject_knowledge_draft(
-    request: Request, draft_id: UUID, payload: RejectRequest, admin: AdminDep
+    request: Request,
+    draft_id: UUID,
+    payload: RejectRequest,
+    admin: AdminDep,
+    background: BackgroundTasks,
+    agent: KnowledgeAgentDep,
 ) -> DataEnvelope[DraftResponse]:
-    """Reject a draft. Plants stay pending and the species stays retriable (A17)."""
+    """Reject a draft, and immediately research the species again (A17, PR 33).
+
+    Rejection is a verdict on the draft, not on the plants. Since PR 33 those
+    plants are no longer waiting — they are ACTIVE, reading this draft and running
+    a care plan built from it — so a rejection now has a live consequence, and
+    leaving the correction to whenever an administrator remembers to press Retry
+    means the plants keep running on content that has been judged wrong.
+
+    One retry, automatically. Not a loop: it is queued only when the rejected
+    draft is the species' newest, so a second rejection of the replacement does
+    not start a third run, and an administrator who wants another attempt after
+    that uses the Retry route deliberately.
+    """
     draft = workflow.reject(admin.client, draft_id=draft_id, admin_note=payload.admin_note)
+
+    if workflow.is_newest_draft(admin.client, draft_id=draft_id):
+        run = workflow.start_research(
+            species_id=UUID(draft["species_id"]),
+            initiated_by=admin.id,
+            reason=payload.admin_note,
+            language=draft["language"],
+        )
+        BackgroundTasksExecutor(background).submit(
+            workflow.execute_research,
+            request_id=run.request_id,
+            draft_id=run.draft_id,
+            species_id=run.species_id,
+            language=run.language,
+            reason=payload.admin_note,
+            agent=agent,
+        )
+
     return DataEnvelope(data=DraftResponse(**draft), request_id=request.state.request_id)
 
 

@@ -239,9 +239,10 @@ def test_the_publish_confirmation_survives_the_rerun(page):
     is what makes it visible.
     """
     from app.ui.app_pages import admin as admin_page  # noqa: F401
+    from app.ui.components.layout import FLASH_KEY
 
     app = page([DRAFT])
-    app.session_state["admin_flash"] = (
+    app.session_state[FLASH_KEY] = (
         "success",
         "פורסמה גרסה 1. 3 צמחים של המין הזה פעילים כעת.",
         ":material/check_circle:",
@@ -252,7 +253,7 @@ def test_the_publish_confirmation_survives_the_rerun(page):
     assert "פורסמה גרסה 1" in shown
     assert "3 צמחים" in shown
     # And it is consumed, so it does not follow the administrator around.
-    assert "admin_flash" not in app.session_state
+    assert FLASH_KEY not in app.session_state
 
 
 # --- the tabs PR 22 added ---------------------------------------------------------

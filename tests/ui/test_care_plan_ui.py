@@ -127,9 +127,12 @@ def rendered(app: AppTest) -> str:
 
 
 def _render_proposal(card: dict) -> None:
-    from app.ui.components.care_plan import proposal_card
+    # No annotations, and every import inside: `AppTest.from_function` execs the
+    # source in a bare module, so a name from this file would be undefined.
+    from app.ui.components.proposal_dialog import open_dialog, proposal_dialog
 
-    proposal_card(card, on_approve=lambda _: None, on_reject=lambda _: None)
+    open_dialog(str(card["id"]))
+    proposal_dialog([card], on_approve=lambda _: None, on_reject=lambda _: None)
 
 
 def _render_active(card: dict) -> None:
@@ -180,17 +183,17 @@ def test_the_active_plan_offers_frequency_and_nothing_else():
     assert "השקיה" not in " ".join(t.label for t in app.text_input if "מה השתנה" not in t.label)
 
 
-def test_the_recommendations_are_shown_in_full(page):
-    app = page(proposals=[version()])
-    app.run()
+def test_the_recommendations_are_shown_in_full():
+    """Inside the dialog since PR 33. The plant page shows a one-line summary and
+    a button; the decision itself gets the screen to itself."""
+    app = card_only(_render_proposal, version())
 
     assert RECOMMENDATIONS["summary"] in rendered(app)
 
 
-def test_a_warning_from_the_recommendations_is_surfaced(page):
+def test_a_warning_from_the_recommendations_is_surfaced():
     """Toxicity is the case that matters: a user with a cat has to see it."""
-    app = page(proposals=[version()])
-    app.run()
+    app = card_only(_render_proposal, version())
 
     assert "רעיל לחתולים" in " ".join(str(w.value) for w in app.warning)
 
@@ -198,19 +201,17 @@ def test_a_warning_from_the_recommendations_is_surfaced(page):
 # --- the schedule --------------------------------------------------------------
 
 
-def test_intervals_are_written_the_way_a_person_says_them(page):
+def test_intervals_are_written_the_way_a_person_says_them():
     """ "כל שבוע", not "כל 7 ימים". Correct either way; only one is memorable."""
-    app = page(proposals=[version()])
-    app.run()
+    app = card_only(_render_proposal, version())
 
     text = rendered(app)
     assert "כל שבוע" in text
     assert "כל 7 ימים" not in text
 
 
-def test_each_rule_shows_its_action_and_time(page):
-    app = page(proposals=[version()])
-    app.run()
+def test_each_rule_shows_its_action_and_time():
+    app = card_only(_render_proposal, version())
 
     text = rendered(app)
     assert "השקיה" in text
@@ -221,11 +222,10 @@ def test_each_rule_shows_its_action_and_time(page):
 # --- A20 -----------------------------------------------------------------------
 
 
-def test_missing_context_is_shown_as_information_not_a_question(page):
+def test_missing_context_is_shown_as_information_not_a_question():
     """A20: the MVP cannot carry an answer back, so nothing here may look like a
     prompt. It renders as "what would have helped", with no input to answer it."""
-    app = page(proposals=[version()])
-    app.run()
+    app = card_only(_render_proposal, version())
 
     text = rendered(app)
     assert "גודל העציץ" in text
@@ -263,3 +263,115 @@ def test_the_source_of_a_proposal_is_named(page):
     app.run()
 
     assert "בעקבות בדיקת בריאות" in rendered(app)
+
+
+# --- why the save button is disabled (PR 33) -----------------------------------
+#
+# Reported from real use: "manual changing in שינוי תדירות או שעה does nothing, it
+# wont let you save changes". Both conditions were real - a version after the
+# first cannot be written without a change summary, and an adjustment with no
+# override is not an adjustment - but the screen enforced them in silence. A
+# greyed-out primary button with no reason beside it is indistinguishable from a
+# broken one.
+
+
+def _adjust_form(card: dict) -> AppTest:
+    def render(card):
+        from app.ui.components.care_plan import active_plan_card
+
+        active_plan_card(card, on_adjust=lambda *_: None)
+
+    app = AppTest.from_function(render, kwargs={"card": card}, default_timeout=30)
+    app.run()
+    assert not app.exception, [str(e) for e in app.exception]
+    return app
+
+
+def _save(app: AppTest):
+    return next(b for b in app.button if "שמירת השינוי" in b.label)
+
+
+def _reasons(app: AppTest) -> str:
+    return " ".join(str(c.value) for c in app.caption)
+
+
+def test_the_field_is_marked_required():
+    """The blocker was invisible in two ways at once: the button gave no reason,
+    and the field it was waiting on did not look mandatory."""
+    app = _adjust_form(version(status="ACTIVE"))
+
+    assert any("חובה" in t.label for t in app.text_input)
+
+
+def test_an_untouched_form_says_what_is_missing():
+    app = _adjust_form(version(status="ACTIVE"))
+
+    assert _save(app).disabled
+    assert "תדירות" in _reasons(app)
+    assert "לתאר" in _reasons(app)
+
+
+def test_changing_a_number_leaves_only_the_description_outstanding():
+    """The exact sequence that was reported: change 7 to 5, look for the save
+    button, find it still greyed out with nothing explaining why."""
+    app = _adjust_form(version(status="ACTIVE"))
+    app.number_input[0].set_value(5).run()
+
+    assert _save(app).disabled
+    assert "יש לתאר את השינוי כדי לשמור." in _reasons(app)
+
+
+def test_describing_the_change_alone_is_not_enough():
+    """A description with no changed interval is not an adjustment, and the
+    message says which half is missing rather than repeating itself."""
+    app = _adjust_form(version(status="ACTIVE"))
+    app.text_input[0].set_value("הדירה חמה יותר").run()
+
+    assert _save(app).disabled
+    assert "תדירות" in _reasons(app)
+    assert "לתאר" not in _reasons(app)
+
+
+def test_both_together_enable_it_and_the_reason_goes_away():
+    app = _adjust_form(version(status="ACTIVE"))
+    app.number_input[0].set_value(5).run()
+    app.text_input[0].set_value("הדירה חמה יותר").run()
+
+    assert not _save(app).disabled
+    assert "כדי לשמור" not in _reasons(app)
+
+
+def test_the_form_says_the_change_becomes_a_proposal():
+    """The other half of "manual changing does nothing": an adjustment produces a
+    proposal, and the schedule does not move until it is approved. The caption
+    said the professional recommendations are preserved - true, and not the thing
+    the user was about to be surprised by."""
+    app = _adjust_form(version(status="ACTIVE"))
+
+    caption = _reasons(app)
+    assert "הצעה" in caption
+    assert "לוח הזמנים" in caption
+
+
+def test_the_form_is_held_open_while_a_message_is_pending(monkeypatch):
+    """An expander reopens closed on every rerun, so saving made the form the user
+    had just filled in vanish - which, with the confirmation rendered far above
+    the fold, is what "it does nothing" was made of.
+
+    Asserted as the wiring rather than the rendered state: `AppTest` does not
+    expose an `st.expander` that carries an `icon`, so the open/closed flag is not
+    readable from here. What this catches is the `expanded=` argument being
+    dropped, and the browser suite sees the actual expander.
+    """
+    from app.ui.components import care_plan
+
+    asked: list[bool] = []
+
+    def spy() -> bool:
+        asked.append(True)
+        return True
+
+    monkeypatch.setattr(care_plan, "pending_flash", spy)
+    card_only(_render_active, version(status="ACTIVE"))
+
+    assert asked, "the adjustment form does not consult whether a message is pending"

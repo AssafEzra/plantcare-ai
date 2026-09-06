@@ -239,11 +239,20 @@ def execute_research(
             }
         ).eq("id", str(draft_id)).execute()
 
+        # PR 33: finished research releases the plants waiting on it, without
+        # waiting for review. They go ACTIVE with knowledge marked "ממתין
+        # לאישור מומחה" and a care plan built from the draft; the review gate
+        # itself is unchanged, since nothing here writes a `knowledge_versions`
+        # row. Before this, a plant sat in KNOWLEDGE_PENDING with no knowledge,
+        # no plan and no schedule until an administrator happened to look.
+        released = release_pending_plants(admin, species_id=species_id)
+
         requests_service.mark_succeeded(
             request_id,
             {
                 "draft_id": str(draft_id),
                 "species_id": str(species_id),
+                "released_plants": released,
                 "verified_sources": sum(1 for s in verified if s.url is not None),
                 "unverified_sources": sum(1 for s in verified if s.url is None),
                 "weak_sections": result.content.weakest_sections,
@@ -403,13 +412,127 @@ def publish(client: Client, *, draft_id: UUID, admin_note: str | None = None) ->
     }
 
 
+def is_newest_draft(client: Client, *, draft_id: UUID) -> bool:
+    """Is this the most recent draft for its species and language?
+
+    Guards the automatic re-research on rejection against becoming a loop: only
+    the newest draft triggers one, so rejecting the *replacement* does not start a
+    third attempt. An administrator who wants another after that presses Retry,
+    which is a deliberate act.
+    """
+    draft = first_row(
+        client.table("knowledge_drafts")
+        .select("id, species_id, language, created_at")
+        .eq("id", str(draft_id))
+        .execute()
+    )
+    if draft is None:  # pragma: no cover - the caller just updated it
+        return False
+
+    newest = first_row(
+        client.table("knowledge_drafts")
+        .select("id")
+        .eq("species_id", draft["species_id"])
+        .eq("language", draft["language"])
+        .order("created_at", desc=True)
+        .limit(1)
+        .execute()
+    )
+    return newest is not None and str(newest["id"]) == str(draft_id)
+
+
+def pending_draft(client: Client, *, species_id: UUID, language: str | None = None) -> Row | None:
+    """Finished research a user may read while it waits for review (PR 33).
+
+    Shaped like a published version so one response model serves both: the screen
+    should differ in what it *says* about the content, not in how it reads it.
+    `version_number` is 0 - there is no published version yet, and inventing a 1
+    would collide with the real first version the moment it publishes.
+
+    Returns nothing unless RLS lets the caller see it: the draft policy admits
+    `READY_FOR_REVIEW` only, and only for a species they own a plant of.
+    """
+    settings = get_settings()
+    draft = first_row(
+        client.table("knowledge_drafts")
+        .select("id, species_id, language, content, updated_at")
+        .eq("species_id", str(species_id))
+        .eq("language", language or settings.default_content_language)
+        .eq("status", KnowledgeDraftStatus.READY_FOR_REVIEW.value)
+        .order("updated_at", desc=True)
+        .limit(1)
+        .execute()
+    )
+    if draft is None:
+        return None
+
+    return {
+        "id": draft["id"],
+        "species_id": draft["species_id"],
+        "language": draft["language"],
+        "version_number": 0,
+        "review": "pending",
+        "content": draft.get("content"),
+        "source_summary": {},
+        "published_at": draft["updated_at"],
+    }
+
+
+def release_pending_plants(admin: Client, *, species_id: UUID) -> int:
+    """Move this species' waiting plants to ACTIVE (PR 33).
+
+    Runs under the service role: the plants belong to other users and the trigger
+    is a background research run, so there is no user JWT in scope. Each plant's
+    own rows still carry their `user_id`, so RLS shows the result to them and
+    nobody else.
+
+    Deliberately *not* queueing the care proposals here. Publication has a
+    dedicated fan-out (`care.queue_initial_plans`) that already knows how to skip
+    a plant with a pending proposal or a working plan, and duplicating that
+    judgement in a second place is how the two roads into ACTIVE came to disagree
+    in the first place (A3, PR 31). The caller queues.
+    """
+    waiting = rows(
+        admin.table("plants")
+        .select("id, user_id")
+        .eq("species_id", str(species_id))
+        .eq("status", PlantStatus.KNOWLEDGE_PENDING.value)
+        .execute()
+    )
+    if not waiting:
+        return 0
+
+    # No system event, deliberately. `publish_knowledge_draft` performs the same
+    # KNOWLEDGE_PENDING -> ACTIVE transition and writes none either, and A22 keeps
+    # the event vocabulary to things with no table of their own. What the user
+    # sees on the timeline is the care plan version this releases, which is the
+    # thing that actually happened.
+    admin.table("plants").update({"status": PlantStatus.ACTIVE.value}).in_(
+        "id", [p["id"] for p in waiting]
+    ).execute()
+
+    log.info(
+        "knowledge.plants_released_on_draft",
+        species_id=str(species_id),
+        plants=len(waiting),
+    )
+    return len(waiting)
+
+
 def reject(client: Client, *, draft_id: UUID, admin_note: str) -> Row:
     """Reject a draft, leaving the species retriable (A17).
 
-    Plants stay in `KNOWLEDGE_PENDING` and nothing about them changes. A rejection
-    is a verdict on the draft, not on the plants — stranding them is the failure
-    A17 exists to prevent, and the lifecycle table keeps `REJECTED → RESEARCHING`
-    open so the next attempt can still release them.
+    A rejection is a verdict on the draft, not on the plants — stranding them is
+    the failure A17 exists to prevent, and the lifecycle table keeps
+    `REJECTED → RESEARCHING` open so the next attempt can still release them.
+
+    Since PR 33 a rejected draft may already be carrying care plans, because
+    plants no longer wait for review. Those plans are **not** cancelled: the plant
+    would be left with no schedule at all, which is worse than a schedule built on
+    advice an administrator disliked. Instead the plant page says so — read from
+    the join between `care_plan_versions.knowledge_draft_id` and this status, so
+    there is no second copy of the fact to drift — and the caller queues one fresh
+    research run.
     """
     if not admin_note.strip():
         raise ValidationFailedError("יש לציין סיבה לדחייה.")

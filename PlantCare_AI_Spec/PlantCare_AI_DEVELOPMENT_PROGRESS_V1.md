@@ -29,7 +29,7 @@ All major product decisions are closed.
 - [x] User confirmation of identification
 - [x] Species-only MVP model
 - [x] Knowledge Draft → Admin Review → Published Knowledge
-- [x] Care Plan approval and versioning
+- [x] Care Plan approval and versioning - from PR 33 the decision opens in a dialog showing the agent's reason and then a computed diff against the plan in force, instead of the new plan in full with nothing to compare it to
 - [x] Health Assessment and status model
 - [x] Deterministic Python scheduling
 - [x] Care Rules vs Care Tasks
@@ -303,7 +303,7 @@ in recoverability, and the release-checklist item it creates.
 - [x] External/unapproved source marking - permitted, marked, and flagged for extra admin attention
 - [x] Draft retry - a rejected or failed draft stays retriable (A17); an approved one is terminal
 - [x] Admin review - weak sections surfaced first, unverified sources shown before approval
-- [x] Approve/reject - a rejection must carry a reason, and leaves the species retriable (A17)
+- [x] Approve/reject - a rejection must carry a reason, and leaves the species retriable (A17). From PR 33 a rejection also queues one fresh research run, because the plants are no longer waiting: they are ACTIVE and running a plan built from the draft that was just refused
 - [x] Publish Knowledge Version - one transaction: demote, insert, sources, draft, fan-out, audit
 - [x] User read-only access - current version only; writes refused by RLS, not only by the API
 - [x] User error report - records the version being complained about, so it stays legible later
@@ -323,7 +323,7 @@ in recoverability, and the release-checklist item it creates.
 - [x] Use Plant
 - [x] Use Environment
 - [x] Use Health state/history
-- [x] Generate Care Plan proposal - always a proposal; nothing here can activate a plan
+- [x] Generate Care Plan proposal - always a proposal; nothing here can activate a plan. From PR 33 it may be built from finished research that no admin has approved, recorded as `knowledge_draft_id` and badged ממתין לאישור מומחה everywhere it shows
 - [x] Structured Care Rules - closed action enum (A19), bounded intervals, A7 weekday coherence
 - [x] Validate output - `domain/rules/care_rule_validation.py`; an implausible rule is dropped, not fatal to the plan
 - [x] User approval - the only path to ACTIVE
@@ -410,9 +410,10 @@ in recoverability, and the release-checklist item it creates.
 - [x] Gallery - signed as the caller, short-lived; the bucket stays private. Images can be removed from PR 31, with FINAL §20's hide-vs-delete outcome reported to the user
 - [x] Care section
 - [x] Schedule section
-- [x] Health section - findings, evidence, and the UNKNOWN path (PR 21)
+- [x] Health section - findings, evidence, and the UNKNOWN path (PR 21). Dated from PR 33: `created_at` shipped on the response and no screen read it, so a check from three weeks ago looked like one from this morning
 - [x] History section - merged from five tables on read, so the timeline cannot drift from the data
 - [x] Health Check CTA - opens a dialog from PR 32: photographs taken now *and* existing gallery images. It shipped as an inline chooser over the gallery alone, which is the wrong shape - a check is prompted by something just noticed, and an empty gallery was a dead end
+- [x] Camera capture (PR 33) - Add Plant and the health check both offer צילום beside the uploader, one shared four-image cap, each capture confirmed before it joins the batch. Absent without a secure context, so the uploader is never the fallback that isn't there
 - [x] Environment update - editable from the plant dashboard, every field optional; a save requests an ENVIRONMENT_CHANGE proposal when the plant has a plan (PR 30 - shipped read-only in PR 20, and the note promising a plan review was the only part that worked)
 - [x] Knowledge display with provenance (PR 31) - version, publication date and the verified sources. The endpoint always returned them; only the prose was ever rendered
 - [x] Knowledge error report - report, never edit (FINAL §10)

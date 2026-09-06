@@ -12,6 +12,8 @@ from typing import Any, Literal
 
 import streamlit as st
 
+from app.ui.components.layout import pending_flash
+
 ACTION_LABELS: dict[str, tuple[str, str]] = {
     "WATERING": ("השקיה", ":material/water_drop:"),
     "FERTILIZING": ("דישון", ":material/eco:"),
@@ -115,65 +117,28 @@ def render_recommendations(recommendations: dict[str, Any]) -> None:
         st.warning(warning, icon=":material/warning:")
 
 
-def proposal_card(
-    proposal: dict[str, Any],
-    *,
-    on_approve,
-    on_reject,
-    key_prefix: str = "proposal",
-) -> None:
-    """One open proposal, with the two decisions the user actually has.
+# `proposal_card` lived here until PR 33 and is gone deliberately rather than
+# left unused. The approve/reject decision moved into `proposal_dialog`, which
+# also shows what changes; a second renderer of the same proposal is exactly the
+# shape that let two screens disagree about the same task in PR 31.
 
-    `missing_context` (A20) is rendered as "what would have helped", not as a
-    question. The MVP has no status, table or endpoint that could carry an answer
-    back, so phrasing it as a question would promise a conversation that cannot
-    happen.
+
+def _why_not_saveable(overrides: dict[str, Any], summary: str) -> str | None:
+    """What is still missing before an adjustment can be saved.
+
+    Returns the sentence to show, or None when the button should be live. Split
+    out so the message is a value the tests can assert on rather than a string
+    buried in a render branch — and so the two conditions can be told apart: a
+    user who typed a description but changed no number needs different words from
+    one who did the opposite.
     """
-    version_id = proposal["id"]
-    recommendations = proposal.get("professional_recommendations") or {}
-    preferences = proposal.get("operational_preferences") or {}
-    missing = preferences.get("missing_context") or []
-
-    with st.container(border=True):
-        header, badge = st.columns([3, 1])
-        with header:
-            st.subheader(
-                SOURCE_LABELS.get(proposal["source_type"], proposal["source_type"]), anchor=False
-            )
-            st.caption(f"גרסה {proposal['version_number']}")
-        with badge:
-            label, colour = STATUS_LABELS.get(proposal["status"], (proposal["status"], "gray"))
-            st.badge(label, color=colour)
-
-        if proposal.get("change_summary"):
-            st.info(proposal["change_summary"], icon=":material/edit_note:")
-
-        st.markdown("**ההמלצות המקצועיות**")
-        render_recommendations(recommendations)
-
-        st.markdown("**מה נתזמן עבורך**")
-        render_rules(proposal.get("rules") or [])
-
-        if missing:
-            # Not a question. Nothing here waits on an answer.
-            st.caption("מידע שהיה עוזר לדייק את התוכנית: " + " · ".join(missing))
-
-        actions = st.container(horizontal=True)
-        with actions:
-            if st.button(
-                "אישור התוכנית",
-                key=f"{key_prefix}_approve_{version_id}",
-                type="primary",
-                icon=":material/check:",
-            ):
-                on_approve(version_id)
-
-            if st.button(
-                "דחייה",
-                key=f"{key_prefix}_reject_{version_id}",
-                icon=":material/block:",
-            ):
-                on_reject(version_id)
+    if not overrides and not summary.strip():
+        return "יש לשנות תדירות של טיפול אחד לפחות ולתאר את השינוי כדי לשמור."
+    if not overrides:
+        return "יש לשנות תדירות של טיפול אחד לפחות כדי לשמור."
+    if not summary.strip():
+        return "יש לתאר את השינוי כדי לשמור."
+    return None
 
 
 def active_plan_card(plan: dict[str, Any], *, on_adjust=None, key_prefix: str = "plan") -> None:
@@ -200,10 +165,19 @@ def active_plan_card(plan: dict[str, Any], *, on_adjust=None, key_prefix: str = 
         if on_adjust is None:
             return
 
-        with st.expander("שינוי תדירות או שעה", icon=":material/tune:"):
+        # Held open while a message is waiting to be shown. An expander defaults
+        # to closed and reopens closed on every rerun, so saving made the form the
+        # user had just filled in vanish - which, together with a confirmation
+        # rendered far above the fold, is what "it does nothing" was made of.
+        with st.expander("שינוי תדירות או שעה", icon=":material/tune:", expanded=pending_flash()):
+            # What the control does, before it is used. It said the professional
+            # recommendations are preserved - true, and not the thing a user is
+            # about to be surprised by. An adjustment produces a *proposal*: the
+            # schedule does not move until it is approved, and the second half of
+            # "manual changing does nothing" was exactly that expectation.
             st.caption(
-                "אפשר לשנות מתי מזכירים לך. ההמלצות המקצועיות נשארות כפי שהן "
-                "ונשמרות במלואן בגרסה החדשה."
+                "אפשר לשנות מתי מזכירים לך. ההמלצות המקצועיות נשארות כפי שהן. "
+                "השינוי נשמר כהצעה שממתינה לאישור שלכם — לוח הזמנים מתעדכן רק אחרי שתאשרו אותה."
             )
             overrides: dict[str, Any] = {}
             for rule in plan.get("rules") or []:
@@ -219,14 +193,28 @@ def active_plan_card(plan: dict[str, Any], *, on_adjust=None, key_prefix: str = 
                     overrides[rule["action_type"]] = {"interval_days": int(days)}
 
             summary = st.text_input(
-                "מה השתנה?",
+                "מה השתנה? (חובה)",
                 key=f"{key_prefix}_summary",
                 placeholder="למשל: הדירה חמה יותר בקיץ",
+                help="נשמר בהיסטוריית הגרסאות, כדי שיהיה אפשר להבין מאוחר יותר למה השתנה משהו.",
             )
+
+            # Why the button is disabled, said out loud. Reported from real use:
+            # "manual changing in שינוי תדירות או שעה does nothing, it wont let
+            # you save changes". Both conditions were real - a version after the
+            # first cannot be written without a change summary, and an adjustment
+            # with no override is not an adjustment - but the screen enforced them
+            # in silence. A greyed-out primary button with no reason beside it is
+            # indistinguishable from a broken one.
+            blocked = _why_not_saveable(overrides, summary)
+
             if st.button(
                 "שמירת השינוי",
                 key=f"{key_prefix}_adjust",
                 type="primary",
-                disabled=not overrides or not summary.strip(),
+                disabled=bool(blocked),
             ):
                 on_adjust(plan["id"], overrides, summary.strip())
+
+            if blocked:
+                st.caption(blocked)

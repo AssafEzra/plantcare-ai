@@ -12,6 +12,8 @@ import streamlit as st
 
 from app.ui.components.agent_progress import await_request
 from app.ui.components.identification_card import identification_card
+from app.ui.components.image_picker import clear as clear_captures
+from app.ui.components.image_picker import image_picker
 from app.ui.components.layout import page_header, show_error
 from app.ui.state.api_client import ApiError, get, post
 
@@ -47,12 +49,11 @@ if step == "upload":
             """
         )
 
-    uploads = st.file_uploader(
-        "תמונות הצמח",
-        type=["jpg", "jpeg", "png", "webp"],
-        accept_multiple_files=True,
-        key="add_plant_images",
-        help="עד 4 תמונות, כל אחת עד 10MB.",
+    uploads = image_picker(
+        key_prefix="add_plant",
+        max_images=MAX_IMAGES,
+        upload_label="תמונות הצמח",
+        help_text="עד 4 תמונות, כל אחת עד 10MB.",
     )
 
     if uploads and len(uploads) > MAX_IMAGES:
@@ -93,6 +94,9 @@ if step == "upload":
                     json={"image_ids": image_ids, "user_description": note.strip() or None},
                 )
 
+            # The captures belong to the plant just created; keeping them
+            # would offer them again on the next plant.
+            clear_captures("add_plant")
             st.session_state[PLANT] = plant["id"]
             st.session_state[REQUEST] = run["agent_request_id"]
             st.session_state[STEP] = "identifying"

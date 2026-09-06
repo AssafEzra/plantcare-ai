@@ -191,6 +191,21 @@ The interface is Hebrew and RTL in the MVP.
 
 ---
 
+**An administrator's navigation is the operator's application (revised PR 33), per
+§37.** The admin panel shipped as a sixth entry beside בית, הצמחים שלי, הוספת צמח
+and הצמח שלי, which made it read as one more tab of a plant-care app rather than
+the thing an operator opens. An ADMIN now sees **ניהול** — the landing page at
+sign-in — and **הגדרות**, and nothing else. Settings stays because an
+administrator still has a timezone, a display name and notification preferences,
+and those live nowhere else.
+
+Presentation only. Every plant route remains the caller's own by RLS and every
+admin route remains gated server-side (§22, §26): an administrator who typed a
+plant URL would see their own plants, exactly as before. Hiding navigation has
+never been the control, and this does not make it one.
+
+---
+
 # 5. Home Dashboard
 
 The dashboard is action-oriented.
@@ -389,6 +404,50 @@ Knowledge is global and species-based.
 - Toxicity/Safety
 - Sources
 
+**Research is visible before review (revised PR 33), per §37**
+
+The gate is unchanged: the Knowledge Agent never publishes, `knowledge_versions`
+is written only by an administrator approving a draft, and source verification
+remains part of that review.
+
+What changed is what happens *while* a draft waits. A plant used to sit in
+`KNOWLEDGE_PENDING` with no knowledge, no care plan and no schedule until a human
+happened to look — which, for a single-operator MVP, is indistinguishable from the
+product not working. Finished research (`READY_FOR_REVIEW`) is now shown to the
+owner of a plant of that species, marked **ממתין לאישור מומחה**, and the Care
+Agent may build a plan from it.
+
+Three things make that honest rather than a quiet removal of the gate:
+
+1. **Provenance stays exact.** `care_plan_versions` gains `knowledge_draft_id`;
+   a version cites a draft *or* a published version, never both (check
+   constraint) and never rewritten afterwards (the column joins the
+   content-immutable set).
+2. **Visibility is scoped.** A new RLS policy admits `READY_FOR_REVIEW` only, and
+   only for a species the reader owns a plant of. SELECT only — writes stay
+   admin-only, and FINAL §10's "users report errors, never edit" is untouched.
+   This is the first time a non-admin can read unreviewed AI content, and it is
+   the change in PR 33 that most warrants review.
+3. **Rejection is handled.** See A17 below.
+
+A pending article shows no version number and no source list: there is no
+published version yet, and verification is part of the review it has not had.
+Claiming either would be exactly the overclaiming the badge exists to prevent.
+
+**A17 revised.** A rejected draft may now already be carrying live care plans, so
+rejection has a consequence it did not before. The plan is **not** cancelled —
+leaving the plant with no schedule at all is worse than one built on advice an
+administrator disliked. Instead:
+
+* the plant page says the professional information behind the plan was not
+  approved and a corrected version is being prepared;
+* one fresh research run is queued automatically, and only when the rejected draft
+  is the species' newest — so rejecting the replacement does not start a third,
+  and an administrator wanting another uses Retry deliberately;
+* the state is *derived* from the draft's status through
+  `care_plan_versions.knowledge_draft_id`, never copied onto the plan, so there is
+  no second record of it to drift.
+
 ### Knowledge lifecycle
 
 ```text
@@ -519,6 +578,64 @@ Inputs:
 A structured Care Plan Proposal containing professional recommendations and operational rules.
 
 ### User approval
+
+**An adjustment leaves the rule coherent (PR 33), per §37.** A weekday anchor only
+means something on an interval that is a multiple of seven (A7), and `care_rules`
+has a CHECK saying so. The adjustment copied the weekday verbatim while applying
+the new interval, so "every 7 days on Sunday" changed to five days produced a row
+Postgres refused — a 500. Every one of a real user's plants had at least one
+weekly rule anchored to a day, so the control was unusable on all of them.
+
+The weekday is **dropped**, not the change refused. The user is choosing a
+frequency; the scheduler already ignores a weekday that does not divide into the
+interval, so keeping it would store something with no effect, while rejecting
+would claim they cannot pick five days when they can.
+`domain/rules/care_rule_validation.py` has encoded this rule since PR 16 — this
+path simply never consulted it.
+
+The same reproduction exposed a partial write: the version row was inserted before
+the rules, so a refused copy left a PROPOSED version with no rules in it and
+consumed a version number. The rules are now built and normalised before anything
+is written, and a failure during the copy removes the version it belongs to
+(§25: nothing partial survives).
+
+**A blocked save says why (PR 33), per §37.** Reported from real use: *"manual
+changing in שינוי תדירות או שעה does nothing, it wont let you save changes"*. The
+save button required both a changed interval and a description, and enforced both
+in silence — so a user who changed 7 days to 5 found a greyed-out primary button
+and no reason beside it, which is indistinguishable from a broken one. Both
+conditions are real (a version after the first cannot be written without a change
+summary, and an adjustment with no override is not an adjustment); the field is
+now marked mandatory and the missing half is named under the button.
+
+Worth restating here because it is the other half of the same report: an
+operational adjustment produces a **proposal**, not an applied change. The
+schedule moves when that proposal is approved — which is what cancels the
+outstanding tasks (A5) and materialises the new ones.
+
+**Presented in a window, with what changes (revised PR 33), per §37.** The
+approve/reject decision sat inline on the plant page beside the health card and
+the timeline, and showed the proposed plan in full without ever saying how it
+differed from the one already running — leaving the user to read two schedules
+side by side and notice for themselves that watering had moved from seven days to
+five.
+
+The plant page now shows a one-line summary and a button; the decision opens as a
+dialog containing, in order: the agent's own `change_summary` sentence (the
+*why*), the computed difference against the active plan (the *what*), then the
+recommendations and the full schedule, then approve and reject.
+
+The difference is computed in `domain/services/care_plan_diff.py` — pure, no
+clock, no database, no model — for the same reason `recurrence.py` is pure: a
+comparison a user leans on to make a decision must not be something a model
+rephrases differently each run. Rules are compared on interval, time and weekday;
+reworded `instructions` are deliberately not a change, since the agent rewords the
+same advice run to run and reporting that would bury the differences that matter.
+A first plan has nothing to diff and simply shows the plan.
+
+`proposal_card` was deleted rather than left unused — a second renderer of the
+same proposal is precisely the shape that let two screens disagree about the same
+task in PR 31.
 
 The user must approve the initial Care Plan.
 
@@ -873,6 +990,15 @@ Previous assessments remain unchanged.
 
 If information is insufficient, save an `UNKNOWN` assessment with the reason.
 
+**Every assessment shows when it ran (added PR 33), per §37.** The results card
+carried no date at all, so a check from three weeks ago was indistinguishable from
+one taken this morning — and an assessment is a statement about a moment: "the
+lower leaves are yellowing" means something different from a week ago than from an
+hour ago. `created_at` had been on the response since PR 21 and no screen read it.
+Rendered as an absolute date *and time* in the reader's own zone: two checks on one
+day are ordinary, and a relative phrase ("3 days ago") makes the arithmetic the
+reader's problem.
+
 **How a check is started (revised PR 32), per §37**
 
 Reported from real use: *"when starting a health check it should lead to a new
@@ -1051,6 +1177,32 @@ identification workflow set `plant_images.ai_used`, so a health assessment could
 cite a photograph the user was then permitted to hard-delete — the retention rule
 above was enforced for one agent out of two. Health now marks its images on a
 successful assessment, in the same place identification does.
+
+### Photographs may be taken in the app (added PR 33), per §37
+
+`st.file_uploader` was the only way in. On a phone that is already adequate — the
+OS picker offers "Take Photo" — but on a desktop it means hunting for a file, and
+on either it means leaving the app to get a picture of the thing you are looking
+at right now. A health check in particular is *always* about something just
+noticed.
+
+Add Plant and the health check now offer both, as tabs over one shared list, with
+the four-image cap common to both sources. A capture is previewed and joins the
+batch only when the user keeps it, so a mistimed shot never silently ships.
+
+Two constraints worth recording:
+
+* `st.camera_input` returns **one** photograph at a time, so captures accumulate
+  in session state rather than in the widget.
+* It requires a **secure context**. `getUserMedia` is refused over plain http, so
+  the camera is simply absent on `http://192.168.x.x:8501` — a phone pointed at a
+  development server on the LAN. It works on `localhost` and over https, which is
+  every deployment. The uploader is always present, so nothing is ever
+  unreachable; the camera is an addition, never the only route.
+
+Capture is requested at 1080p rather than left to the widget's display size: the
+pipeline works to a 1600px long edge and identification quality is the product, so
+a capture sized to a narrow column would be a poor photograph by construction.
 
 ### Upload limits are per submission, not per plant
 

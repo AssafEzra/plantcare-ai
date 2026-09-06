@@ -209,6 +209,29 @@ POST /v1/admin/approved-sources/{source_id}/disable
 
 Approval creates an immutable Published Knowledge Version.
 
+**Rejecting also re-researches (PR 33), per FINAL §37.** Since plants no longer
+wait for review, a rejected draft may already be carrying live care plans, so a
+rejection now has a consequence that cannot wait for an administrator to remember
+Retry. `POST /admin/knowledge-drafts/{id}/reject` queues one fresh research run —
+one, and only when the rejected draft is the species' newest, so rejecting the
+replacement does not start a third.
+
+**`GET /v1/species/{id}/knowledge` may return unreviewed research (PR 33).** When
+no published version exists but finished research does, the response is that
+draft, shaped like a version with `review: "pending"`, `version_number: 0` and an
+empty `sources` list — there is no published version to number, and verification
+is part of the review it has not had. RLS decides who sees it (FINAL §10); the
+route does not re-check, because a second copy of an authorisation rule is a
+second place for it to be wrong. `404` still means genuinely nothing yet.
+
+**`VersionResponse` gains `knowledge_draft_id`, `knowledge_review` and
+`current_rules` (PR 33).** The first two are provenance — exactly one of draft or
+version id is set, and `knowledge_review` is `"reviewed" | "pending" | "rejected"`,
+derived from the draft's current status rather than stored, so an approval or
+rejection changes what every plan built from it reports without touching an
+immutable row. `current_rules` carries the rules in force so the approval dialog
+can show what actually changes; empty for a first plan.
+
 **Added in PR 32, per FINAL §37 — the catalogue and the reader**
 
 `GET /v1/admin/knowledge-versions?q=` lists every species holding a current

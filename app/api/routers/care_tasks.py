@@ -108,6 +108,7 @@ class TickResponse(BaseModel):
     missed: int
     # Agent runs whose worker never came back — see `reap_abandoned`.
     abandoned: int = 0
+    plans_queued: int = 0
     emails_sent: int = 0
     emails_skipped: int = 0
     emails_failed: int = 0

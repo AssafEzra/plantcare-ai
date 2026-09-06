@@ -17,7 +17,14 @@ from typing import Any, Literal
 
 import streamlit as st
 
-from app.ui.components.layout import empty_state, guarded, page_header, show_error
+from app.ui.components.layout import (
+    empty_state,
+    flash,
+    guarded,
+    page_header,
+    show_error,
+    show_flash,
+)
 from app.ui.components.sources import render_sources
 from app.ui.state.api_client import ApiError, get, patch, post
 
@@ -60,19 +67,6 @@ page_header("ניהול", "אזור מנהלי מערכת")
 # and the publish result carries the fan-out count, which is the part an
 # administrator most wants confirmed. So the outcome is parked here and rendered
 # on the next run instead.
-FLASH = "admin_flash"
-
-
-def flash(message: str, *, kind: str = "success", icon: str = ":material/check_circle:") -> None:
-    st.session_state[FLASH] = (kind, message, icon)
-
-
-def show_flash() -> None:
-    parked = st.session_state.pop(FLASH, None)
-    if not parked:
-        return
-    kind, message, icon = parked
-    {"success": st.success, "info": st.info, "warning": st.warning}[kind](message, icon=icon)
 
 
 (

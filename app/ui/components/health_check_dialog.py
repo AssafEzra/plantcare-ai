@@ -26,6 +26,9 @@ from typing import Any
 
 import streamlit as st
 
+from app.ui.components.image_picker import clear as clear_captures
+from app.ui.components.image_picker import image_picker
+
 MAX_IMAGES = 4
 
 STATE_KEY = "pd_health_dialog_open"
@@ -66,16 +69,15 @@ def health_check_dialog(
     @st.dialog("בדיקת בריאות", width="large")
     def _dialog() -> None:
         st.caption(
-            "אפשר לצלם עכשיו או לבחור תמונות קיימות — עד ארבע בסך הכול. "
-            "תמונות חדות באור יום, מקרוב ומרחוק, עוזרות מאוד."
+            "אפשר לצלם עכשיו, להעלות מהמכשיר, או לבחור תמונות קיימות — "
+            "עד ארבע בסך הכול. תמונות חדות באור יום, מקרוב ומרחוק, עוזרות מאוד."
         )
 
-        uploads = st.file_uploader(
-            "תמונות חדשות",
-            type=["jpg", "jpeg", "png", "webp"],
-            accept_multiple_files=True,
-            key=f"{key_prefix}_uploads",
-            help="אפשר לבחור כמה תמונות יחד.",
+        uploads = image_picker(
+            key_prefix=key_prefix,
+            max_images=MAX_IMAGES,
+            upload_label="תמונות חדשות",
+            help_text="אפשר לבחור כמה תמונות יחד.",
         )
 
         choices = _gallery_choices(gallery)
@@ -116,9 +118,11 @@ def health_check_dialog(
                 icon=":material/send:",
             ):
                 on_submit(list(uploads or []), list(chosen), note.strip() or None)
+                clear_captures(key_prefix)
 
             if st.button("ביטול", key=f"{key_prefix}_cancel"):
-                st.session_state.pop(STATE_KEY, None)
+                close_dialog()
+                clear_captures(key_prefix)
                 st.rerun()
 
     _dialog()

@@ -62,11 +62,40 @@ class RuleResponse(BaseModel):
     is_active: bool = True
 
 
+class RuleSummary(BaseModel):
+    """A rule as the *comparison* needs it, which is not as the table stores it.
+
+    Deliberately not `RuleResponse`. The rules in force are supplied by
+    `_rule_payloads`, which exists to feed the Care Agent and therefore carries no
+    row id - the agent has no use for one. Typing `current_rules` as
+    `RuleResponse` demanded an `id` that was never in the payload, so the route
+    raised `ResponseValidationError` and **every** proposal, initial or update,
+    came back 500.
+
+    The fields here are exactly the ones `care_plan_diff` compares. That is the
+    point: a model that admitted more would invite the diff to grow a dependency
+    on data the caller does not actually send.
+    """
+
+    action_type: CareRuleActionType
+    interval_days: int
+    preferred_time_local: time
+    preferred_weekday: Weekday | None = None
+    is_active: bool = True
+
+
 class VersionResponse(BaseModel):
     id: UUID
     care_plan_id: UUID
     version_number: int
     knowledge_version_id: UUID | None = None
+    # PR 33: a plan may be built from research that has not been reviewed yet.
+    # Exactly one of the two ids is set; a check constraint refuses both.
+    knowledge_draft_id: UUID | None = None
+    # "reviewed" | "pending" | "rejected", derived from the draft's current status
+    # rather than stored, so an approval or rejection changes what every plan
+    # built from it reports without touching an immutable row.
+    knowledge_review: str = "reviewed"
     status: CarePlanVersionStatus
     professional_recommendations: dict[str, Any]
     operational_preferences: dict[str, Any] | None = None
@@ -74,6 +103,9 @@ class VersionResponse(BaseModel):
     source_type: CarePlanVersionSourceType
     created_at: datetime
     rules: list[RuleResponse] = Field(default_factory=list)
+    # The rules currently in force, so the approval dialog can show what actually
+    # changes. Empty for a first plan, which is correct - nothing to diff.
+    current_rules: list[RuleSummary] = Field(default_factory=list)
 
 
 class ProposalRequest(BaseModel):
