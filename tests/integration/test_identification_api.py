@@ -17,6 +17,7 @@ import pytest
 from fastapi.testclient import TestClient
 from PIL import Image
 
+from app.agents.care.agent import CareAgent
 from app.agents.identification.agent import IdentificationAgent
 from app.agents.identification.contract import Candidate, IdentificationOutput
 from app.agents.knowledge.agent import KnowledgeAgent
@@ -78,8 +79,23 @@ def scripted_knowledge():
 
 
 @pytest.fixture
-def api(live_env, scripted, scripted_knowledge) -> Iterator[TestClient]:
+def scripted_care():
+    """The Care Agent's provider.
+
+    Overridden for the same reason as Knowledge, and newly necessary in PR 31:
+    confirming a species whose knowledge is *already* published now queues the
+    INITIAL_PLAN proposal A3 asks for, so every confirmation reaches the Care
+    Agent too. Without this each of those tests would make a real, billable
+    call - the failure mode a `MockProvider` that raises when unscripted is
+    designed to make loud rather than expensive.
+    """
+    return MockProvider()
+
+
+@pytest.fixture
+def api(live_env, scripted, scripted_knowledge, scripted_care) -> Iterator[TestClient]:
     from app.api.main import create_app
+    from app.api.routers.care import get_care_agent
 
     app = create_app()
     app.dependency_overrides[get_identification_agent] = lambda: IdentificationAgent(
@@ -87,6 +103,9 @@ def api(live_env, scripted, scripted_knowledge) -> Iterator[TestClient]:
     )
     app.dependency_overrides[get_knowledge_agent] = lambda: KnowledgeAgent(
         AIGateway(scripted_knowledge, record_executions=False)
+    )
+    app.dependency_overrides[get_care_agent] = lambda: CareAgent(
+        AIGateway(scripted_care, record_executions=False)
     )
     with TestClient(app, raise_server_exceptions=False) as client:
         yield client
@@ -355,6 +374,62 @@ def test_confirming_a_known_species_activates_the_plant(api, account, scripted, 
 
     plant = api.get(f"/v1/plants/{plant_id}", headers=auth).json()["data"]
     assert plant["species_id"] is not None
+
+
+def test_confirming_a_known_species_queues_the_first_care_plan(
+    api, account, scripted, scripted_care, admin_sdk
+):
+    """A3, and the defect a browser walk found in PR 31.
+
+    Publication has fanned out INITIAL_PLAN proposals to waiting plants since PR
+    16. The *other* road into ACTIVE - confirming a species whose knowledge is
+    already published - queued nothing, so those plants arrived active with no
+    plan, no schedule and no reminders. It is the common case as soon as the
+    knowledge library has anything in it.
+
+    Every layer below missed it because the assertion everyone wrote was "the
+    plant is ACTIVE", and it was.
+    """
+    _, auth = account()
+    plant_id, image_id = plant_with_photo(api, auth)
+    scripted.queue(success("Monstera deliciosa"))
+    scripted_care.queue(
+        {
+            "recommendations": {
+                "summary": "הצמח מתאים לחדר מואר ודורש השקיה מתונה לאורך השנה כולה.",
+                "watering": "להשקות כשהסנטימטרים העליונים של המצע יבשים.",
+                "light": "אור עקיף בהיר, במרחק כמטר מהחלון.",
+            },
+            "rules": [{"action_type": "WATERING", "interval_days": 7}],
+        }
+    )
+    run_identification(api, auth, plant_id, image_id)
+
+    response = confirm_first_candidate(api, auth, admin_sdk, plant_id)
+    assert response.json()["data"]["status"] == "ACTIVE"
+
+    proposals = api.get(f"/v1/plants/{plant_id}/care-plan/proposals", headers=auth).json()["data"]
+    assert proposals, "an ACTIVE plant was left with no care plan and no proposal"
+    assert proposals[0]["source_type"] == "INITIAL_PLAN"
+
+
+def test_a_plant_awaiting_knowledge_gets_no_premature_proposal(
+    api, account, scripted, scripted_care, admin_sdk
+):
+    """The other half of A3. A plant in KNOWLEDGE_PENDING has nothing to plan
+    from - the publication fan-out raises its proposal when the knowledge lands,
+    and a second one here would compete with it."""
+    _, auth = account()
+    plant_id, image_id = plant_with_photo(api, auth)
+    novel = "Testus " + uuid.uuid4().hex[:10].translate(str.maketrans("0123456789", "abcdefghij"))
+    scripted.queue(success(novel))
+    run_identification(api, auth, plant_id, image_id)
+
+    response = confirm_first_candidate(api, auth, admin_sdk, plant_id)
+    assert response.json()["data"]["status"] == "KNOWLEDGE_PENDING"
+
+    proposals = api.get(f"/v1/plants/{plant_id}/care-plan/proposals", headers=auth).json()["data"]
+    assert proposals == []
 
 
 def test_confirming_an_unknown_species_opens_a_draft(api, account, scripted, admin_sdk):

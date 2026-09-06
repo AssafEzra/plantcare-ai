@@ -24,6 +24,7 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any, Protocol
 from uuid import UUID
 
@@ -31,7 +32,7 @@ from app.common.enums import AgentRequestStatus, AgentType
 from app.common.errors import IdempotencyConflictError, NotFoundError
 from app.config.logging import get_logger
 from app.infrastructure.supabase.client import service_client
-from app.repositories.base import Row, first_row
+from app.repositories.base import Row, first_row, rows
 from supabase import Client
 
 log = get_logger(__name__)
@@ -194,3 +195,70 @@ def _update(request_id: UUID, changes: dict[str, Any]) -> None:
             request_id=str(request_id),
             error_type=type(exc).__name__,
         )
+
+
+# --- abandoned requests (PR 31) ---------------------------------------------------
+
+# How long past its own agent's timeout a request may sit before it is written off.
+# Generous, because the alternative error is worse: failing a run that is merely
+# slow would tell a user their plant could not be identified while the answer was
+# still on its way.
+ABANDON_GRACE_SECONDS = 300
+
+
+def reap_abandoned(now_utc: datetime) -> int:
+    """Fail requests whose worker is never coming back.
+
+    Agent work runs in FastAPI `BackgroundTasks`, inside the API process. When
+    that process restarts - a deploy, a crash, `--reload` noticing an edit - every
+    in-flight run dies with it, and its `agent_requests` row stays QUEUED or
+    PROCESSING forever. Nothing reaped those: the row is written by the request
+    that started it and updated by the worker that died.
+
+    What the user sees is worse than an error. The client polls, gives up politely
+    after ten minutes, says "still running", and says it again on every visit,
+    about a run that ended hours ago.
+
+    Found in PR 31 when a knowledge research request sat in PROCESSING for three
+    hours across several `--reload` restarts. A deployment does exactly what
+    `--reload` does, so this is not a development-only accident.
+
+    Each agent is judged against its own budget (`FINAL §23`), since "too long"
+    means four different things here.
+    """
+    from app.config.settings import get_settings
+
+    settings = get_settings()
+    budgets = {
+        AgentType.IDENTIFICATION.value: settings.identification_timeout_seconds,
+        AgentType.KNOWLEDGE.value: settings.knowledge_timeout_seconds,
+        AgentType.CARE.value: settings.care_timeout_seconds,
+        AgentType.HEALTH.value: settings.health_timeout_seconds,
+    }
+
+    admin = service_client()
+    open_requests = rows(
+        admin.table("agent_requests")
+        .select("id, agent_type, created_at")
+        .in_(
+            "status",
+            [AgentRequestStatus.QUEUED.value, AgentRequestStatus.PROCESSING.value],
+        )
+        .execute()
+    )
+
+    reaped = 0
+    for row in open_requests:
+        budget = budgets.get(row["agent_type"], 600) + ABANDON_GRACE_SECONDS
+        started = row["created_at"]
+        if isinstance(started, str):
+            started = datetime.fromisoformat(started.replace("Z", "+00:00"))
+        if (now_utc - started).total_seconds() < budget:
+            continue
+
+        mark_failed(UUID(str(row["id"])), "AGENT_ABANDONED")
+        reaped += 1
+
+    if reaped:
+        log.warning("agent_requests.reaped", count=reaped)
+    return reaped

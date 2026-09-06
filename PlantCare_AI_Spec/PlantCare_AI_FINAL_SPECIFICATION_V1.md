@@ -1147,6 +1147,23 @@ HEALTH_MODEL=...
 
 Models can be swapped without rewriting Agent logic.
 
+**Added in PR 31 (§37) — a worker that dies leaves a request nobody closes.**
+Agent work runs in FastAPI `BackgroundTasks`, inside the API process, so a restart
+— a deploy, a crash, a reload — kills every run in flight and its `agent_requests`
+row stays QUEUED or PROCESSING for good. Nothing reaped them: the row is written
+by the request that started it and updated by the worker that died with it.
+
+The user-visible result is worse than an error. The client polls, gives up
+politely, reports "still running", and reports it again on every visit, about a
+run that ended hours ago.
+
+`POST /v1/internal/tick` now fails any request older than its own agent's budget
+plus five minutes, with `AGENT_ABANDONED`. Per agent, because "too long" means
+four different things here. Found in PR 31 when a research request sat in
+PROCESSING for three hours across several reloads — and a deployment does exactly
+what a reload does, which makes this a production concern rather than a
+development accident.
+
 **Added in PR 30 (§37) — a 202 that nothing waits on is a 202 that failed
 silently.** §24 makes every agent call asynchronous: 202 with an
 `agent_request_id`, then the client polls `/v1/agent-requests/{id}`. Only the Add
@@ -1183,11 +1200,18 @@ approve. Reported by a user as "why was no knowledge draft created?"
 `AI_REQUEST_TIMEOUT_SECONDS` remains, as the client default for provider calls
 that are not agent-scoped.
 
-The same species re-researched after this change took **262 seconds** and returned
-all thirteen sections with three verified sources, so the 600 is about twice an
-observed run rather than a round number. Care and Health have still never run
-against the live API; their 180 is twice the measured identification budget and
-should be replaced by a measurement the first time each one runs.
+**All four are now measured** against the live API, by PR 31's browser suite and
+by real use:
+
+| Agent | Observed | Budget |
+|---|---|---|
+| Identification | 16-32 s | 90 s |
+| Health | 73 s | 180 s |
+| Care | 106 s | 180 s |
+| Knowledge research | 262 s | 600 s |
+
+Each budget is roughly twice its observed run: enough room for a slow day, not so
+much that a user waits on something that is never coming.
 
 **And the request is streamed.** Not to consume it incrementally — an agent needs
 a complete, schema-valid document before it can do anything — but because a

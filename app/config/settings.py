@@ -60,12 +60,11 @@ class Settings(BaseSettings):
     # KNOWLEDGE_PENDING with nothing to approve.
     #
     # These are per-agent budgets, not guesses at how long a call takes: the point
-    # is the boundary past which waiting longer is worse than failing. Knowledge's
-    # 600 is measured - the same species re-researched after this change took
-    # 262,272 ms and produced all thirteen sections - so it is roughly twice the
-    # observed run. Care and Health have never run against the live API, so they
-    # get twice the measured identification budget rather than a number pretending
-    # to be measured; record the real one when they first run.
+    # is the boundary past which waiting longer is worse than failing. All four
+    # are now measured against the live API (PR 31 walked the whole product in a
+    # browser): identification 16-32s, health 73s, care 106s, knowledge research
+    # 262s. Each budget is roughly twice its observed run, which leaves room for a
+    # slow day without leaving a user waiting on something that is never coming.
     ai_request_timeout_seconds: int = 90
     identification_timeout_seconds: int = 90
     knowledge_timeout_seconds: int = 600

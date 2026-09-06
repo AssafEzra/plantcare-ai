@@ -139,3 +139,8 @@ def patch(path: str, **kwargs: Any) -> Any:
 
 def put(path: str, **kwargs: Any) -> Any:
     return request("PUT", path, **kwargs)
+
+
+def delete(path: str, **kwargs: Any) -> Any:
+    """Added in PR 31 for image removal, the last verb the UI had no way to send."""
+    return request("DELETE", path, **kwargs)

@@ -28,10 +28,18 @@ run "mypy"   uv run mypy app
 # on push - which is exactly how PR 14 broke the build. cwd is changed rather than
 # the file moved: an interrupted script must not be able to delete a real .env.
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-run "tests" env -C "${TMPDIR:-/tmp}" uv run --project "$root" pytest -q   -c "$root/pyproject.toml" --rootdir "$root" -m "not integration and not live" "$root/tests"
+run "tests" env -C "${TMPDIR:-/tmp}" uv run --project "$root" pytest -q   -c "$root/pyproject.toml" --rootdir "$root" -m "not integration and not live and not browser" "$root/tests"
 
 if [ "${1:-}" = "--integration" ]; then
   run "integration" uv run pytest -q -m integration
+fi
+
+# Never in the default selection, and never in CI. `tests/browser` drives a real
+# browser against a live model: it is slow, it costs money per run, and it needs
+# both services already listening. Added here after the gate quietly started one
+# - the `browser` marker was new and this filter had not been told about it.
+if [ "${1:-}" = "--browser" ]; then
+  run "browser" uv run pytest -q -m browser
 fi
 
 rm -f /tmp/pc_check.log

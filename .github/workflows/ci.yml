@@ -39,7 +39,7 @@ jobs:
 
       # Integration/e2e need a live DEV Supabase project and run on `dev`, not on PRs.
       - name: Tests
-        run: uv run pytest -m "not live and not integration and not e2e"
+        run: uv run pytest -m "not live and not integration and not e2e and not browser"
 
   integration:
     name: integration · journeys · RLS matrix
@@ -91,7 +91,7 @@ jobs:
 
       - name: Integration, journeys and the RLS matrix
         if: steps.creds.outputs.available == 'true'
-        run: uv run pytest -m "integration and not live" -q
+        run: uv run pytest -m "integration and not live and not browser" -q
 
   secret-scan:
     name: no committed secrets

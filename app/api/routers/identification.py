@@ -19,18 +19,26 @@ from uuid import UUID
 from fastapi import APIRouter, BackgroundTasks, Depends, Header, Request, status
 from pydantic import BaseModel, Field, field_validator
 
+from app.agents.care.agent import CareAgent
 from app.agents.identification.agent import IdentificationAgent
 from app.agents.knowledge.agent import KnowledgeAgent
 from app.api.dependencies import AIRateLimitDep, CurrentUserDep
+from app.api.routers.care import get_care_agent
 from app.api.routers.knowledge import get_knowledge_agent
 from app.api.schemas.common import DataEnvelope
 from app.api.schemas.plants import clean_text
-from app.common.enums import ConfidenceLevel, IdentificationMethod, IdentificationStatus
+from app.common.enums import (
+    CarePlanVersionSourceType,
+    ConfidenceLevel,
+    IdentificationMethod,
+    IdentificationStatus,
+)
 from app.common.errors import NotFoundError, ValidationFailedError
 from app.infrastructure import wikipedia
 from app.infrastructure.ai.anthropic_provider import AnthropicProvider
 from app.infrastructure.ai.gateway import AIGateway
 from app.orchestration.services.agent_requests import BackgroundTasksExecutor
+from app.orchestration.workflows import care as care_workflow
 from app.orchestration.workflows import identification as workflow
 from app.orchestration.workflows import knowledge as knowledge_workflow
 from app.repositories.base import first_row, rows
@@ -56,6 +64,11 @@ AgentDep = Annotated[IdentificationAgent, Depends(get_identification_agent)]
 # agent would need two overrides in every test, and forgetting one would make a
 # real billable research call from a test suite.
 KnowledgeAgentDep = Annotated[KnowledgeAgent, Depends(get_knowledge_agent)]
+
+# Same reasoning for the Care Agent: confirming a species whose knowledge is
+# already published releases the plant to ACTIVE, and A3 says an ACTIVE plant gets
+# a care proposal. Importing the dependency keeps one override per agent in tests.
+CareAgentDep = Annotated[CareAgent, Depends(get_care_agent)]
 
 
 # --- schemas ------------------------------------------------------------------
@@ -232,6 +245,7 @@ async def confirm_identification(
     user: CurrentUserDep,
     background: BackgroundTasks,
     knowledge_agent: KnowledgeAgentDep,
+    care_agent: CareAgentDep,
 ) -> DataEnvelope[dict]:
     """Confirm a candidate. The species becomes authoritative here and only here."""
     result = workflow.confirm(
@@ -245,6 +259,23 @@ async def confirm_identification(
     # A species with no published knowledge needs research before a care plan can
     # exist. It runs after the response: the user's plant is already added and
     # usable, and FINAL §11 says research is long-running and should feel queued.
+    # A3: the plant landed ACTIVE with no plan, so a proposal was opened for it.
+    # Submitted here rather than inside the workflow for the same reason research
+    # is: confirmation must return before a model call that takes a minute and a
+    # half, and the executor is the API layer's to own.
+    initial_plan = result.get("initial_plan")
+    if initial_plan:
+        BackgroundTasksExecutor(background).submit(
+            care_workflow.execute_proposal,
+            request_id=UUID(initial_plan["request_id"]),
+            user_id=user.id,
+            plant_id=UUID(initial_plan["plant_id"]),
+            reason=CarePlanVersionSourceType.INITIAL_PLAN,
+            note=None,
+            access_token=user.access_token,
+            agent=care_agent,
+        )
+
     research = result.get("research")
     if research:
         BackgroundTasksExecutor(background).submit(
