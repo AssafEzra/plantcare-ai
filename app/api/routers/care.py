@@ -62,6 +62,28 @@ class RuleResponse(BaseModel):
     is_active: bool = True
 
 
+class RuleSummary(BaseModel):
+    """A rule as the *comparison* needs it, which is not as the table stores it.
+
+    Deliberately not `RuleResponse`. The rules in force are supplied by
+    `_rule_payloads`, which exists to feed the Care Agent and therefore carries no
+    row id - the agent has no use for one. Typing `current_rules` as
+    `RuleResponse` demanded an `id` that was never in the payload, so the route
+    raised `ResponseValidationError` and **every** proposal, initial or update,
+    came back 500.
+
+    The fields here are exactly the ones `care_plan_diff` compares. That is the
+    point: a model that admitted more would invite the diff to grow a dependency
+    on data the caller does not actually send.
+    """
+
+    action_type: CareRuleActionType
+    interval_days: int
+    preferred_time_local: time
+    preferred_weekday: Weekday | None = None
+    is_active: bool = True
+
+
 class VersionResponse(BaseModel):
     id: UUID
     care_plan_id: UUID
@@ -83,7 +105,7 @@ class VersionResponse(BaseModel):
     rules: list[RuleResponse] = Field(default_factory=list)
     # The rules currently in force, so the approval dialog can show what actually
     # changes. Empty for a first plan, which is correct - nothing to diff.
-    current_rules: list[RuleResponse] = Field(default_factory=list)
+    current_rules: list[RuleSummary] = Field(default_factory=list)
 
 
 class ProposalRequest(BaseModel):
