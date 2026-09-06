@@ -191,6 +191,21 @@ The interface is Hebrew and RTL in the MVP.
 
 ---
 
+**An administrator's navigation is the operator's application (revised PR 33), per
+§37.** The admin panel shipped as a sixth entry beside בית, הצמחים שלי, הוספת צמח
+and הצמח שלי, which made it read as one more tab of a plant-care app rather than
+the thing an operator opens. An ADMIN now sees **ניהול** — the landing page at
+sign-in — and **הגדרות**, and nothing else. Settings stays because an
+administrator still has a timezone, a display name and notification preferences,
+and those live nowhere else.
+
+Presentation only. Every plant route remains the caller's own by RLS and every
+admin route remains gated server-side (§22, §26): an administrator who typed a
+plant URL would see their own plants, exactly as before. Hiding navigation has
+never been the control, and this does not make it one.
+
+---
+
 # 5. Home Dashboard
 
 The dashboard is action-oriented.

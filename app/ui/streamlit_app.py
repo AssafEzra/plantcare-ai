@@ -85,21 +85,37 @@ else:
     if profile:
         _sync_timezone(profile)
 
-    pages = [
-        st.Page("app_pages/home.py", title="בית", icon=":material/home:", default=True),
-        st.Page("app_pages/my_plants.py", title="הצמחים שלי", icon=":material/potted_plant:"),
-        st.Page("app_pages/add_plant.py", title="הוספת צמח", icon=":material/add_circle:"),
-        st.Page("app_pages/plant_dashboard.py", title="הצמח שלי", icon=":material/spa:"),
-        st.Page("app_pages/settings.py", title="הגדרות", icon=":material/settings:"),
-    ]
-
-    # The admin section is hidden from anyone who is not an admin. Hiding it is a
-    # courtesy, not the control: every admin route and every admin table is
-    # independently gated server-side (FINAL §22, §26).
+    # An administrator gets the operator's application, not the gardener's with an
+    # extra tab. The admin account exists to review knowledge drafts, watch agent
+    # runs and read the audit log; Home, My Plants and Add Plant are somebody
+    # else's product, and carrying them made the panel look like a sixth tab of a
+    # plant-care app rather than the thing an operator opens.
+    #
+    # Settings stays: an administrator still has a timezone, a display name and
+    # notification preferences, and those live nowhere else.
+    #
+    # This is presentation only. Every plant route is still the caller's own by
+    # RLS and every admin route is still gated server-side (FINAL §22, §26) - an
+    # administrator who typed a plant URL would see their own plants, exactly as
+    # before. Hiding navigation has never been the control here.
     if profile.get("role") == UserRole.ADMIN:
-        pages.append(
-            st.Page("app_pages/admin.py", title="ניהול", icon=":material/admin_panel_settings:")
-        )
+        pages = [
+            st.Page(
+                "app_pages/admin.py",
+                title="ניהול",
+                icon=":material/admin_panel_settings:",
+                default=True,
+            ),
+            st.Page("app_pages/settings.py", title="הגדרות", icon=":material/settings:"),
+        ]
+    else:
+        pages = [
+            st.Page("app_pages/home.py", title="בית", icon=":material/home:", default=True),
+            st.Page("app_pages/my_plants.py", title="הצמחים שלי", icon=":material/potted_plant:"),
+            st.Page("app_pages/add_plant.py", title="הוספת צמח", icon=":material/add_circle:"),
+            st.Page("app_pages/plant_dashboard.py", title="הצמח שלי", icon=":material/spa:"),
+            st.Page("app_pages/settings.py", title="הגדרות", icon=":material/settings:"),
+        ]
 
     with st.sidebar:
         st.markdown("### PlantCare AI")
