@@ -351,3 +351,27 @@ def test_the_form_says_the_change_becomes_a_proposal():
     caption = _reasons(app)
     assert "הצעה" in caption
     assert "לוח הזמנים" in caption
+
+
+def test_the_form_is_held_open_while_a_message_is_pending(monkeypatch):
+    """An expander reopens closed on every rerun, so saving made the form the user
+    had just filled in vanish - which, with the confirmation rendered far above
+    the fold, is what "it does nothing" was made of.
+
+    Asserted as the wiring rather than the rendered state: `AppTest` does not
+    expose an `st.expander` that carries an `icon`, so the open/closed flag is not
+    readable from here. What this catches is the `expanded=` argument being
+    dropped, and the browser suite sees the actual expander.
+    """
+    from app.ui.components import care_plan
+
+    asked: list[bool] = []
+
+    def spy() -> bool:
+        asked.append(True)
+        return True
+
+    monkeypatch.setattr(care_plan, "pending_flash", spy)
+    card_only(_render_active, version(status="ACTIVE"))
+
+    assert asked, "the adjustment form does not consult whether a message is pending"

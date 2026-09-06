@@ -80,3 +80,56 @@ def guarded(load: Callable[[], object], *, spinner: str = "טוען…"):
     except ApiError as exc:
         show_error(exc)
         return None
+
+
+# --- confirmations across a rerun ------------------------------------------------
+
+FLASH_KEY = "pc_flash"
+
+_RENDERERS = {"success": st.success, "info": st.info, "warning": st.warning}
+
+
+def flash(message: str, *, kind: str = "success", icon: str = ":material/check_circle:") -> None:
+    """Park a message across the rerun an action triggers.
+
+    `st.rerun()` discards anything written before it, so a confirmation shown and
+    immediately rerun away is one nobody sees.
+    """
+    st.session_state[FLASH_KEY] = (kind, message, icon)
+
+
+def pending_flash() -> bool:
+    """Is a message waiting to be shown on this run?
+
+    Lets a control that triggered one stay open across the rerun, instead of
+    collapsing and taking the user's context with it.
+    """
+    return FLASH_KEY in st.session_state
+
+
+def show_flash() -> None:
+    """Render the parked message, if there is one — twice, deliberately.
+
+    Reported from real use: pressing שמירת השינוי appeared to do nothing. It had
+    worked; the message was written at the top of the page while the user was at
+    the bottom, because `show_flash()` is called just under `page_header` and the
+    controls that park messages sit hundreds of pixels below it. Streamlit keeps
+    the scroll position across a rerun, so the confirmation for an action was
+    rendered where the user demonstrably was not looking. The plant dashboard
+    alone parks 23 of them.
+
+    `st.toast` is anchored to the viewport rather than the document, so it is
+    visible wherever the reader is standing. The inline box stays because a toast
+    dismisses itself after a few seconds and several of these messages say what
+    has to happen next — a user who looks away should still find out.
+
+    Lives here rather than in each page: the same helper was copied into three of
+    them, which is three places for one behaviour to drift apart.
+    """
+    parked = st.session_state.pop(FLASH_KEY, None)
+    if not parked:
+        return
+
+    kind, message, icon = parked
+    st.toast(message, icon=icon)
+    _RENDERERS[kind](message, icon=icon)

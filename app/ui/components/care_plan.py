@@ -12,6 +12,8 @@ from typing import Any, Literal
 
 import streamlit as st
 
+from app.ui.components.layout import pending_flash
+
 ACTION_LABELS: dict[str, tuple[str, str]] = {
     "WATERING": ("השקיה", ":material/water_drop:"),
     "FERTILIZING": ("דישון", ":material/eco:"),
@@ -163,7 +165,11 @@ def active_plan_card(plan: dict[str, Any], *, on_adjust=None, key_prefix: str = 
         if on_adjust is None:
             return
 
-        with st.expander("שינוי תדירות או שעה", icon=":material/tune:"):
+        # Held open while a message is waiting to be shown. An expander defaults
+        # to closed and reopens closed on every rerun, so saving made the form the
+        # user had just filled in vanish - which, together with a confirmation
+        # rendered far above the fold, is what "it does nothing" was made of.
+        with st.expander("שינוי תדירות או שעה", icon=":material/tune:", expanded=pending_flash()):
             # What the control does, before it is used. It said the professional
             # recommendations are preserved - true, and not the thing a user is
             # about to be surprised by. An adjustment produces a *proposal*: the

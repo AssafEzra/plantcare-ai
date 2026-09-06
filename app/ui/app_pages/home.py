@@ -22,33 +22,21 @@ import streamlit as st
 
 from app.ui.components.care_plan import ACTION_LABELS
 from app.ui.components.care_task_card import care_task_card, due_text, overdue_summary_line
-from app.ui.components.layout import empty_state, guarded, page_header, show_error
+from app.ui.components.layout import (
+    empty_state,
+    flash,
+    guarded,
+    page_header,
+    show_error,
+    show_flash,
+)
 from app.ui.components.status import status_badge
 from app.ui.state.api_client import ApiError, get, post
-
-FLASH = "home_flash"
 
 # How many of the upcoming tasks are shown outright. Three is what the user
 # asked for and what fits under today's work without pushing the plant grid
 # off the first screen.
 UPCOMING_ON_HOME = 3
-
-
-def flash(message: str, *, kind: str = "success", icon: str = ":material/check_circle:") -> None:
-    """Park a message across the rerun an action triggers.
-
-    `st.rerun()` discards anything written before it, so a confirmation shown and
-    immediately rerun away is one nobody sees.
-    """
-    st.session_state[FLASH] = (kind, message, icon)
-
-
-def show_flash() -> None:
-    parked = st.session_state.pop(FLASH, None)
-    if not parked:
-        return
-    kind, message, icon = parked
-    {"success": st.success, "info": st.info, "warning": st.warning}[kind](message, icon=icon)
 
 
 def greeting() -> str:

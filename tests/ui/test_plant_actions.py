@@ -72,6 +72,32 @@ KNOWLEDGE = {
     ],
 }
 
+ADJUSTED_VERSION = "bbbbbbbb-0000-0000-0000-000000000004"
+
+ACTIVE_PLAN = {
+    "id": "bbbbbbbb-0000-0000-0000-000000000003",
+    "care_plan_id": "cccccccc-0000-0000-0000-000000000009",
+    "version_number": 3,
+    "status": "ACTIVE",
+    "source_type": "HEALTH_DRIVEN",
+    "professional_recommendations": {"summary": "השקיה מתונה."},
+    "operational_preferences": {},
+    "change_summary": None,
+    "created_at": "2026-09-05T22:00:00Z",
+    "knowledge_review": "reviewed",
+    "rules": [
+        {
+            "id": "eeee1111-0000-0000-0000-000000000001",
+            "action_type": "ROTATING",
+            "interval_days": 7,
+            "preferred_time_local": "09:00:00",
+            "preferred_weekday": "SUNDAY",
+            "instructions": None,
+            "is_active": True,
+        }
+    ],
+}
+
 PENDING = {
     "id": "ffffffff-0000-0000-0000-000000000001",
     "confidence_level": "HIGH",
@@ -107,6 +133,7 @@ def page(monkeypatch: pytest.MonkeyPatch):
         tasks: list[dict] | None = None,
         pending: dict | None = None,
         delete_outcome: str = "deleted",
+        plan: dict | None = None,
     ) -> AppTest:
         from app.ui.components import agent_progress
         from app.ui.state import api_client
@@ -128,7 +155,7 @@ def page(monkeypatch: pytest.MonkeyPatch):
                     "environment": None,
                     "health": {"current_status": "HEALTHY"},
                     "upcoming_tasks": tasks or [],
-                    "care_plan": None,
+                    "care_plan": plan,
                     "open_proposals": 0,
                 }
             if path.endswith("/knowledge"):
@@ -142,6 +169,14 @@ def page(monkeypatch: pytest.MonkeyPatch):
                 sent.append((verb, path, json))
                 if verb == "DELETE":
                     return {"outcome": delete_outcome}
+                if path.endswith("/operational-adjustment"):
+                    # What the endpoint really answers. `adjust` reads the id back
+                    # to point the dialog at the version it just created.
+                    return {
+                        "version_id": ADJUSTED_VERSION,
+                        "version_number": 4,
+                        "status": "PROPOSED",
+                    }
                 return {"agent_request_id": "req-1", "status": "QUEUED"}
 
             return _call
@@ -285,3 +320,74 @@ def test_the_user_can_report_a_wrong_identification(page):
     assert verb == "POST"
     assert path.endswith(f"/v1/identifications/{PENDING['id']}/correct")
     assert payload["scientific_name"] == "Monstera deliciosa"
+
+
+# --- saving an adjustment leads somewhere (PR 33) --------------------------------
+#
+# Reported twice, from real use: first "it wont let you save changes", then "it
+# still doesnt show the string after i save". The second was not a missing
+# message - it was a message rendered at the top of the page while the user was at
+# the bottom of it, because `st.rerun()` keeps the scroll position and the
+# adjustment form sits hundreds of pixels below `show_flash()`.
+#
+# So saving no longer relies on the user finding a confirmation. It opens the
+# proposal it just created, which is the decision the save exists to produce.
+
+
+def open_adjustment(app: AppTest) -> AppTest:
+    app.number_input(key="plan_days_eeee1111-0000-0000-0000-000000000001").set_value(5).run()
+    app.text_input(key="plan_summary").set_value("הדירה חמה יותר").run()
+    return app
+
+
+def test_saving_an_adjustment_opens_the_proposal_it_created(page):
+    from app.ui.components.proposal_dialog import STATE_KEY
+
+    app = page(plan=ACTIVE_PLAN)
+    app.run()
+    open_adjustment(app)
+
+    next(b for b in app.button if b.label == "שמירת השינוי").click().run()
+
+    verb, path, payload = page.sent[-1]  # type: ignore[attr-defined]
+    assert verb == "POST"
+    assert path.endswith("/operational-adjustment")
+    assert payload["operational_preferences"] == {"ROTATING": {"interval_days": 5}}
+    assert app.session_state[STATE_KEY] == ADJUSTED_VERSION, (
+        "the proposal the save created was not opened"
+    )
+
+
+def test_the_confirmation_is_rendered_as_well(page):
+    """The dialog is the answer for whoever is looking at it; the message is the
+    answer for whoever closes it. Both, not either - the flash is consumed by the
+    same rerun that opens the dialog, so it has to be on the page too."""
+    app = page(plan=ACTIVE_PLAN)
+    app.run()
+    open_adjustment(app)
+    next(b for b in app.button if b.label == "שמירת השינוי").click().run()
+
+    shown = " ".join(str(i.value) for i in app.info)
+    assert "לוח הזמנים" in shown, f"the confirmation was not rendered: {shown[:200]}"
+
+
+def test_a_failed_adjustment_opens_nothing(page, monkeypatch):
+    """A dialog about a version that was never created is worse than no dialog:
+    `proposal_dialog` would find no such proposal and close itself, which reads as
+    the save having silently worked."""
+    from app.ui.components.proposal_dialog import STATE_KEY
+    from app.ui.state.api_client import ApiError
+
+    app = page(plan=ACTIVE_PLAN)
+    app.run()
+
+    from app.ui.state import api_client
+
+    def boom(path: str, **kwargs: Any) -> Any:
+        raise ApiError("VALIDATION_FAILED", "לא ניתן לשמור.", status=422)
+
+    monkeypatch.setattr(api_client, "post", boom)
+    open_adjustment(app)
+    next(b for b in app.button if b.label == "שמירת השינוי").click().run()
+
+    assert STATE_KEY not in app.session_state

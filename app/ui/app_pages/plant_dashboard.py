@@ -23,7 +23,14 @@ from app.ui.components.health_check_dialog import close_dialog as close_health_d
 from app.ui.components.health_check_dialog import health_check_dialog
 from app.ui.components.health_check_dialog import open_dialog as open_health_dialog
 from app.ui.components.identification_card import identification_card
-from app.ui.components.layout import empty_state, guarded, page_header, show_error
+from app.ui.components.layout import (
+    empty_state,
+    flash,
+    guarded,
+    page_header,
+    show_error,
+    show_flash,
+)
 from app.ui.components.proposal_dialog import open_dialog as open_proposal_dialog
 from app.ui.components.proposal_dialog import proposal_dialog
 from app.ui.components.review_badge import review_badge
@@ -33,7 +40,6 @@ from app.ui.components.timeline import render_timeline
 from app.ui.state.api_client import ApiError, delete, get, patch, post, put
 
 SELECTED = "pc_selected_plant"
-FLASH = "plant_flash"
 HISTORY_SHOWN = "plant_history_shown"
 
 SECTION_LABELS: dict[str, str] = {
@@ -58,23 +64,6 @@ LOGGABLE: dict[str, str] = {
     "PRUNED": "גיזמתי",
     "CUSTOM_NOTE": "הערה חופשית",
 }
-
-
-def flash(message: str, *, kind: str = "success", icon: str = ":material/check_circle:") -> None:
-    """Park a message across the rerun an action triggers.
-
-    `st.rerun()` discards anything written before it, so a confirmation shown and
-    immediately rerun away is one nobody sees.
-    """
-    st.session_state[FLASH] = (kind, message, icon)
-
-
-def show_flash() -> None:
-    parked = st.session_state.pop(FLASH, None)
-    if not parked:
-        return
-    kind, message, icon = parked
-    {"success": st.success, "info": st.info, "warning": st.warning}[kind](message, icon=icon)
 
 
 plant_id = st.session_state.get(SELECTED)
@@ -303,23 +292,39 @@ def reject(version_id: str) -> None:
 
 
 def adjust(version_id: str, overrides: dict[str, Any], summary: str) -> None:
+    """Save an operational change, and open the proposal it just created.
+
+    The adjustment form sits at the bottom of a long page, and the confirmation
+    was rendered at the top of it — where, after a rerun that keeps the scroll
+    position, the user demonstrably is not. Reported twice: first as "it wont let
+    you save", then as "it still doesnt show the string after i save".
+
+    So the confirmation is no longer the whole answer. A saved adjustment is a
+    decision waiting to be made, and the dialog is where that decision lives, so
+    saving opens it: the change summary, the diff of what actually moves, and
+    approve or decline. A modal cannot be scrolled past.
+
+    The flash and its toast stay for whoever closes the dialog.
+    """
     try:
-        post(
+        result = post(
             f"/v1/care-plan-versions/{version_id}/operational-adjustment",
             json={"operational_preferences": overrides, "change_summary": summary},
         )
-        # Says what happened *and* what still has to happen. "אפשר לאשר אותה
-        # למטה" was also pointing the wrong way: open proposals render above the
-        # plan card, not below it.
-        flash(
-            "השינוי נשמר כהצעה. לוח הזמנים יתעדכן אחרי שתאשרו אותה — "
-            "ההצעה מופיעה למעלה, מעל תוכנית הטיפול.",
-            kind="info",
-            icon=":material/pending_actions:",
-        )
-        st.rerun()
     except ApiError as exc:
         show_error(exc)
+        return
+
+    # After the rerun `open_proposals` is at least one, so the block above fetches
+    # the proposals and renders whichever the dialog has been pointed at - the
+    # same path the "open a waiting proposal" button uses.
+    open_proposal_dialog(str(result["version_id"]))
+    flash(
+        "השינוי נשמר כהצעה. לוח הזמנים יתעדכן רק אחרי שתאשרו אותה.",
+        kind="info",
+        icon=":material/pending_actions:",
+    )
+    st.rerun()
 
 
 def await_proposal(started: dict, *, waiting: str) -> None:
