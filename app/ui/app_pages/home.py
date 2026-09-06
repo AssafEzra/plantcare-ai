@@ -28,6 +28,11 @@ from app.ui.state.api_client import ApiError, get, post
 
 FLASH = "home_flash"
 
+# How many of the upcoming tasks are shown outright. Three is what the user
+# asked for and what fits under today's work without pushing the plant grid
+# off the first screen.
+UPCOMING_ON_HOME = 3
+
 
 def flash(message: str, *, kind: str = "success", icon: str = ":material/check_circle:") -> None:
     """Park a message across the rerun an action triggers.
@@ -147,16 +152,38 @@ else:
 
 # --- upcoming -----------------------------------------------------------------
 
+
+def upcoming_line(task: dict[str, Any]) -> str:
+    """One future task in a line.
+
+    The action, not just the plant and the time. Three rules on one plant produce
+    three lines that are otherwise word-for-word identical, which tells the user
+    nothing about what is coming.
+    """
+    action = task.get("action_type") or ""
+    label, _ = ACTION_LABELS.get(action, (action, ""))
+    return f"**{label}** · {task.get('plant_name') or 'הצמח שלי'} · {due_text(task)}"
+
+
 if upcoming:
-    with st.expander(f"בקרוב ({len(upcoming)})", icon=":material/upcoming:"):
-        for task in upcoming:
-            # The action, not just the plant and the time. Three rules on one
-            # plant produce three lines that are otherwise word-for-word
-            # identical, which tells the user nothing about what is coming.
+    # The next three, on the page. They were behind a collapsed expander, which
+    # is the same as not being on the dashboard at all: FINAL §5 asks the user to
+    # understand "in seconds what needs attention", and a click is not seconds.
+    st.subheader("בקרוב", anchor=False)
+    for task in upcoming[:UPCOMING_ON_HOME]:
+        with st.container(border=True):
             action = task.get("action_type") or ""
-            label, _ = ACTION_LABELS.get(action, (action, ""))
-            plant_name = task.get("plant_name") or "הצמח שלי"
-            st.markdown(f":gray[**{label}** · {plant_name} · {due_text(task)}]")
+            _, icon = ACTION_LABELS.get(action, (action, ":material/schedule:"))
+            st.markdown(f"{icon} {upcoming_line(task)}")
+
+    # No Done or Skip here, deliberately. These are not due yet, and completing
+    # one early would anchor the whole recurrence to today (A8) - a button that
+    # quietly reschedules the plan is worse than no button.
+    rest = upcoming[UPCOMING_ON_HOME:]
+    if rest:
+        with st.expander(f"בהמשך ({len(rest)})", icon=":material/upcoming:"):
+            for task in rest:
+                st.markdown(f":gray[{upcoming_line(task)}]")
 
 
 # --- needing attention --------------------------------------------------------

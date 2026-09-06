@@ -112,6 +112,32 @@ class VersionSummary(BaseModel):
     published_at: datetime
 
 
+class CatalogueEntry(BaseModel):
+    """One published article, as the admin catalogue lists it."""
+
+    id: UUID
+    species_id: UUID
+    scientific_name: str
+    common_name: str | None = None
+    language: str
+    version_number: int
+    published_at: datetime
+    plant_count: int = 0
+
+
+class VersionDetail(VersionSummary):
+    """A version with its text and its provenance, for the admin reader."""
+
+    content: dict[str, Any] = Field(default_factory=dict)
+    source_summary: dict[str, Any] = Field(default_factory=dict)
+    sources: list[SourceResponse] = Field(default_factory=list)
+
+    @field_validator("source_summary", mode="before")
+    @classmethod
+    def _absent_summary_is_empty(cls, value: Any) -> Any:
+        return value or {}
+
+
 class ApproveRequest(BaseModel):
     model_config = {"extra": "forbid"}
 
@@ -377,6 +403,45 @@ async def retry_knowledge_research(
 
 
 # --- admin: versions ----------------------------------------------------------
+
+
+@router.get("/admin/knowledge-versions", response_model=DataEnvelope[list[CatalogueEntry]])
+async def list_published_knowledge(
+    request: Request,
+    admin: AdminDep,
+    q: Annotated[str | None, Query(max_length=120)] = None,
+) -> DataEnvelope[list[CatalogueEntry]]:
+    """Every species that has published knowledge.
+
+    The screen this feeds asked the administrator to paste a species UUID, which
+    on a database of hundreds of species meant the published catalogue was
+    unreachable in practice. `q` filters on either name.
+    """
+    catalogue = workflow.published_catalogue(admin.client, query=q)
+    return DataEnvelope(
+        data=[CatalogueEntry(**entry) for entry in catalogue],
+        request_id=request.state.request_id,
+    )
+
+
+@router.get(
+    "/admin/knowledge-versions/detail/{version_id}", response_model=DataEnvelope[VersionDetail]
+)
+async def get_knowledge_version(
+    request: Request, version_id: UUID, admin: AdminDep
+) -> DataEnvelope[VersionDetail]:
+    """One version's text and every source behind it.
+
+    Under `/detail/` rather than at `/admin/knowledge-versions/{version_id}`
+    because that path already means "history for this *species*", and two UUID
+    routes on one segment resolve by declaration order rather than by intent.
+    """
+    version = workflow.version_detail(admin.client, version_id=version_id)
+    sources = workflow.version_sources(admin.client, version_id=version_id)
+    return DataEnvelope(
+        data=VersionDetail(**version, sources=[SourceResponse(**s) for s in sources]),
+        request_id=request.state.request_id,
+    )
 
 
 @router.get(

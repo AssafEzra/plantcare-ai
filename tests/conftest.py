@@ -12,6 +12,10 @@ REQUIRED_ENV = {
     "CARE_MODEL": "test-model",
     "HEALTH_MODEL": "test-model",
     "INTERNAL_TICK_SECRET": "tick-secret-for-tests",
+    # Off in every test process. The API's in-process sweep would otherwise run
+    # against DEV on its own schedule while a test asserted on the same rows,
+    # which is a failure nobody can reproduce.
+    "INTERNAL_TICK_INTERVAL_SECONDS": "0",
 }
 
 

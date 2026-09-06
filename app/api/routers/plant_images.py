@@ -31,6 +31,13 @@ router = APIRouter(prefix="/plants/{plant_id}/images", tags=["images"])
 
 # FINAL §8 and §16 both cap a batch at four images; the gallery uses the same
 # ceiling so a plant cannot accumulate an unbounded set.
+# Per submission, not per plant for life. FINAL §16 allows a health check 1-4
+# images and the gallery is a small set, so the number is right - but counting
+# every image the plant has ever had in a context made the *second* health check
+# impossible: four health images existed, so the fifth upload was refused, and
+# would be refused forever. A gallery image stays counted (it is permanent by
+# nature); a health or identification image stops counting once the assessment or
+# identification that consumed it exists.
 MAX_IMAGES_PER_CONTEXT = 4
 
 
@@ -67,9 +74,9 @@ async def upload_image(
     if not repo.find(user.client, plant_id, owner_id=user.id):
         raise PlantNotFoundError()
 
-    if repo.count_images(user.client, plant_id, context_type) >= MAX_IMAGES_PER_CONTEXT:
+    if repo.count_uncommitted_images(user.client, plant_id, context_type) >= MAX_IMAGES_PER_CONTEXT:
         raise ValidationFailedError(
-            f"אפשר להעלות עד {MAX_IMAGES_PER_CONTEXT} תמונות.",
+            f"אפשר לצרף עד {MAX_IMAGES_PER_CONTEXT} תמונות בכל פעם.",
             details={"max": MAX_IMAGES_PER_CONTEXT, "context": context_type.value},
         )
 

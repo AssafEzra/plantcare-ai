@@ -85,16 +85,22 @@ def timezone_of(client: Client, user_id: str) -> str:
 def materialise(client: Client, *, now_utc: datetime, user_id: str | None = None) -> int:
     """Create near-term tasks for every active rule that has none pending.
 
-    Idempotent by construction: a rule with a PENDING task is skipped, and the
-    partial unique index refuses a second one even if two runs raced. That is why
-    running the tick twice produces one task rather than two — a property the
-    integration tests assert directly, because it is the difference between a
-    reminder and a duplicate reminder.
+    Idempotent by construction: a rule with an *open* task — PENDING or OVERDUE —
+    is skipped, and the partial unique index refuses a second one even if two runs
+    raced. That is why running the tick twice produces one task rather than two, a
+    property the integration tests assert directly, because it is the difference
+    between a reminder and a duplicate reminder.
+
+    "Open" rather than "pending" since PR 32. The original guard and index covered
+    PENDING alone, so the first sweep that marked a task OVERDUE freed its rule to
+    be materialised again, and every tick after that added another copy. Found in
+    DEV the moment the tick was actually run: four rules, eight identical overdue
+    tasks.
     """
     created = 0
 
     for rule, plan_version, plant in _active_rules(client, user_id=user_id):
-        if _pending_task_for(client, rule["id"]):
+        if _open_task_for(client, rule["id"]):
             continue
 
         timezone_name = timezone_of(client, plant["user_id"])
@@ -248,12 +254,24 @@ def _active_rules(client: Client, *, user_id: str | None = None) -> list[tuple[R
     return found
 
 
-def _pending_task_for(client: Client, rule_id: str) -> Row | None:
+def _open_task_for(client: Client, rule_id: str) -> Row | None:
+    """Does this rule already have work outstanding?
+
+    PENDING *or* OVERDUE. Checking only PENDING was the backlog FINAL §13
+    forbids: a task that went overdue freed the slot, so the next tick made
+    another one — and because a rule with no events computes the same due date
+    every time, the second task was a literal copy of the first, not a following
+    occurrence. Fifteen minutes later there were three.
+
+    The next recurrence is not lost by waiting: an overdue task that nobody is
+    going to do becomes a MISSED event and is CANCELLED (A9), and that is what
+    frees the rule to be scheduled again.
+    """
     return first_row(
         client.table("care_tasks")
         .select("id")
         .eq("care_rule_id", rule_id)
-        .eq("status", CareTaskStatus.PENDING.value)
+        .in_("status", [CareTaskStatus.PENDING.value, CareTaskStatus.OVERDUE.value])
         .limit(1)
         .execute()
     )

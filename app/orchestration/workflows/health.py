@@ -140,6 +140,16 @@ def execute(
             agent_request_id=request_id,
         )
 
+        # FINAL §20: an image a model actually looked at is retained for audit
+        # even if the user later removes it. Identification has always marked its
+        # images; health never did, so an assessment could cite a photograph the
+        # user was then allowed to hard-delete - and the images also stayed
+        # counted against the upload cap forever, which is what made a second
+        # health check with new photographs impossible.
+        admin.table("plant_images").update({"ai_used": True}).in_(
+            "id", [str(i) for i in image_ids]
+        ).execute()
+
         requests_service.mark_succeeded(
             request_id,
             {

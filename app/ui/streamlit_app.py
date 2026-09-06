@@ -72,6 +72,11 @@ def _sync_timezone(profile: dict) -> None:
 
 # --- routing ------------------------------------------------------------------
 
+# Before anything decides what to draw: a browser refresh starts a new Streamlit
+# session, so the auth state has to be rebuilt from the browser first. Without
+# this, F5 was indistinguishable from signing out.
+session.restore()
+
 if not session.is_signed_in():
     pages = [st.Page("app_pages/auth.py", title="כניסה", icon=":material/login:")]
 else:

@@ -48,6 +48,60 @@ Recommended MVP topology:
 
 Railway is the preferred initial hosting direction for Python services, subject to final deployment configuration.
 
+### The scheduler tick has two drivers (added PR 32, per FINAL §37)
+
+The plan gave the sweep one driver: a Railway cron service calling
+`POST /v1/internal/tick` every ~15 minutes. That service is part of PR 24, which is
+parked — so in practice **nothing ever called the tick**, and the consequence
+reached a user: approving a care plan produced an active plan with no tasks, and
+the overdue sweep, MISSED events and reminders never ran at all (FINAL §13).
+
+The API therefore carries its own timer. The tick body lives in
+`app/orchestration/services/tick.py` and has two callers:
+
+| Driver | Where | Controlled by |
+|---|---|---|
+| Cron service | `POST /v1/internal/tick`, shared secret | Railway cron (PR 24) |
+| In-process timer | FastAPI lifespan task | `INTERNAL_TICK_INTERVAL_SECONDS` (default 900; `0` disables) |
+
+They do not conflict. `run_tick` is idempotent — materialisation skips a rule that
+already has a pending task and the database refuses a second one regardless, and
+reminders are deduplicated on `notification_deliveries.dedupe_key` — so a cron
+firing while the timer runs produces the same state as either alone. The same
+property makes it safe under multiple uvicorn workers.
+
+Operational notes:
+
+- The sweep is synchronous Supabase I/O and runs in a worker thread, so it never
+  blocks the event loop.
+- Every exception is logged and swallowed. A transient database error must not
+  leave the process with no scheduler until someone restarts it.
+- Set `INTERNAL_TICK_INTERVAL_SECONDS=0` on a deployment that would rather have
+  only the cron.
+- Tests and CI set it to `0`. A background timer inside a test process writes to
+  DEV on its own schedule and makes failures irreproducible.
+- **Duration scales with the number of plans, not with traffic.** Measured against
+  DEV on 2026-09-06, before and after purging the accounts the integration suite
+  had left behind:
+
+  | DEV state | Accounts | One full sweep |
+  |---|---|---|
+  | Polluted | 1,504 | **6m11s** (39 materialised, 34 marked overdue) |
+  | Purged | 10 | **5.2s** |
+
+  The first figure is the one to plan against, not the second: it is what the
+  sweep costs when the database is full, and 6m11s against a 900s interval is
+  thin headroom. The loop sleeps *between* runs so two can never overlap, but a
+  production database will grow past DEV's worst case. Re-measure before raising
+  the interval's workload, and watch the `scheduler.timer_tick` duration in logs.
+
+  A second run immediately after the first materialised **0** tasks, which is the
+  idempotence the two-driver design depends on.
+- **A rule already holding an open task is skipped** — PENDING *or* OVERDUE. The
+  original guard and index covered PENDING alone, so the first sweep that marked a
+  task overdue freed its rule and every tick after that added a copy. Corrected in
+  migration `20260906000100`; see FINAL §13.
+
 ## 4. CI/CD
 
 Recommended flow:

@@ -27,6 +27,21 @@ def _due_local(task: dict[str, Any]) -> datetime | None:
     return parsed.astimezone() if parsed.tzinfo else parsed.replace(tzinfo=UTC).astimezone()
 
 
+def is_due(task: dict[str, Any]) -> bool:
+    """Is this task actionable now, or still in the future?
+
+    An overdue task is always actionable. A pending one becomes actionable at the
+    end of the day it is due on: "water it today" should not be refused at nine in
+    the morning because the rule says eight in the evening.
+    """
+    if task.get("status") == "OVERDUE":
+        return True
+    due = _due_local(task)
+    if due is None:
+        return False
+    return due.date() <= datetime.now().astimezone().date()
+
+
 def due_text(task: dict[str, Any]) -> str:
     """When, in words a person uses.
 
