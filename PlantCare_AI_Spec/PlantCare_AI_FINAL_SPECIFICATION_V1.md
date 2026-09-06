@@ -579,6 +579,26 @@ A structured Care Plan Proposal containing professional recommendations and oper
 
 ### User approval
 
+**An adjustment leaves the rule coherent (PR 33), per §37.** A weekday anchor only
+means something on an interval that is a multiple of seven (A7), and `care_rules`
+has a CHECK saying so. The adjustment copied the weekday verbatim while applying
+the new interval, so "every 7 days on Sunday" changed to five days produced a row
+Postgres refused — a 500. Every one of a real user's plants had at least one
+weekly rule anchored to a day, so the control was unusable on all of them.
+
+The weekday is **dropped**, not the change refused. The user is choosing a
+frequency; the scheduler already ignores a weekday that does not divide into the
+interval, so keeping it would store something with no effect, while rejecting
+would claim they cannot pick five days when they can.
+`domain/rules/care_rule_validation.py` has encoded this rule since PR 16 — this
+path simply never consulted it.
+
+The same reproduction exposed a partial write: the version row was inserted before
+the rules, so a refused copy left a PROPOSED version with no rules in it and
+consumed a version number. The rules are now built and normalised before anything
+is written, and a failure during the copy removes the version it belongs to
+(§25: nothing partial survives).
+
 **A blocked save says why (PR 33), per §37.** Reported from real use: *"manual
 changing in שינוי תדירות או שעה does nothing, it wont let you save changes"*. The
 save button required both a changed interval and a description, and enforced both

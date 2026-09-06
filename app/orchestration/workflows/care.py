@@ -334,6 +334,17 @@ def operational_adjustment(
         raise ValidationFailedError("יש לתאר את השינוי.")
 
     plan_id = source["care_plan_id"]
+
+    # Built before anything is written. The rules are what can fail here - a
+    # weekday anchor that no longer fits the new interval used to reach the
+    # database and raise - and a version inserted first would survive that
+    # failure as a proposal with no rules in it. The reproduction showed exactly
+    # that: a refused adjustment consumed version 2, and the next successful one
+    # became version 3.
+    new_rules = _adjusted_rules(
+        client, source_version_id=source["id"], overrides=operational_preferences
+    )
+
     new_version = require_row(
         client.table("care_plan_versions")
         .insert(
@@ -357,12 +368,17 @@ def operational_adjustment(
         .execute()
     )
 
-    _copy_rules(
-        client,
-        source_version_id=source["id"],
-        target_version_id=new_version["id"],
-        overrides=operational_preferences,
-    )
+    try:
+        for rule in new_rules:
+            client.table("care_rules").insert(
+                {**rule, "care_plan_version_id": new_version["id"]}
+            ).execute()
+    except Exception:
+        # A version with no rules is not a proposal, it is a hole in the version
+        # history that a user can approve and get an empty schedule from. Take it
+        # back out rather than leave it (FINAL §25: nothing partial survives).
+        client.table("care_plan_versions").delete().eq("id", new_version["id"]).execute()
+        raise
 
     return {
         "version_id": new_version["id"],
@@ -371,43 +387,58 @@ def operational_adjustment(
     }
 
 
-def _copy_rules(
-    client: Client,
-    *,
-    source_version_id: str,
-    target_version_id: str,
-    overrides: dict[str, Any],
-) -> None:
-    """Carry the rules across, applying the user's operational overrides.
+def _adjusted_rules(
+    client: Client, *, source_version_id: str, overrides: dict[str, Any]
+) -> list[dict[str, Any]]:
+    """The source version's rules with the user's operational overrides applied.
 
     Overrides are keyed by action type — `{"WATERING": {"interval_days": 10}}` —
     so a user changing their watering frequency does not disturb the fertilising
     rule. An override naming an unknown action type is ignored rather than
     creating a rule the plan never had; adding an action is a plan change, which
     is a proposal, not an adjustment.
+
+    Returns payloads rather than writing them, so the whole set can be built and
+    checked before a version row exists to be orphaned by a failure.
     """
-    for rule in rows(
-        client.table("care_rules")
-        .select(RULE_COLUMNS)
-        .eq("care_plan_version_id", source_version_id)
-        .execute()
-    ):
-        override = overrides.get(rule["action_type"]) or {}
-        client.table("care_rules").insert(
-            {
-                "care_plan_version_id": target_version_id,
-                "action_type": rule["action_type"],
-                "interval_days": override.get("interval_days", rule["interval_days"]),
-                "preferred_time_local": override.get(
-                    "preferred_time_local", rule["preferred_time_local"]
-                ),
-                "preferred_weekday": override.get(
-                    "preferred_weekday", rule.get("preferred_weekday")
-                ),
-                "instructions": rule.get("instructions"),
-                "is_active": override.get("is_active", rule.get("is_active", True)),
-            }
-        ).execute()
+    return [
+        _apply_override(rule, overrides.get(rule["action_type"]) or {})
+        for rule in rows(
+            client.table("care_rules")
+            .select(RULE_COLUMNS)
+            .eq("care_plan_version_id", source_version_id)
+            .execute()
+        )
+    ]
+
+
+def _apply_override(rule: Row, override: dict[str, Any]) -> dict[str, Any]:
+    """One rule, adjusted — and left coherent.
+
+    A weekday anchor only means something on an interval that is a multiple of
+    seven (A7), and the database enforces it with a CHECK. Copying the weekday
+    verbatim while changing the interval therefore produced rows Postgres
+    refused, and every one of a real user's plants had at least one weekly rule
+    anchored to a day: changing "every 7 days" to "every 5" was a 500.
+
+    Dropped rather than refused. The user is choosing a frequency, and the
+    scheduler already ignores a weekday that does not divide into the interval
+    (`recurrence.next_due`) — so keeping it would store something with no effect,
+    and rejecting the change would claim they cannot pick five days when they
+    can. `care_rule_validation` has encoded this rule since PR 16; this path
+    simply never consulted it.
+    """
+    interval = int(override.get("interval_days") or rule["interval_days"])
+    weekday = override.get("preferred_weekday", rule.get("preferred_weekday"))
+
+    return {
+        "action_type": rule["action_type"],
+        "interval_days": interval,
+        "preferred_time_local": override.get("preferred_time_local", rule["preferred_time_local"]),
+        "preferred_weekday": weekday if weekday and interval % 7 == 0 else None,
+        "instructions": rule.get("instructions"),
+        "is_active": override.get("is_active", rule.get("is_active", True)),
+    }
 
 
 # --- reads ----------------------------------------------------------------------
