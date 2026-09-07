@@ -31,7 +31,7 @@ from app.ui.components.layout import (
     show_flash,
 )
 from app.ui.components.status import status_badge
-from app.ui.state.api_client import ApiError, get, post
+from app.ui.state.api_client import ApiError, cached_get, post
 
 # How many of the upcoming tasks are shown outright. Three is what the user
 # asked for and what fits under today's work without pushing the plant grid
@@ -61,7 +61,7 @@ def open_plant(plant_id: str) -> None:
 # --- load ---------------------------------------------------------------------
 
 try:
-    profile = get("/v1/me") or {}
+    profile = cached_get("/v1/me") or {}
 except ApiError:
     profile = {}
 
@@ -69,7 +69,7 @@ name = (profile.get("display_name") or "").strip()
 page_header(f"{greeting()} {name}".strip() + " 👋", "מה מחכה לך היום")
 show_flash()
 
-dashboard = guarded(lambda: get("/v1/dashboard"))
+dashboard = guarded(lambda: cached_get("/v1/dashboard"))
 if dashboard is None:
     st.stop()
 

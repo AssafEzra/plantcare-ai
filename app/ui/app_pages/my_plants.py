@@ -8,7 +8,7 @@ from app.common.enums import HealthStatus
 from app.ui.components.layout import empty_state, guarded, page_header
 from app.ui.components.plant_card import plant_card
 from app.ui.components.status import status_style
-from app.ui.state.api_client import get
+from app.ui.state.api_client import cached_get
 
 page_header("הצמחים שלי")
 
@@ -38,7 +38,7 @@ if search.strip():
 if health:
     params["health_status"] = health
 
-plants = guarded(lambda: get("/v1/plants", params=params), spinner="טוען את הצמחים שלך…")
+plants = guarded(lambda: cached_get("/v1/plants", params=params), spinner="טוען את הצמחים שלך…")
 if plants is None:
     st.stop()
 

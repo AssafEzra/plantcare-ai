@@ -26,7 +26,7 @@ from app.ui.components.layout import (
     show_flash,
 )
 from app.ui.components.sources import render_sources
-from app.ui.state.api_client import ApiError, get, patch, post
+from app.ui.state.api_client import ApiError, cached_get, get, patch, post
 
 SECTION_LABELS: dict[str, str] = {
     "identification": "זיהוי",
@@ -98,7 +98,7 @@ page_header("ניהול", "אזור מנהלי מערכת")
 
 with overview_tab:
     show_flash()
-    overview = guarded(lambda: get("/v1/admin/overview"))
+    overview = guarded(lambda: cached_get("/v1/admin/overview"))
 
     if overview is not None:
         # Ordered by what would make someone act: failures first, then things
@@ -180,7 +180,7 @@ with drafts_tab:
     )
 
     params = {} if status_filter == "הכול" else {"status": status_filter}
-    drafts = guarded(lambda: get("/v1/admin/knowledge-drafts", params=params))
+    drafts = guarded(lambda: cached_get("/v1/admin/knowledge-drafts", params=params))
 
     if drafts is None:
         pass
@@ -306,7 +306,7 @@ def render_version(version_id: str) -> None:
     read neither, so "published knowledge" could be confirmed to exist and never
     read.
     """
-    detail = guarded(lambda: get(f"/v1/admin/knowledge-versions/detail/{version_id}"))
+    detail = guarded(lambda: cached_get(f"/v1/admin/knowledge-versions/detail/{version_id}"))
     if not detail:
         return
 
@@ -388,7 +388,7 @@ with published_tab:
                 )
                 if species_id.strip():
                     versions = guarded(
-                        lambda: get(f"/v1/admin/knowledge-versions/{species_id.strip()}")
+                        lambda: cached_get(f"/v1/admin/knowledge-versions/{species_id.strip()}")
                     )
                     for version in versions or []:
                         row = st.container(horizontal=True)
@@ -407,7 +407,7 @@ with published_tab:
 
 with sources_tab:
     show_flash()
-    sources = guarded(lambda: get("/v1/admin/approved-sources"))
+    sources = guarded(lambda: cached_get("/v1/admin/approved-sources"))
 
     with st.expander("הוספת מקור מאושר", icon=":material/add:"):
         name = st.text_input("שם", key="src_name")
@@ -479,7 +479,7 @@ with reports_tab:
         "דיווחי משתמשים על שגיאות במידע. אישור דיווח אינו מפעיל מחקר — לשם כך יש לחקור מחדש בלשונית הטיוטות."
     )
 
-    reports = guarded(lambda: get("/v1/admin/knowledge-reports", params={"status": "OPEN"}))
+    reports = guarded(lambda: cached_get("/v1/admin/knowledge-reports", params={"status": "OPEN"}))
     if reports is not None:
         if not reports:
             st.caption("אין דיווחים פתוחים.")
@@ -522,7 +522,7 @@ with monitoring_tab:
     if only_failures:
         execution_params["status"] = "FAILED"
 
-    executions = guarded(lambda: get("/v1/admin/agent-executions", params=execution_params))
+    executions = guarded(lambda: cached_get("/v1/admin/agent-executions", params=execution_params))
     if executions is not None:
         if not executions:
             st.caption("אין הרצות להצגה.")
@@ -553,7 +553,7 @@ with monitoring_tab:
     if st.toggle("רק כשלים", key="admin_only_failed_requests"):
         request_params["status"] = "FAILED"
 
-    requests = guarded(lambda: get("/v1/admin/agent-requests", params=request_params))
+    requests = guarded(lambda: cached_get("/v1/admin/agent-requests", params=request_params))
     if requests is not None:
         if not requests:
             st.caption("אין בקשות להצגה.")
@@ -590,7 +590,9 @@ with deliveries_tab:
     if failures_only:
         delivery_params["status"] = "FAILED"
 
-    deliveries = guarded(lambda: get("/v1/admin/notification-deliveries", params=delivery_params))
+    deliveries = guarded(
+        lambda: cached_get("/v1/admin/notification-deliveries", params=delivery_params)
+    )
     if deliveries is not None:
         if not deliveries:
             st.caption("לא נשלחו התראות.")
@@ -625,7 +627,7 @@ with audit_tab:
         "כך שהרישום אינו ניתן לשינוי בדיעבד."
     )
 
-    entries = guarded(lambda: get("/v1/admin/audit-log", params={"limit": 50}))
+    entries = guarded(lambda: cached_get("/v1/admin/audit-log", params={"limit": 50}))
     if entries is not None:
         if not entries:
             st.caption("אין רישומים.")
@@ -654,7 +656,9 @@ with accounts_tab:
 
     search = st.text_input("חיפוש לפי אימייל", key="admin_account_search")
     accounts = guarded(
-        lambda: get("/v1/admin/accounts", params={"q": search.strip()} if search.strip() else {})
+        lambda: cached_get(
+            "/v1/admin/accounts", params={"q": search.strip()} if search.strip() else {}
+        )
     )
 
     if accounts is not None:

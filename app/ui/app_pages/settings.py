@@ -8,11 +8,11 @@ from zoneinfo import available_timezones
 import streamlit as st
 
 from app.ui.components.layout import guarded, page_header, show_error
-from app.ui.state.api_client import ApiError, get, patch, put
+from app.ui.state.api_client import ApiError, cached_get, patch, put
 
 page_header("הגדרות")
 
-profile = guarded(lambda: get("/v1/me"))
+profile = guarded(lambda: cached_get("/v1/me"))
 if profile is None:
     st.stop()
 
@@ -63,7 +63,7 @@ st.divider()
 
 st.subheader("תזכורות", anchor=False)
 
-preferences = guarded(lambda: get("/v1/notification-preferences"))
+preferences = guarded(lambda: cached_get("/v1/notification-preferences"))
 if preferences is None:
     st.stop()
 
@@ -132,7 +132,7 @@ if not preferences.get("email_enabled", True):
 # deployment with no mail provider configured the honest answer is "we sent
 # nothing", and a user comparing that against an empty inbox deserves to see it.
 with st.expander("התראות שנשלחו", icon=":material/mark_email_read:"):
-    deliveries = guarded(lambda: get("/v1/notification-deliveries", params={"limit": 20}))
+    deliveries = guarded(lambda: cached_get("/v1/notification-deliveries", params={"limit": 20}))
     if deliveries is not None:
         if not deliveries:
             st.caption("עדיין לא נשלחו אליך התראות.")
