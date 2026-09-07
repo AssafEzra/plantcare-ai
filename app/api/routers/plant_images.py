@@ -41,11 +41,23 @@ router = APIRouter(prefix="/plants/{plant_id}/images", tags=["images"])
 MAX_IMAGES_PER_CONTEXT = 4
 
 
-def _with_urls(client_token: str, row: dict) -> PlantImageResponse:
+def _with_urls(
+    client_token: str, row: dict, signed: dict[str, str] | None = None
+) -> PlantImageResponse:
+    """One image with its two URLs.
+
+    `signed` is the batch a list endpoint prepared; without it this signs the two
+    itself, which is correct for a single upload and wrong for a loop - see
+    `signed_urls` in the storage adapter.
+    """
+    if signed is None:
+        signed = storage.signed_urls(
+            client_token, [row["storage_path_thumbnail"], row["storage_path_processed"]]
+        )
     return PlantImageResponse(
         **row,
-        thumbnail_url=storage.signed_url(client_token, row["storage_path_thumbnail"]),
-        processed_url=storage.signed_url(client_token, row["storage_path_processed"]),
+        thumbnail_url=signed.get(row["storage_path_thumbnail"]),
+        processed_url=signed.get(row["storage_path_processed"]),
     )
 
 
@@ -55,8 +67,17 @@ async def list_images(
 ) -> DataEnvelope[list[PlantImageResponse]]:
     repo.get(user.client, plant_id, owner_id=user.id)
     found = repo.list_images(user.client, plant_id)
+    signed = storage.signed_urls(
+        user.access_token,
+        [
+            row[column]
+            for row in found
+            for column in ("storage_path_thumbnail", "storage_path_processed")
+        ],
+        client=user.client,
+    )
     return DataEnvelope(
-        data=[_with_urls(user.access_token, row) for row in found],
+        data=[_with_urls(user.access_token, row, signed) for row in found],
         request_id=request.state.request_id,
     )
 

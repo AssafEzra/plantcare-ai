@@ -140,7 +140,7 @@ def _decorate_for_grid(client, access_token: str, plants: list[dict]) -> list[di
         if path:
             chosen[str(plant["id"])] = path
 
-    signed = storage.signed_urls(access_token, list(chosen.values()))
+    signed = storage.signed_urls(access_token, list(chosen.values()), client=client)
     thumbnails = {plant_id: signed[path] for plant_id, path in chosen.items() if path in signed}
 
     species: dict[str, str] = {}

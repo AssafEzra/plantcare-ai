@@ -145,16 +145,23 @@ USER_LOGGABLE = {
 }
 
 
-def _image(row: dict[str, Any], *, main_id: str | None, access_token: str) -> GalleryImage:
+def _paths(row: dict[str, Any]) -> tuple[str | None, str | None]:
     processed = row.get("storage_path_processed") or row.get("storage_path_original")
-    thumbnail = row.get("storage_path_thumbnail") or processed
+    return processed, (row.get("storage_path_thumbnail") or processed)
+
+
+def _image(row: dict[str, Any], *, main_id: str | None, signed: dict[str, str]) -> GalleryImage:
+    processed, thumbnail = _paths(row)
     return GalleryImage(
         id=row["id"],
         # Signed as the caller and short-lived: the bucket is private, storage RLS
         # decides who may sign, and a URL that outlived the page would be a link
         # anyone could pass on (FINAL §20).
-        url=storage.signed_url(access_token, processed) if processed else None,
-        thumbnail_url=storage.signed_url(access_token, thumbnail) if thumbnail else None,
+        #
+        # Signed in one batch before this runs, not here. Two signatures per image
+        # in a loop was half the response time of the whole page.
+        url=signed.get(processed) if processed else None,
+        thumbnail_url=signed.get(thumbnail) if thumbnail else None,
         context_type=row.get("context_type") or "gallery",
         is_main=row["id"] == main_id,
         created_at=row["created_at"],
@@ -219,10 +226,12 @@ async def get_plant_dashboard(
     pending = _pending_identification(user.client, plant) if species is None else None
 
     images = repo.list_images(user.client, plant_id)
-    gallery = [
-        _image(row, main_id=plant.get("main_image_id"), access_token=user.access_token)
-        for row in images
-    ]
+    signed = storage.signed_urls(
+        user.access_token,
+        [path for row in images for path in _paths(row) if path],
+        client=user.client,
+    )
+    gallery = [_image(row, main_id=plant.get("main_image_id"), signed=signed) for row in images]
     main_image = next((image for image in gallery if image.is_main), None) or (
         gallery[0] if gallery else None
     )
