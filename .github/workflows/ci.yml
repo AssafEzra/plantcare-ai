@@ -80,13 +80,35 @@ jobs:
 
       # Skipped rather than failed when the DEV secrets are not configured: a red
       # X on every merge teaches people to ignore red Xs.
+      #
+      # But a silent skip taught something worse. This job has never once run - no
+      # secrets have ever been set - and it reported green every time, so "CI is
+      # green" was repeatedly taken to mean the RLS matrix had passed when nothing
+      # had checked it. A run that cannot verify something must say what it did not
+      # verify, in the words of the thing at risk rather than the words of the
+      # configuration that is missing.
+      #
+      # Warning, not failure, because a permanently red repository is the noise the
+      # comment above is right about. This stops short of honest - the overall tick
+      # is still green - and the intended end state is that DEV credentials exist
+      # and a skip here becomes a real failure. See FINAL §21 on PR 24.
       - name: Check for DEV credentials
         id: creds
         run: |
           if [ -n "$SUPABASE_URL" ] && [ -n "$SUPABASE_DB_PASSWORD" ]; then
             echo "available=true" >> "$GITHUB_OUTPUT"
           else
-            echo "::notice::DEV Supabase secrets are not configured; integration tests skipped."
+            echo "::warning title=Integration tests did not run::The RLS matrix and the 9 user journeys were NOT executed. A green check on this run does not mean one user cannot read another user's plants."
+            {
+              echo "### :warning: Integration tests did not run"
+              echo
+              echo "**Not executed on this commit:**"
+              echo "- the RLS matrix - every policy that keeps one user's rows private"
+              echo "- the 9 end-to-end user journeys"
+              echo
+              echo "A green check covers lint, types and the unit suite only."
+              echo "These tests exist and pass; they are run by hand against DEV."
+            } >> "$GITHUB_STEP_SUMMARY"
             echo "available=false" >> "$GITHUB_OUTPUT"
           fi
 
