@@ -465,6 +465,13 @@ Three consequences, all now built in:
   Foreign-key cascades stay enabled throughout - `session_replication_role =
   replica` would have been shorter and would have left orphans.
 
-The rule: **assume every account and every plant a test creates is permanent.**
-Generate names that cannot collide, scope assertions to your own rows, and run the
-purge script when the project gets crowded.
+- Accounts are not all a run leaves behind. `species` belongs to no user, so the
+  knowledge a test publishes survives every account purge, and bucket objects are
+  files rather than rows. `scripts/scrub_dev_database.py` removes those, reports
+  anything it cannot classify rather than guessing, and deletes storage through the
+  API — dropping a `storage.objects` row leaves the file in the bucket. Run it after
+  an integration or browser session; the account purge alone leaves the catalogue.
+
+The rule: **assume every account, every plant and every species a test creates is
+permanent.** Generate names that cannot collide, scope assertions to your own rows,
+and run both cleanup scripts when the project gets crowded.

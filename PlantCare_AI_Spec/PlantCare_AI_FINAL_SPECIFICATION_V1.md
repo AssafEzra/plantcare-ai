@@ -1285,6 +1285,43 @@ genuinely gone - a development database full of test accounts - has to disable
 those triggers deliberately, as an administrative act, rather than expecting a
 cascade to do it.
 
+**The catalogue and the audit log too (added PR 34), per §37.** The sentence above
+about a published knowledge version — "cannot be deleted at all" — is true of the
+product and false of the repository, and the difference is worth naming rather than
+leaving for someone to discover.
+
+Deleting accounts turned out to be a fraction of the problem. Neither the knowledge
+catalogue nor the image bucket is owned by a user: `species` belongs to nobody, so
+`knowledge_versions`, `knowledge_drafts` and `knowledge_sources` hang off a row no
+cascade ever reaches, and storage objects are files rather than rows. By PR 33 the
+development database held 851 species named `Testus vfmxhivfsmgffv`, 365 knowledge
+versions published about them, 2,130 image files belonging to accounts deleted weeks
+earlier, and an audit log in which 234 of 237 entries pointed at rows that no longer
+existed. No user could reach any of it and every administrator saw all of it.
+
+So `scripts/scrub_dev_database.py` also disables `knowledge_versions_no_delete`,
+`knowledge_sources_immutable` and `admin_audit_log_immutable` — a deviation from the
+rule above and from §1.5, on the same terms as the paragraph before it. Those rules
+protect the provenance of real records; neither was written to preserve
+`Testus ddcbbdibeg` on a development database. **Nothing in the product deletes any
+of them**, and the guard is unchanged: the script names the DEV project and exits if
+the configured Supabase URL is anything else.
+
+Two properties of that script matter beyond DEV. It classifies three ways rather than
+two — known test, known real, and *unclassified*, which it reports and never deletes.
+An allowlist of real accounts is wrong the moment the product has users, and a pure
+deny-list is silent when a suite adopts a naming convention nobody wrote down, which
+is how twenty-six PRs of residue went unnoticed. And it removes bucket objects through
+the Storage API rather than by deleting `storage.objects` rows, which would leave the
+files themselves in place — invisible to every listing and still counted against the
+quota.
+
+This is interim tooling. Pattern-matching species works only because a fixture chooses
+the `Testus` prefix; a test that identifies a real photograph creates a real species
+name, and nothing will separate it from a user's. The durable fix is the separate
+production project (PR 24), after which real accounts do not live in the database the
+suites write to, and DEV can simply be emptied.
+
 ### Plant deletion
 
 Normal user action is Archive, not hard delete.
