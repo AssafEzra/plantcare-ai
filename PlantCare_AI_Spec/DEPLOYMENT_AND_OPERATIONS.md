@@ -102,42 +102,58 @@ Operational notes:
   task overdue freed its rule and every tick after that added a copy. Corrected in
   migration `20260906000100`; see FINAL §13.
 
-### The tester deploy is one container, not two services (added PR HF, per FINAL §37)
+### The tester deploy collapses the two services into one (added PR HF, per FINAL §37)
 
 The topology above is two services with private networking between them, and that
-is still the shape PROD should have. It is not the shape of a free host: the free
+remains the shape PROD should have. It is not a shape any free host offers: free
 tiers give you one always-on service and no private network between services, so
 the two-box design cannot be expressed there at all.
 
-For the pre-PR-24 tester deploy, both processes therefore run in **one container**
-(`Dockerfile`, `scripts/start.sh`) on Hugging Face Spaces:
+Two collapsed forms exist in the repository, both pre-PR-24 and neither a target:
 
-| | Two services (PROD, PR 24) | One container (testers) |
-|---|---|---|
-| UI reaches API by | private network address | `http://127.0.0.1:8000` |
-| API is public | no (private networking) | no (bound to loopback) |
-| Scale independently | yes | no - one process pair, one dyno |
-| Restart independently | yes | no - `start.sh` kills both if either dies |
+| | Two services (PROD, PR 24) | One container | One process |
+|---|---|---|---|
+| Where | Railway et al. | `Dockerfile`, `scripts/start.sh` | `app/ui/embedded_api.py` |
+| Host | paid | any container host | Streamlit Community Cloud |
+| API runs | own service | own process, same container | daemon thread in the UI process |
+| UI reaches API by | private address | `127.0.0.1:8000` | `127.0.0.1:8000` |
+| API is public | no | no | no |
+| Scale/restart halves alone | yes | no | no |
+| Crash isolation | yes | partial - `start.sh` kills both | none - one process |
+| Application code touched | none | none | `embedded_api.py` + one call |
 
-What the deviation costs is independent scaling and independent restart. What it
-does not cost is the security property the two-service design was bought for: the
-API is bound to `127.0.0.1`, the container publishes only Streamlit's port, and
-nothing outside can reach FastAPI. `SUPABASE_SERVICE_ROLE_KEY` and `AI_API_KEY` sit
-in the container exactly as they sit on a developer's machine today, and the
+**The tester deployment is the third column**, because Hugging Face Spaces - the
+container plan - stopped being free: its creation page now states that Gradio and
+Docker Spaces require a paid plan, leaving only Static, which runs no Python. The
+container files are kept, unused, because they are host-agnostic and are what a
+move to Cloud Run or similar would use.
+
+What the deviation costs is independent scaling, independent restart, and crash
+isolation. What it does not cost is the security property the two-service design
+was bought for: the API binds to `127.0.0.1`, only Streamlit's port is served, and
+nothing outside can reach FastAPI. `SUPABASE_SERVICE_ROLE_KEY` and `AI_API_KEY`
+sit in that process exactly as they sit on a developer's machine today, and the
 browser still never sees either.
 
-Two operational notes specific to this deployment:
+Nor does it move the seam PROJECT_STRUCTURE §7 draws: the UI still speaks HTTP to
+the API and still holds no business logic. `embedded_api.py` starts a server; it
+does not let a page reach past one.
 
+Three operational notes specific to the single-process deployment:
+
+- **`st.cache_resource` is what makes the server start once.** Streamlit re-runs
+  the whole script on every interaction, so an unguarded call would try to bind
+  the port again on the first click.
 - **The in-process tick is the only scheduler.** There is no cron service, so
-  `INTERNAL_TICK_INTERVAL_SECONDS` must stay non-zero. A free Space sleeps when
-  nobody is using it, and a sleeping container runs no sweep - so reminders and
-  overdue transitions advance only while somebody is using the app. That is
-  acceptable for testers and is not acceptable for PROD.
+  `INTERNAL_TICK_INTERVAL_SECONDS` must stay non-zero. A free host sleeps when
+  nobody is using it, and a sleeping process runs no sweep - so reminders and
+  overdue transitions advance only while somebody is using the app. Acceptable for
+  testers; not acceptable for PROD.
 - **Route handlers are `async def` over synchronous Supabase I/O**, so requests
-  serialise on the event loop. Invisible with one user; with several testers acting
-  at once, a plant dashboard's ~1.6s of round trips is 1.6s nobody else's request
-  progresses. The fix, when it is needed, is to drop `async` and let FastAPI use
-  its threadpool.
+  serialise on the event loop. Invisible with one user; with several testers
+  acting at once, a plant dashboard's ~1.6s of round trips is 1.6s during which
+  nobody else's request progresses. The fix, when it is needed, is to drop `async`
+  and let FastAPI use its threadpool.
 
 ## 4. CI/CD
 

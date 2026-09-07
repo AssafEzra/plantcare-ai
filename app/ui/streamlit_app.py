@@ -12,6 +12,7 @@ from __future__ import annotations
 import streamlit as st
 
 from app.common.enums import UserRole
+from app.ui import embedded_api
 from app.ui.state import session
 from app.ui.state.api_client import ApiError, get
 from app.ui.styles.rtl import apply_rtl
@@ -24,6 +25,11 @@ st.set_page_config(
 )
 
 apply_rtl()
+
+# Before anything calls the API. On a single-process host this starts it; on every
+# other deployment - including local development, where the API is a separate
+# `uvicorn` - it does nothing at all.
+embedded_api.start_if_configured()
 
 
 @st.cache_data(ttl=60, show_spinner=False)

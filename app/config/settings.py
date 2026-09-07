@@ -90,6 +90,14 @@ class Settings(BaseSettings):
 
     # --- UI → API ---
     api_base_url: str = "http://localhost:8000"
+    # Run the API inside the Streamlit process instead of beside it.
+    #
+    # Off everywhere except a single-process host. Streamlit Community Cloud runs
+    # one process from one repository and offers no way to start a second, so the
+    # UI would come up with nothing behind it. With this on, the entry point
+    # starts uvicorn on a daemon thread bound to loopback and `api_base_url`
+    # points at it. See DEPLOYMENT §3 - it is a deviation, not the target shape.
+    embedded_api: bool = False
 
     # --- Rate limits for AI-triggering endpoints (A14) ---
     ai_rate_limit_per_hour: int = 10
