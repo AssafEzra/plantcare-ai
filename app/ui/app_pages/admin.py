@@ -13,6 +13,7 @@ who reads top to bottom will approve the fourteenth section least carefully.
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any, Literal
 
 import streamlit as st
@@ -509,6 +510,29 @@ with reports_tab:
                                 show_error(exc)
 
 
+def _when(raw: Any) -> str:
+    """When a run happened, as `07/09/2026 17:50`.
+
+    Added because the monitoring cards showed cost, latency and tokens but no
+    time at all, so a run could not be tied to an incident or to a line on an
+    Anthropic invoice. `created_at` was already in the payload and simply never
+    rendered - `started_at` and `completed_at` are not worth using, since the
+    gateway never sets them.
+
+    Same parse-and-`astimezone` idiom as `health_card.assessed_at`. Note it
+    resolves to the *server's* timezone, so on a UTC host this reads three hours
+    behind Israel time - true of every date in this app, and a deliberate
+    limitation rather than an oversight here.
+    """
+    if not raw:
+        return "—"
+    try:
+        moment = datetime.fromisoformat(str(raw).replace("Z", "+00:00")).astimezone()
+    except ValueError:
+        return str(raw)[:16]
+    return f"{moment:%d/%m/%Y %H:%M}"
+
+
 # --- agent monitoring -------------------------------------------------------------
 
 with monitoring_tab:
@@ -532,6 +556,7 @@ with monitoring_tab:
                     st.badge("נכשל", color="red")
                 st.markdown(f"**{execution['agent_type']}** · {execution['model']}")
                 st.caption(
+                    f"{_when(execution.get('created_at'))} · "
                     f"פרומפט {execution['prompt_version']} · ניסיון {execution['attempt']} · "
                     f"{execution['latency_ms']}ms · "
                     f"{execution['input_tokens']}+{execution['output_tokens']} טוקנים · "
