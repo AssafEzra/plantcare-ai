@@ -134,6 +134,17 @@ def current() -> AuthSession | None:
     return st.session_state.get(_SESSION_KEY)
 
 
+def user_key() -> str:
+    """Identity for anything keyed per user across sessions.
+
+    `st.cache_data` is shared by every browser session this server handles, so a
+    cached read keyed only on its path would serve one person's data to another.
+    Anything cached is keyed on this.
+    """
+    current_session = current()
+    return current_session.user_id if current_session else "anonymous"
+
+
 def is_signed_in() -> bool:
     return current() is not None
 

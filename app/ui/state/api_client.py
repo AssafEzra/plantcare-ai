@@ -15,11 +15,31 @@ from __future__ import annotations
 from typing import Any
 
 import httpx
+import streamlit as st
 
 from app.config.settings import get_settings
 from app.ui.state import session
 
 _TIMEOUT = httpx.Timeout(connect=5.0, read=120.0, write=30.0, pool=5.0)
+
+
+@st.cache_resource(show_spinner=False)
+def _client() -> httpx.Client:
+    """One connection pool for the whole process.
+
+    Every call used to open its own `httpx.Client` and close it again, so a single
+    rerun of the plant page - five requests - built and tore down five TCP
+    connections. Measured at 5.7s of API time per rerun, of which the setup is
+    pure overhead.
+
+    Cached as a resource rather than a module global so Streamlit owns its
+    lifetime and it survives a rerun without being rebuilt. It carries no
+    credentials: the token is attached per request by `_headers`, because a client
+    holding one user's Authorization header would be shared with every session on
+    this server.
+    """
+    return httpx.Client(timeout=_TIMEOUT)
+
 
 # Hebrew for the codes a user can actually encounter. Anything unmapped falls
 # back to the generic message: an English code in a Hebrew UI is worse than a
@@ -103,10 +123,9 @@ def request(
     url = f"{get_settings().api_base_url.rstrip('/')}{path}"
 
     try:
-        with httpx.Client(timeout=_TIMEOUT) as client:
-            response = client.request(
-                method, url, json=json, params=params, files=files, headers=_headers()
-            )
+        response = _client().request(
+            method, url, json=json, params=params, files=files, headers=_headers()
+        )
     except httpx.RequestError as exc:
         # A transport failure is not the API's error envelope, so it needs its
         # own message: "the server is unreachable" is actionable, "something went
@@ -129,18 +148,62 @@ def get(path: str, **kwargs: Any) -> Any:
     return request("GET", path, **kwargs)
 
 
+# How long a cached read stays good. Streamlit re-runs the whole script on every
+# interaction, so opening and closing a dialog - which changes nothing on the
+# server - re-fetched the entire plant page twice. Short enough that a change made
+# elsewhere shows up almost at once, long enough that a burst of interactions
+# costs one fetch rather than one per click.
+_CACHE_TTL_SECONDS = 15
+
+
+@st.cache_data(ttl=_CACHE_TTL_SECONDS, show_spinner=False)
+def _cached(user_key: str, path: str, params: tuple[tuple[str, Any], ...] | None) -> Any:
+    # Through `get`, not `request`, so that a test which replaces `get` on this
+    # module still intercepts every read a page makes. Calling `request` directly
+    # made the UI suite issue real HTTP to a live API.
+    return get(path, params=dict(params) if params else None)
+
+
+def cached_get(path: str, *, params: dict[str, Any] | None = None) -> Any:
+    """A GET that a rerun may serve from memory.
+
+    Opt-in, not the default for `get`. `agent_progress` polls an endpoint in a
+    sleep loop waiting for a run to finish, and a cache there would hide the
+    completion it is waiting for. Only reads whose staleness a user would not
+    notice belong here.
+
+    `user_key` is not decoration. `st.cache_data` is keyed on arguments and shared
+    across every browser session this server is handling, so a cache keyed only on
+    the path would hand one person's plants to the next. The identity is part of
+    the key, and `clear_cache` runs on every write.
+
+    Params are flattened to a sorted tuple because Streamlit hashes each argument
+    to build the key, and a dict is not reliably hashable there.
+    """
+    key = tuple(sorted(params.items())) if params else None
+    return _cached(session.user_key(), path, key)
+
+
+def clear_cache() -> None:
+    _cached.clear()
+
+
 def post(path: str, **kwargs: Any) -> Any:
+    clear_cache()
     return request("POST", path, **kwargs)
 
 
 def patch(path: str, **kwargs: Any) -> Any:
+    clear_cache()
     return request("PATCH", path, **kwargs)
 
 
 def put(path: str, **kwargs: Any) -> Any:
+    clear_cache()
     return request("PUT", path, **kwargs)
 
 
 def delete(path: str, **kwargs: Any) -> Any:
     """Added in PR 31 for image removal, the last verb the UI had no way to send."""
+    clear_cache()
     return request("DELETE", path, **kwargs)

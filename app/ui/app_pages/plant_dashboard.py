@@ -37,10 +37,11 @@ from app.ui.components.review_badge import review_badge
 from app.ui.components.sources import render_sources
 from app.ui.components.status import status_badge, trend_badge
 from app.ui.components.timeline import render_timeline
-from app.ui.state.api_client import ApiError, delete, get, patch, post, put
+from app.ui.state.api_client import ApiError, cached_get, delete, get, patch, post, put
 
 SELECTED = "pc_selected_plant"
 HISTORY_SHOWN = "plant_history_shown"
+TIMELINE_OPEN = "pd_timeline_open"
 
 SECTION_LABELS: dict[str, str] = {
     "identification": "זיהוי",
@@ -81,7 +82,7 @@ if not plant_id:
     st.stop()
 
 
-data = guarded(lambda: get(f"/v1/plants/{plant_id}/dashboard"))
+data = guarded(lambda: cached_get(f"/v1/plants/{plant_id}/dashboard"))
 if data is None:
     st.stop()
 
@@ -359,7 +360,7 @@ def await_proposal(started: dict, *, waiting: str) -> None:
 
 
 if data.get("open_proposals"):
-    proposals = guarded(lambda: get(f"/v1/plants/{plant_id}/care-plan/proposals")) or []
+    proposals = guarded(lambda: cached_get(f"/v1/plants/{plant_id}/care-plan/proposals")) or []
     if proposals:
         st.subheader("ממתין לאישור שלך", anchor=False)
         for proposal in proposals:
@@ -539,12 +540,12 @@ health_check_dialog(gallery, on_submit=run_health_check)
 
 latest_id = health.get("latest_assessment_id")
 if latest_id:
-    latest = guarded(lambda: get(f"/v1/health-assessments/{latest_id}"))
+    latest = guarded(lambda: cached_get(f"/v1/health-assessments/{latest_id}"))
     if latest:
         render_assessment(latest, on_adjust_plan=request_care_adjustment)
 
     with st.expander("בדיקות קודמות", icon=":material/history:"):
-        render_history(guarded(lambda: get(f"/v1/plants/{plant_id}/health-history")) or [])
+        render_history(guarded(lambda: cached_get(f"/v1/plants/{plant_id}/health-history")) or [])
 else:
     st.caption("עדיין לא בוצעה בדיקת בריאות לצמח הזה.")
 
@@ -712,10 +713,20 @@ with st.expander("רישום פעולה שביצעת", icon=":material/add_notes
     ):
         log_event(event_type, note.strip() or None)
 
-shown = st.session_state.get(HISTORY_SHOWN, 20)
-history = guarded(lambda: get(f"/v1/plants/{plant_id}/history", params={"limit": shown})) or []
-render_timeline(history)
+# Fetched only once asked for. The timeline sits below everything else on a long
+# page, so most visits never scroll to it - but the call ran on every rerun,
+# costing ~1s of the 5.7s a single click used to spend on the API.
+if not st.session_state.get(TIMELINE_OPEN):
+    if st.button("הצגת היומן", key="pd_show_timeline", width="stretch"):
+        st.session_state[TIMELINE_OPEN] = True
+        st.rerun()
+else:
+    shown = st.session_state.get(HISTORY_SHOWN, 20)
+    history = (
+        guarded(lambda: cached_get(f"/v1/plants/{plant_id}/history", params={"limit": shown})) or []
+    )
+    render_timeline(history)
 
-if len(history) >= shown and st.button("טעינת עוד", key="pd_more_history"):
-    st.session_state[HISTORY_SHOWN] = shown + 20
-    st.rerun()
+    if len(history) >= shown and st.button("טעינת עוד", key="pd_more_history"):
+        st.session_state[HISTORY_SHOWN] = shown + 20
+        st.rerun()
