@@ -92,3 +92,23 @@ def test_gallery_labels_are_unique_even_for_images_from_the_same_minute() -> Non
     labels = list(_gallery_choices(same_minute).values())
 
     assert len(set(labels)) == len(labels), labels
+
+
+def test_identification_candidate_labels_are_unique() -> None:
+    """The same collision, closed in the other widget that maps by label.
+
+    `st.radio` resolves a selection through a dict keyed on the formatted label,
+    so identical labels mean picking one candidate confirms another — silently,
+    with no error and no cost, which is harder to notice than the health failure.
+    """
+    from app.ui.components.identification_card import _choices
+
+    same_name = [
+        {"id": "a", "scientific_name": "Coleus scutellarioides", "common_name": "קולאוס"},
+        {"id": "b", "scientific_name": "Coleus scutellarioides", "common_name": "קולאוס"},
+        {"id": "c", "scientific_name": "Perilla frutescens", "common_name": None},
+    ]
+
+    labels = list(_choices(same_name).values())
+
+    assert len(set(labels)) == 3, labels

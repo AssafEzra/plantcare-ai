@@ -35,6 +35,30 @@ def candidate_label(candidate: dict) -> str:
     return f"{common} ({candidate['scientific_name']})" if common else candidate["scientific_name"]
 
 
+def _choices(candidates: list[dict]) -> dict[str, str]:
+    """Candidate ids to labels, with the labels guaranteed distinct.
+
+    `st.radio` maps a selection back to its option through a dict keyed on the
+    formatted label, so two options that format identically collapse to one entry
+    and picking either returns whichever survived. That is the defect that made
+    three health checks fail on 2026-09-07, in the multiselect next door: labels
+    were the collision, not the widget.
+
+    Two candidates sharing a scientific *and* common name has never happened - 9
+    real identifications, no collisions - and if it did the failure would be
+    silent: the user picks one species and the app confirms another, then
+    researches it and builds a care plan for the wrong plant. Cheap to make
+    impossible, so it is made impossible.
+
+    The number is not only a uniqueness device. Candidates arrive ranked by
+    confidence, so showing the position tells the user something true.
+    """
+    return {
+        candidate["id"]: f"{index}. {candidate_label(candidate)}"
+        for index, candidate in enumerate(candidates, start=1)
+    }
+
+
 def identification_card(
     identification: dict,
     *,
@@ -85,7 +109,7 @@ def identification_card(
     chosen = primary["id"]
     if len(candidates) > 1:
         st.write("אפשרויות נוספות:")
-        options = {candidate["id"]: candidate_label(candidate) for candidate in candidates}
+        options = _choices(candidates)
         chosen = st.radio(
             "בחירת הצמח",
             options=list(options),
