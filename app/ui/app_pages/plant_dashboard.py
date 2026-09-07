@@ -484,7 +484,10 @@ def run_health_check(uploads: list[Any], gallery_ids: list[str], note: str | Non
     exist until now. They go in under `context_type=health`, which keeps them out
     of the plant's gallery: evidence for one assessment is not a portrait.
     """
-    image_ids = list(gallery_ids)
+    # Deduplicated, and the API refuses duplicates too. Belt and braces after
+    # three health checks died on a list holding one id three times - each
+    # after a full minute of Opus, because nothing objected until the insert.
+    image_ids = list(dict.fromkeys(gallery_ids))
     try:
         for upload in uploads:
             created = post(

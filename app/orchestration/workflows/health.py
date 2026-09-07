@@ -69,6 +69,14 @@ def start(
     if not MIN_IMAGES <= len(image_ids) <= MAX_IMAGES:
         raise ValidationFailedError(f"יש לצרף בין {MIN_IMAGES} ל-{MAX_IMAGES} תמונות.")
 
+    # Duplicates, before ownership. `len(owned) != len(set(image_ids))` below
+    # answers "do you own everything you named" and is blind to the same image
+    # named twice - so on 2026-09-07 three copies of one id reached the model and
+    # then broke `save_health_assessment`, whose join table has a primary key on
+    # (assessment, image). A minute of Opus per attempt, three attempts.
+    if len(set(image_ids)) != len(image_ids):
+        raise ValidationFailedError("אי אפשר לצרף את אותה תמונה יותר מפעם אחת.")
+
     owned = rows(
         client.table("plant_images")
         .select("id")

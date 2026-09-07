@@ -22,7 +22,7 @@ from pydantic import BaseModel, Field
 from app.agents.health.agent import HealthAgent
 from app.agents.health.contract import MAX_IMAGES, MIN_IMAGES
 from app.api.dependencies import AIRateLimitDep, CurrentUserDep
-from app.api.schemas.common import DataEnvelope
+from app.api.schemas.common import DataEnvelope, UniqueImageIds
 from app.common.enums import ConfidenceLevel, HealthStatus, HealthTrend
 from app.infrastructure.ai.anthropic_provider import AnthropicProvider
 from app.infrastructure.ai.gateway import AIGateway
@@ -43,7 +43,7 @@ HealthAgentDep = Annotated[HealthAgent, Depends(get_health_agent)]
 class HealthCheckRequest(BaseModel):
     model_config = {"extra": "forbid"}
 
-    image_ids: list[UUID] = Field(min_length=MIN_IMAGES, max_length=MAX_IMAGES)
+    image_ids: UniqueImageIds = Field(min_length=MIN_IMAGES, max_length=MAX_IMAGES)
     user_note: str | None = Field(default=None, max_length=1000)
 
 

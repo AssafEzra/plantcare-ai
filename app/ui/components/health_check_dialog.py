@@ -22,6 +22,7 @@ not happen while the user is still deciding.
 from __future__ import annotations
 
 from collections.abc import Callable
+from datetime import datetime
 from typing import Any
 
 import streamlit as st
@@ -43,11 +44,32 @@ def close_dialog() -> None:
 
 
 def _gallery_choices(gallery: list[dict[str, Any]]) -> dict[str, str]:
-    return {
-        image["id"]: f"תמונה מ-{str(image.get('created_at', ''))[:10]}"
-        for image in gallery
-        if image.get("id")
-    }
+    """One distinguishable label per image.
+
+    The label used to be the date alone, so a plant photographed three times in
+    one afternoon offered three options reading exactly `תמונה מ-2026-09-07` —
+    identical on screen, with no way to tell which one was being chosen. The time
+    is not enough on its own either: the three that prompted this were uploaded at
+    17:08:05, :11 and :15, all the same minute. Hence the number, which is unique
+    by construction.
+    """
+    labelled: dict[str, str] = {}
+    for index, image in enumerate(gallery, start=1):
+        image_id = image.get("id")
+        if not image_id:
+            continue
+        raw = str(image.get("created_at") or "")
+        moment = _parsed(raw)
+        when = f"{moment:%d/%m/%Y} בשעה {moment:%H:%M}" if moment else raw[:10]
+        labelled[image_id] = f"{index}. תמונה מ-{when}" if when else f"תמונה {index}"
+    return labelled
+
+
+def _parsed(raw: str) -> datetime | None:
+    try:
+        return datetime.fromisoformat(raw.replace("Z", "+00:00")).astimezone()
+    except ValueError:
+        return None
 
 
 def health_check_dialog(

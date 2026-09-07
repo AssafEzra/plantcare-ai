@@ -76,6 +76,14 @@ def start(
     if len(image_ids) > MAX_IMAGES:
         raise ValidationFailedError(f"אפשר לצרף עד {MAX_IMAGES} תמונות.")
 
+    # Duplicates, before ownership - the check below collapses them to a set and
+    # cannot see them. Identification has no join table to refuse a repeat, so
+    # this failed silently instead of loudly: `_load_images` fetches with SQL
+    # `IN`, so four copies of one id had the agent identify a plant from one
+    # photograph while the user believed it had used four.
+    if len(set(image_ids)) != len(image_ids):
+        raise ValidationFailedError("אי אפשר לצרף את אותה תמונה יותר מפעם אחת.")
+
     # Every image must belong to this plant and this user. Checked through the
     # caller's own client, so RLS has already excluded anyone else's images; this
     # additionally stops one plant's photographs being used to identify another.

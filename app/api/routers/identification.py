@@ -25,7 +25,7 @@ from app.agents.knowledge.agent import KnowledgeAgent
 from app.api.dependencies import AIRateLimitDep, CurrentUserDep
 from app.api.routers.care import get_care_agent
 from app.api.routers.knowledge import get_knowledge_agent
-from app.api.schemas.common import DataEnvelope
+from app.api.schemas.common import DataEnvelope, UniqueImageIds
 from app.api.schemas.plants import clean_text
 from app.common.enums import (
     CarePlanVersionSourceType,
@@ -77,7 +77,7 @@ CareAgentDep = Annotated[CareAgent, Depends(get_care_agent)]
 class IdentificationRunRequest(BaseModel):
     model_config = {"extra": "forbid"}
 
-    image_ids: list[UUID] = Field(min_length=1, max_length=4)
+    image_ids: UniqueImageIds = Field(min_length=1, max_length=4)
     user_description: str | None = Field(default=None, max_length=1000)
 
 
