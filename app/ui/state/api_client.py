@@ -150,10 +150,14 @@ def get(path: str, **kwargs: Any) -> Any:
 
 # How long a cached read stays good. Streamlit re-runs the whole script on every
 # interaction, so opening and closing a dialog - which changes nothing on the
-# server - re-fetched the entire plant page twice. Short enough that a change made
-# elsewhere shows up almost at once, long enough that a burst of interactions
-# costs one fetch rather than one per click.
-_CACHE_TTL_SECONDS = 15
+# server - re-fetched the entire plant page twice.
+#
+# Five minutes, raised from 15s at the user's request. The TTL is not the only
+# thing that expires a read: every write goes through `clear_cache`, so anything
+# this session does is visible immediately. What the TTL bounds is staleness from
+# a change made *elsewhere* - a second tab, another device, or the scheduler
+# materialising a task on its own timer - which can now be up to five minutes old.
+_CACHE_TTL_SECONDS = 300
 
 
 @st.cache_data(ttl=_CACHE_TTL_SECONDS, show_spinner=False)
