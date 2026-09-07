@@ -88,10 +88,13 @@ def _store(session, *, persist: bool = True) -> AuthSession:
 def restore() -> AuthSession | None:
     """Rebuild the session from the browser's cookie, if it has one to give.
 
-    Called once per rerun from the entry point, before routing. The cookie is
-    readable synchronously on the first run of a new Streamlit session, so a
-    refresh never shows the sign-in form to somebody who is signed in - there is
-    no intermediate state to flash.
+    Called once per rerun from the entry point, before routing.
+
+    Where the cookie arrives with the connection it is readable on the first run
+    and there is no intermediate state at all. Where it does not - Community
+    Cloud - the browser is asked directly and answers a rerun later, which is
+    what `restoring()` covers: the caller waits rather than drawing a sign-in
+    form it may be about to replace.
 
     A stored token that Supabase rejects is discarded rather than retried: it is
     revoked, expired, or from another deployment, and all three mean sign in
@@ -108,9 +111,17 @@ def restore() -> AuthSession | None:
     # rerun: it is a network call, and it would fail the same way each time.
     if st.session_state.get(_RESTORE_TRIED):
         return None
-    st.session_state[_RESTORE_TRIED] = True
 
     token = store.read()
+
+    # The browser may not have answered yet. On hosts where the cookie does not
+    # reach `st.context.cookies` - Community Cloud among them - the value arrives
+    # from a component one rerun later, and treating that gap as "signed out"
+    # would mark the attempt used and strand a signed-in user on the login form.
+    if token is None and store.awaiting():
+        return None
+
+    st.session_state[_RESTORE_TRIED] = True
     if not token:
         return None
 
@@ -147,6 +158,17 @@ def user_key() -> str:
 
 def is_signed_in() -> bool:
     return current() is not None
+
+
+def restoring() -> bool:
+    """True while we are still waiting to hear whether the browser has a session.
+
+    The caller must render something neutral and stop rather than draw the
+    sign-in form: showing it to somebody who is in fact signed in is the bug this
+    whole mechanism exists to prevent, and a flash of it is the same bug for a
+    third of a second.
+    """
+    return not is_signed_in() and store.awaiting()
 
 
 def access_token() -> str | None:

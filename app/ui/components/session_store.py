@@ -16,7 +16,14 @@ session** — which is the exact moment the decision "sign-in form or dashboard"
 has to be made. Reading `localStorage` would need a component to report back,
 which takes a rerun, and a rerun means either a flash of the sign-in form or a
 blank page while the browser answers. Writing is the half Streamlit lacks, so
-that is all this component does.
+that is all this component did.
+
+**That advantage does not survive deployment.** On Streamlit Community Cloud the
+cookie never reaches `st.context.cookies` at all, so the synchronous read returns
+nothing and every refresh landed on the sign-in form. The component therefore
+reads as well as writes: it reports `document.cookie` back to Python, which costs
+the rerun the cookie was chosen to avoid. The header path is kept as a fast path
+because where it works - locally - it is still strictly better.
 
 **What is stored.** Only the *refresh* token — never the access token, never the
 password, never the email. An access token is short-lived and re-derived from the
@@ -41,23 +48,40 @@ COOKIE_NAME = "pc_refresh_token"
 # holds only produces a failed refresh and a second sign-in prompt.
 MAX_AGE_SECONDS = 60 * 60 * 24 * 30
 
+_MOUNT_KEY = "pc_session_store"
+
+# How many reruns to wait for the browser to report its cookie before giving up
+# and showing the sign-in form. Two is enough for a component that mounts on the
+# first run; more would only lengthen the wait for someone who is signed out.
+_ASKED = "pc_session_store_asked"
+_MAX_WAITS = 2
+
 _JS = f"""
 export default function (component) {{
-  const {{ data }} = component
+  const {{ data, setStateValue }} = component
   const NAME = "{COOKIE_NAME}"
   // `Secure` only over https: setting it on a plain-http localhost would make
   // the browser drop the cookie silently and the fix would appear not to work.
   const secure = window.location.protocol === "https:" ? "; Secure" : ""
 
-  if (!data) return
+  const op = data && data.op
 
-  if (data.op === "save" && data.token) {{
+  if (op === "save" && data.token) {{
     document.cookie =
       NAME + "=" + encodeURIComponent(data.token) +
       "; path=/; max-age={MAX_AGE_SECONDS}; SameSite=Lax" + secure
-  }} else if (data.op === "clear") {{
+  }} else if (op === "clear") {{
     document.cookie = NAME + "=; path=/; max-age=0; SameSite=Lax" + secure
   }}
+
+  // Always report what the browser actually holds, whatever the operation was.
+  // An empty string means "asked and answered: nothing there", which is a
+  // different answer from "has not replied yet" and the Python side needs both.
+  const found = document.cookie
+    .split(";")
+    .map((c) => c.trim())
+    .find((c) => c.startsWith(NAME + "="))
+  setStateValue("token", found ? decodeURIComponent(found.slice(NAME.length + 1)) : "")
 }}
 """
 
@@ -77,30 +101,78 @@ def _renderer():
     return st.components.v2.component("pc_session_store", html="<span></span>", js=_JS)
 
 
-def read() -> str | None:
-    """The stored refresh token, straight from the request headers.
+def _mount(op: str, token: str | None):
+    """Render the component and hand back whatever the browser reported.
 
-    Synchronous and available on the first run of a new session, which is the
-    whole reason this is a cookie. Returns `None` when nothing is stored.
+    `on_token_change` is passed so `result.token` always exists; without a
+    callback the attribute is absent until the value changes.
+    """
+    return _renderer()(
+        data={"op": op, "token": token},
+        key=_MOUNT_KEY,
+        height=0,
+        on_token_change=lambda: None,
+    )
+
+
+def read() -> str | None:
+    """The stored refresh token, or `None`.
+
+    Two paths, and the second one is why this function is no longer three lines.
+
+    `st.context.cookies` is populated from the headers of the request that opened
+    the session, so it answers synchronously on the very first run — no rerun, no
+    flash of the sign-in form. That is the whole reason a cookie was chosen over
+    `localStorage`, and it works locally.
+
+    **It returns nothing on Streamlit Community Cloud.** Proven on 2026-09-07 on
+    the deployed app: the browser held a valid `pc_refresh_token`, that exact
+    token was present and unrevoked in `auth.refresh_tokens`, and the app still
+    rendered the sign-in form — so `refresh_session` was never reached. Whatever
+    the platform does to the connection, the header does not survive it.
+
+    So when the fast path is empty, ask the browser directly. `document.cookie`
+    needs no headers and no cooperation from the host. It costs a rerun, which is
+    what `awaiting()` exists to cover.
     """
     try:
         raw = st.context.cookies.get(COOKIE_NAME)
     except Exception:  # pragma: no cover - no context outside a script run
+        raw = None
+
+    if raw:
+        from urllib.parse import unquote
+
+        st.session_state.pop(_ASKED, None)
+        return unquote(raw)
+
+    reported = getattr(_mount("read", None), "token", None)
+
+    if reported is None:
+        # Mounted, not yet answered. The component triggers a rerun when it does.
+        st.session_state[_ASKED] = int(st.session_state.get(_ASKED, 0)) + 1
         return None
 
-    if not raw:
-        return None
+    st.session_state.pop(_ASKED, None)
+    return str(reported) or None
 
-    from urllib.parse import unquote
 
-    return unquote(raw)
+def awaiting() -> bool:
+    """True while the browser has been asked for the cookie and has not replied.
+
+    Bounded deliberately. If the component never reports — a blocked script, a
+    runtime that cannot mount it — the caller must fall through to the sign-in
+    form rather than hold a spinner forever. A user who can sign in is better off
+    than a user watching a page that never resolves.
+    """
+    return 0 < int(st.session_state.get(_ASKED, 0)) <= _MAX_WAITS
 
 
 def write(token: str) -> None:
     """Persist the refresh token in the browser."""
-    _renderer()(data={"op": "save", "token": token}, key="pc_session_store", height=0)
+    _mount("save", token)
 
 
 def clear() -> None:
     """Remove it. Called on sign-out and whenever a stored token is rejected."""
-    _renderer()(data={"op": "clear", "token": None}, key="pc_session_store", height=0)
+    _mount("clear", None)

@@ -83,6 +83,13 @@ def _sync_timezone(profile: dict) -> None:
 # this, F5 was indistinguishable from signing out.
 session.restore()
 
+# The cookie does not always arrive with the connection - on Streamlit Community
+# Cloud it never does - so the answer can be one rerun away. Draw nothing that
+# would be wrong if the user turns out to be signed in.
+if session.restoring():
+    st.caption("רק רגע…")
+    st.stop()
+
 if not session.is_signed_in():
     pages = [st.Page("app_pages/auth.py", title="כניסה", icon=":material/login:")]
 else:
