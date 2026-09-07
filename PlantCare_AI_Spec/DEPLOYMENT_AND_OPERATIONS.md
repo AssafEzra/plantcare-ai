@@ -102,6 +102,43 @@ Operational notes:
   task overdue freed its rule and every tick after that added a copy. Corrected in
   migration `20260906000100`; see FINAL §13.
 
+### The tester deploy is one container, not two services (added PR HF, per FINAL §37)
+
+The topology above is two services with private networking between them, and that
+is still the shape PROD should have. It is not the shape of a free host: the free
+tiers give you one always-on service and no private network between services, so
+the two-box design cannot be expressed there at all.
+
+For the pre-PR-24 tester deploy, both processes therefore run in **one container**
+(`Dockerfile`, `scripts/start.sh`) on Hugging Face Spaces:
+
+| | Two services (PROD, PR 24) | One container (testers) |
+|---|---|---|
+| UI reaches API by | private network address | `http://127.0.0.1:8000` |
+| API is public | no (private networking) | no (bound to loopback) |
+| Scale independently | yes | no - one process pair, one dyno |
+| Restart independently | yes | no - `start.sh` kills both if either dies |
+
+What the deviation costs is independent scaling and independent restart. What it
+does not cost is the security property the two-service design was bought for: the
+API is bound to `127.0.0.1`, the container publishes only Streamlit's port, and
+nothing outside can reach FastAPI. `SUPABASE_SERVICE_ROLE_KEY` and `AI_API_KEY` sit
+in the container exactly as they sit on a developer's machine today, and the
+browser still never sees either.
+
+Two operational notes specific to this deployment:
+
+- **The in-process tick is the only scheduler.** There is no cron service, so
+  `INTERNAL_TICK_INTERVAL_SECONDS` must stay non-zero. A free Space sleeps when
+  nobody is using it, and a sleeping container runs no sweep - so reminders and
+  overdue transitions advance only while somebody is using the app. That is
+  acceptable for testers and is not acceptable for PROD.
+- **Route handlers are `async def` over synchronous Supabase I/O**, so requests
+  serialise on the event loop. Invisible with one user; with several testers acting
+  at once, a plant dashboard's ~1.6s of round trips is 1.6s nobody else's request
+  progresses. The fix, when it is needed, is to drop `async` and let FastAPI use
+  its threadpool.
+
 ## 4. CI/CD
 
 Recommended flow:

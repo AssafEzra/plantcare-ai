@@ -1,0 +1,25 @@
+# The container needs the application and what it reads at runtime. Everything
+# else is build noise, and two entries here are a safety property rather than an
+# optimisation.
+
+# Never. The image is pushed to a hosting platform.
+.env
+.env.*
+!.env.example
+
+.git
+.github
+.venv
+**/__pycache__
+**/*.pyc
+.mypy_cache
+.pytest_cache
+.ruff_cache
+
+# Not runtime inputs: the suite, the schema history and the specification.
+tests
+migrations
+supabase
+PlantCare_AI_Spec
+docs
+scripts/*.py

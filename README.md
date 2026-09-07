@@ -1,3 +1,17 @@
+---
+# Hugging Face Spaces reads this block to configure the Space. It is ignored by
+# GitHub and by every tool in this repository. `sdk: docker` is what lets one
+# container run both Streamlit and FastAPI; the Streamlit SDK would run only one
+# process and the UI would come up with no API behind it.
+title: PlantCare AI
+emoji: "\U0001FAB4"
+colorFrom: green
+colorTo: yellow
+sdk: docker
+app_port: 7860
+pinned: false
+---
+
 # PlantCare AI
 
 AI-powered personal manager for every plant in the home. Hebrew (RTL) MVP.
