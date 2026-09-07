@@ -67,3 +67,28 @@ def test_the_duplicate_is_rejected_even_when_the_count_is_legal() -> None:
 
     with pytest.raises(ValidationError):
         HealthCheckRequest(image_ids=[image, image, image])
+
+
+def test_gallery_labels_are_unique_even_for_images_from_the_same_minute() -> None:
+    """The root cause, pinned.
+
+    `st.multiselect` maps a selection back to its option by formatted label —
+    `self.options[self.formatted_options.index(v)]` — and `.index()` returns the
+    *first* match. Labels were the date alone, so three images from one afternoon
+    formatted identically and every one of the user's three selections resolved to
+    the first option: one id, three times, which is what reached the API.
+
+    The three that caused it were uploaded at 17:08:05, :11 and :15 — the same
+    minute — so seconds would not have separated them either.
+    """
+    from app.ui.components.health_check_dialog import _gallery_choices
+
+    same_minute = [
+        {"id": "aaa", "created_at": "2026-09-07T17:08:05+00:00"},
+        {"id": "bbb", "created_at": "2026-09-07T17:08:11+00:00"},
+        {"id": "ccc", "created_at": "2026-09-07T17:08:15+00:00"},
+    ]
+
+    labels = list(_gallery_choices(same_minute).values())
+
+    assert len(set(labels)) == len(labels), labels
