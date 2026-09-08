@@ -1346,7 +1346,7 @@ lives for one Streamlit session and a refresh starts a new one, so the auth sess
 — held there and nowhere else — vanished on F5.
 
 Decision: the Supabase **refresh token** is persisted in a browser cookie
-(`pc_refresh_token`, `SameSite=Lax`, `Secure` over https, 30 days) and the session
+(`pc_refresh_token`, `SameSite=Lax`, `Secure` over https, 12 hours) and the session
 is rebuilt from it before routing.
 
 - A cookie rather than `localStorage` because Streamlit reads cookies from the
@@ -1365,6 +1365,35 @@ is rebuilt from it before routing.
 - The token rotates on every renewal and the cookie is rewritten each time; a
   stale copy would otherwise produce a delayed version of the same logout.
 - Cleared on sign-out, and discarded the moment Supabase rejects it.
+
+**Session lifetime: twelve hours idle (added PR HF).**
+Reported from real use once the cookie started working on the deployed app: *"now it
+never signs off even after a few hours"*. The cookie had been written with a
+thirty-day lifetime **and** rewritten on every renewal, so the thirty days restarted
+on each visit - a session no amount of time could end. Nothing on the server ended it
+either: the project had neither a time-box nor an inactivity timeout.
+
+Decision: **twelve hours from the last visit**, not an absolute cap. A working day is
+never interrupted; a machine left alone overnight asks for the password again.
+
+- `session_store.MAX_AGE_SECONDS` is the browser half. Idle rather than absolute
+  because the cookie is rewritten on every restore and every rotation.
+- `auth.sessions.inactivity_timeout = "12h"` would be the server half, and the only
+  half that *revokes*: without it a copied cookie value stays usable however quickly
+  the browser forgot it. **It is not in force.** Session timeouts are a paid-plan
+  feature on hosted Supabase and the project's plan refuses them - `supabase config
+  push` returns `402 "User sessions can only be configured on Pro Plans and up"` -
+  so the value sits commented in `supabase/config.toml` and the browser is the whole
+  of the enforcement. Recorded rather than left as an assumption, because the two
+  halves protect against different things and only one of them is present.
+- `auth.jwt_expiry` is `3600` in every environment. DEV's previous `43200` made the
+  idle window dishonest: the cookie is only rewritten when the token rotates or the
+  page reloads, so a tester working in a single never-reloaded tab carried a clock
+  anchored at sign-in and could be asked to sign in after two idle hours rather than
+  twelve.
+
+The spec fixes no session lifetime, so these are configuration decisions recorded
+here rather than deviations (FINAL 37).
 
 Authorization:
 - regular user

@@ -181,8 +181,14 @@ item rather than something the file can express.
 
 | Setting | DEV | PROD | Why |
 |---|---|---|---|
-| `auth.jwt_expiry` | `43200` (12h) | **`3600` (1h)** | DEV runs long so a testing session survives a working day. A twelve-hour access token in production widens the window a leaked token is useful for, and the refresh token already makes a one-hour expiry invisible to a user. |
 | `auth.site_url` / `additional_redirect_urls` | `localhost:8501` | the deployed UI origin | A production project that still allows a localhost redirect is an open redirect into a developer's machine. |
+| `auth.sessions.inactivity_timeout` | commented out | `12h` | The server-side half of the twelve-hour idle window (FINAL 22), and the only half that revokes. Paid-plan only: pushing it to the free DEV project returns `402 "User sessions can only be configured on Pro Plans and up"`, and because that fails the entire auth update, an uncommented value blocks every other setting in the file from reaching the project. Uncomment when PROD is on a paid plan. |
+| `auth.site_url` | the deployed tester app | the production UI origin | Confirmation and password-reset emails link to whatever this says, and `sign_up` passes no `email_redirect_to`. DEV pointed at `localhost:8501` until PR HF, which sent every tester's confirmation link to their own machine. |
+
+`auth.jwt_expiry` was a row here until PR HF, `43200` on DEV against `3600` on PROD, so
+that a testing session survived a working day. The refresh-token cookie does that job
+now, and the long expiry had begun to undermine it - it is `3600` in both environments
+and no longer needs a checklist line.
 
 **Verify before promoting to PROD:** `supabase config push` against the production project with
 these values corrected, then confirm in the dashboard. The spec fixes no session lifetime, so both

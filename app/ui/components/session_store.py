@@ -44,9 +44,19 @@ import streamlit as st
 
 COOKIE_NAME = "pc_refresh_token"
 
-# Matches the DEV Supabase refresh window. A cookie that outlives the token it
-# holds only produces a failed refresh and a second sign-in prompt.
-MAX_AGE_SECONDS = 60 * 60 * 24 * 30
+# Twelve hours, and an *idle* window rather than a session length: the cookie is
+# rewritten every time a session is restored and every time the token rotates, so
+# the clock runs from the last visit rather than from signing in.
+#
+# Raised from thirty days after the deployed app was observed never signing anybody
+# out - thirty days that restart on every use is, in practice, never. Twelve hours
+# leaves a working day uninterrupted and asks for the password again on a machine
+# left alone overnight (FINAL 22).
+#
+# This is enforced by the browser alone. Supabase would still honour the token
+# itself, so `supabase/config.toml` carries the matching `inactivity_timeout`; if
+# the project's plan does not allow that setting, this constant is the whole of it.
+MAX_AGE_SECONDS = 60 * 60 * 12
 
 _MOUNT_KEY = "pc_session_store"
 

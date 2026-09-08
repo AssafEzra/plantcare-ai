@@ -156,21 +156,36 @@ max_indexes = 5
 enabled = true
 # The base URL of your website. Used as an allow-list for redirects and for constructing URLs used
 # in emails.
-site_url = "http://localhost:8501"
+# The deployed tester app, not localhost. Confirmation and password-reset emails are
+# sent by Supabase and their links land on whatever this says; `sign_up` passes no
+# `email_redirect_to`, so this value alone decides where a tester ends up. Pointing it
+# at localhost sent them to their own machine, where nothing is listening.
+#
+# DEPLOYMENT_AND_OPERATIONS 4a listed this as a DEV/PROD difference on the assumption
+# that DEV is only ever a developer's laptop. Since PR HF, DEV is also the deployment
+# real testers use, so DEV names its own origin (FINAL 37).
+site_url = "https://plantcare-ai-ery8ebljoytcmqbata7hj6.streamlit.app"
 # The public URL that Auth serves on. Defaults to the API external URL with `/auth/v1` appended.
 # external_url = ""
 # A list of *exact* URLs that auth providers are permitted to redirect to post authentication.
-additional_redirect_urls = ["http://localhost:8501", "http://127.0.0.1:8501"]
+# Localhost stays allowed so the same project still serves local development.
+additional_redirect_urls = [
+  "https://plantcare-ai-ery8ebljoytcmqbata7hj6.streamlit.app",
+  "http://localhost:8501",
+  "http://127.0.0.1:8501",
+]
 # How long tokens are valid for, in seconds. Defaults to 3600 (1 hour), maximum 604,800 (1 week).
 #
-# DEV runs at 12 hours so a testing session survives a working day; one hour meant
-# signing in repeatedly while walking through a flow. The spec fixes no session
-# lifetime, so this is a configuration choice rather than a deviation.
+# One hour in every environment. DEV ran at 43200 so a testing session would survive
+# a working day - a job PR 32's refresh-token cookie now does better, and which the
+# long expiry had started to fight: that cookie is only rewritten when the token
+# rotates or the page reloads, so at twelve hours a tester working in a single
+# never-reloaded tab carried a cookie still counting from sign-in rather than from
+# last use, and could be signed out after two idle hours instead of twelve.
 #
-# PRODUCTION MUST NOT INHERIT THIS. `DEPLOYMENT_AND_OPERATIONS.md` carries it as an
-# explicit release-checklist item: PROD keeps 3600, and the refresh token is what
-# makes that invisible to a user.
-jwt_expiry = 43200
+# An hour makes the idle window honest and removes a DEV/PROD divergence rather than
+# adding one. The refresh token is what keeps the hourly expiry invisible to a user.
+jwt_expiry = 3600
 # JWT issuer URL. If not set, defaults to auth.external_url.
 # jwt_issuer = ""
 # Path to JWT signing key. DO NOT commit your signing keys file to git.
@@ -181,7 +196,15 @@ enable_refresh_token_rotation = true
 # Requires enable_refresh_token_rotation = true.
 refresh_token_reuse_interval = 10
 # Allow/disallow new user signups to your project.
-enable_signup = true
+#
+# Off. The deployed tester app is reachable by anyone holding its URL, and an open
+# registration on a project that also serves the admin panel is a wider door than a
+# tester deploy needs. Accounts are created deliberately - `scripts/create_admin.py`
+# is the same call without the role promotion.
+#
+# This mirrors what the linked project already had; the file said `true` and reality
+# said `false`, which is the disagreement `supabase config push` exists to end.
+enable_signup = false
 # Allow/disallow anonymous sign-ins to your project.
 enable_anonymous_sign_ins = false
 # Allow/disallow testing manual linking of accounts
@@ -277,11 +300,26 @@ max_frequency = "5s"
 # 4152127777 = "123456"
 
 # Configure logged in session timeouts.
+#
+# The server-side half of the twelve-hour idle window. `session_store.MAX_AGE_SECONDS`
+# makes the *browser* forget the refresh token; this makes Supabase stop honouring it,
+# which is the half that still holds if the cookie value was ever copied elsewhere.
+#
+# `timebox` stays off deliberately: the decision was idle, not an absolute cap, so
+# active use never interrupts itself.
+#
+# LEFT COMMENTED BECAUSE THE PROJECT'S PLAN REFUSES IT. `supabase config push` on
+# 2026-09-08 returned 402 "User sessions can only be configured on Pro Plans and up",
+# and it fails the *whole* auth update, so an uncommented value here blocks every
+# other setting in this file from reaching the project. Uncomment on a paid plan.
+#
+# Until then the twelve hours are enforced by the browser alone: the cookie expires,
+# but the refresh token it held stays valid until Supabase expires it on its own.
 # [auth.sessions]
 # Force log out after the specified duration.
 # timebox = "24h"
 # Force log out if the user has been inactive longer than the specified duration.
-# inactivity_timeout = "8h"
+# inactivity_timeout = "12h"
 
 # This hook runs before a new user is created and allows developers to reject the request based on the incoming user object.
 # [auth.hook.before_user_created]

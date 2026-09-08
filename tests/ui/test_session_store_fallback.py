@@ -85,3 +85,19 @@ def test_the_request_header_still_wins_when_it_has_the_cookie(store, monkeypatch
 
     assert store.module.read() == "abc123"
     assert store.module.awaiting() is False
+
+
+def test_the_cookie_lives_twelve_hours_and_the_js_carries_it():
+    """The idle window, pinned to the number FINAL 22 states.
+
+    No test can watch twelve hours pass, so this pins the written value against the
+    spec sentence and claims nothing more. The second assertion is the one with
+    teeth: the constant could be changed while the interpolation into `_JS` broke,
+    and `document.cookie` without a `max-age` writes a cookie that dies with the
+    browser tab - which presents as the sign-out-on-refresh bug this component was
+    built to prevent.
+    """
+    from app.ui.components import session_store
+
+    assert session_store.MAX_AGE_SECONDS == 60 * 60 * 12
+    assert f"max-age={session_store.MAX_AGE_SECONDS}" in session_store._JS
