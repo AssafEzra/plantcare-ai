@@ -19,6 +19,13 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.common.errors import ConfigurationError
 
+# The registered AI vendors. Declared here rather than imported from
+# `app.infrastructure.ai.providers` because that package imports this module, and
+# a typed literal gives the startup failure we want without the cycle. A test in
+# `tests/unit/test_provider_registry.py` asserts these names and the registry's
+# keys stay in step, so the duplication cannot drift silently.
+AIProviderName = Literal["anthropic", "google", "openai"]
+
 
 class Settings(BaseSettings):
     """Every environment-provided value the application reads."""
@@ -44,9 +51,35 @@ class Settings(BaseSettings):
     )
     supabase_storage_bucket: str = "plant-images"
 
-    # --- AI provider ---
-    ai_provider: str = "anthropic"
-    ai_api_key: str = Field(..., description="Credential for the configured AI provider")
+    # --- AI providers ---
+    #
+    # Vendor and model are chosen per agent, because the reason to want a second
+    # vendor is to compare it against the first on the same work (FINAL §23).
+    #
+    # The two are validated differently on purpose. The **vendor** is one of ours,
+    # so a wrong name is a typed literal and the application refuses to start. The
+    # **model string** is the vendor's own and is passed through untouched, so a
+    # model released after this code was written needs no change here; a wrong one
+    # reaches the vendor, returns 404 before any generation, costs nothing and
+    # fails once, because `ProviderError` is not in the gateway's retry path.
+    # Checking it at startup would mean a network call on every cold start.
+    identification_provider: AIProviderName = "anthropic"
+    knowledge_provider: AIProviderName = "anthropic"
+    care_provider: AIProviderName = "anthropic"
+    health_provider: AIProviderName = "anthropic"
+
+    # One credential per vendor, because a mixed configuration needs more than one
+    # live at the same time. Optional individually: a provider raises naming the
+    # variable it wanted, so configuring only the vendors you use is normal.
+    anthropic_api_key: str | None = None
+    google_api_key: str | None = None
+    openai_api_key: str | None = None
+    # Deprecated single-provider name, kept as a fallback for `anthropic_api_key`
+    # only. The deployed app redeploys on push and its Streamlit secret is still
+    # AI_API_KEY, so removing this would break the tester app between the push and
+    # the secrets edit. Remove once that secret has been renamed.
+    ai_api_key: str | None = None
+
     identification_model: str = Field(..., description="Model id for the Identification Agent")
     knowledge_model: str = Field(..., description="Model id for the Knowledge Agent")
     care_model: str = Field(..., description="Model id for the Care Agent")

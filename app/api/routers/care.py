@@ -33,7 +33,6 @@ from app.common.enums import (
     Weekday,
 )
 from app.common.errors import NotFoundError, ValidationFailedError
-from app.infrastructure.ai.anthropic_provider import AnthropicProvider
 from app.infrastructure.ai.gateway import AIGateway
 from app.orchestration.services.agent_requests import BackgroundTasksExecutor
 from app.orchestration.workflows import care as workflow
@@ -43,7 +42,7 @@ router = APIRouter(tags=["care"])
 
 def get_care_agent() -> CareAgent:
     """The agent, as a dependency, so a test can substitute a scripted provider."""
-    return CareAgent(AIGateway(AnthropicProvider()))
+    return CareAgent(AIGateway())
 
 
 CareAgentDep = Annotated[CareAgent, Depends(get_care_agent)]

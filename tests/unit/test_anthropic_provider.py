@@ -78,7 +78,7 @@ def provider(env, monkeypatch: pytest.MonkeyPatch):
 
     monkeypatch.setattr(anthropic, "Anthropic", _Client)
 
-    from app.infrastructure.ai.anthropic_provider import AnthropicProvider
+    from app.infrastructure.ai.providers.anthropic import AnthropicProvider
 
     built = AnthropicProvider()
     built.calls = calls  # type: ignore[attr-defined]
@@ -173,7 +173,7 @@ def test_a_validation_error_from_the_stream_becomes_a_schema_failure(env, monkey
 
     monkeypatch.setattr(anthropic, "Anthropic", _Client)
 
-    from app.infrastructure.ai.anthropic_provider import AnthropicProvider
+    from app.infrastructure.ai.providers.anthropic import AnthropicProvider
 
     with pytest.raises(SchemaValidationFailedError):
         AnthropicProvider().structured_output(

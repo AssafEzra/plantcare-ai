@@ -24,7 +24,9 @@ that reads them — a ruff `banned-api` rule rejects `os.environ` anywhere else.
 | `SUPABASE_URL`, `SUPABASE_ANON_KEY` | per environment | anon key is safe in the UI process |
 | `SUPABASE_SERVICE_ROLE_KEY` | per environment | **server-side only**, never reaches Streamlit |
 | `SUPABASE_DB_PASSWORD` | per environment | Supabase CLI + integration tests only |
-| `AI_API_KEY`, `*_MODEL` | shared or per environment | all four agents default to `claude-opus-5` |
+| `ANTHROPIC_API_KEY`, `GOOGLE_API_KEY`, `OPENAI_API_KEY` | shared or per environment | one per vendor; only the vendors you configure need one. `AI_API_KEY` is the deprecated single-provider name, still accepted as a fallback for Anthropic |
+| `*_PROVIDER` | per environment | `anthropic` \| `google` \| `openai`, per agent. Defaults to `anthropic`. Validated at startup - a typo refuses to boot |
+| `*_MODEL` | per environment | per agent; all four default to `claude-opus-5` in `.env.example`. Passed to the vendor **untouched**, so a model newer than this code works with no code change - and a wrong one fails at the first call, with the vendor's reason, before any generation |
 | `*_TIMEOUT_SECONDS` | per environment | Per agent, added in PR 29: knowledge 600, care and health 180, identification 90. One shared 90-second budget failed the first real Knowledge run |
 | `RESEND_API_KEY`, `RESEND_FROM_EMAIL` | per environment | optional — a null email provider is used when unset |
 | `INTERNAL_TICK_SECRET` | per environment | guards `POST /v1/internal/tick` |

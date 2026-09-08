@@ -30,7 +30,6 @@ from app.api.schemas.common import DataEnvelope
 from app.common.enums import KnowledgeDraftStatus, KnowledgeSourceClass
 from app.common.errors import NotFoundError, ValidationFailedError
 from app.domain.services import knowledge_content
-from app.infrastructure.ai.anthropic_provider import AnthropicProvider
 from app.infrastructure.ai.gateway import AIGateway
 from app.orchestration.services.agent_requests import BackgroundTasksExecutor
 from app.orchestration.workflows import care as care_workflow
@@ -42,7 +41,7 @@ router = APIRouter(tags=["knowledge"])
 
 def get_knowledge_agent() -> KnowledgeAgent:
     """The agent, as a dependency, so a test can substitute a scripted provider."""
-    return KnowledgeAgent(AIGateway(AnthropicProvider()))
+    return KnowledgeAgent(AIGateway())
 
 
 KnowledgeAgentDep = Annotated[KnowledgeAgent, Depends(get_knowledge_agent)]

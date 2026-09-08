@@ -35,7 +35,6 @@ from app.common.enums import (
 )
 from app.common.errors import NotFoundError, ValidationFailedError
 from app.infrastructure import wikipedia
-from app.infrastructure.ai.anthropic_provider import AnthropicProvider
 from app.infrastructure.ai.gateway import AIGateway
 from app.orchestration.services.agent_requests import BackgroundTasksExecutor
 from app.orchestration.workflows import care as care_workflow
@@ -54,7 +53,7 @@ def get_identification_agent() -> IdentificationAgent:
     integration test of this route would make a real, billable model call - and
     could not reach the failure paths at all.
     """
-    return IdentificationAgent(AIGateway(AnthropicProvider()))
+    return IdentificationAgent(AIGateway())
 
 
 AgentDep = Annotated[IdentificationAgent, Depends(get_identification_agent)]

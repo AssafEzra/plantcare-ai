@@ -39,7 +39,7 @@ def provider():
     from app.config import settings as settings_module
 
     settings_module.get_settings.cache_clear()
-    from app.infrastructure.ai.anthropic_provider import AnthropicProvider
+    from app.infrastructure.ai.providers.anthropic import AnthropicProvider
 
     return AnthropicProvider()
 

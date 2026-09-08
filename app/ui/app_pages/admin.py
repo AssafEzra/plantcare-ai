@@ -126,7 +126,16 @@ with overview_tab:
                         f"עלות מוערכת ${stat['estimated_cost']:.4f} · "
                         f"משך ממוצע {stat['average_latency_ms']}ms"
                     )
-            st.caption(f'סה"כ עלות מוערכת: ${overview.get("total_estimated_cost", 0):.4f}')
+            total = f'סה"כ עלות מוערכת: ${overview.get("total_estimated_cost", 0):.4f}'
+            # An execution with no cost is not a free execution. Saying so keeps
+            # the total honest as a floor: an unpriced model and a call that failed
+            # after the model had generated both land here, and both were reported
+            # as $0.00 until PR AI_provider - which is why this figure disagreed
+            # with the Anthropic invoice.
+            missing = int(overview.get("executions_missing_cost", 0) or 0)
+            if missing:
+                total += f" · {missing} הרצות ללא עלות מתועדת"
+            st.caption(total)
         else:
             st.caption("לא נרשמו הרצות בחלון הזמן הזה.")
 
@@ -555,12 +564,22 @@ with monitoring_tab:
                 if execution["status"] == "FAILED":
                     st.badge("נכשל", color="red")
                 st.markdown(f"**{execution['agent_type']}** · {execution['model']}")
+                # Tokens and cost can be null, and null is not zero: a call that
+                # failed after the model generated was still billed, and a model
+                # with no price in its provider's table cannot be costed at all.
+                # Formatting either as 0 would restate the understatement this
+                # release exists to remove, so say "לא תועד" instead.
+                tokens = "לא תועד"
+                if execution.get("input_tokens") is not None:
+                    tokens = (
+                        f"{execution['input_tokens']}+{execution.get('output_tokens') or 0} טוקנים"
+                    )
+                cost = execution.get("estimated_cost")
                 st.caption(
                     f"{_when(execution.get('created_at'))} · "
                     f"פרומפט {execution['prompt_version']} · ניסיון {execution['attempt']} · "
-                    f"{execution['latency_ms']}ms · "
-                    f"{execution['input_tokens']}+{execution['output_tokens']} טוקנים · "
-                    f"${execution['estimated_cost']:.4f}"
+                    f"{execution['latency_ms']}ms · {tokens} · "
+                    + (f"${cost:.4f}" if cost is not None else "עלות לא תועדה")
                 )
                 if execution.get("error_code"):
                     st.caption(f"שגיאה: {execution['error_code']}")

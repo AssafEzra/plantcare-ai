@@ -46,17 +46,25 @@ which is how `pydantic-settings` sees them.
 SUPABASE_URL = "https://<ref>.supabase.co"
 SUPABASE_ANON_KEY = "..."
 SUPABASE_SERVICE_ROLE_KEY = "..."     # bypasses RLS - secret, never public
-AI_API_KEY = "..."                    # put a spend cap on it first
+ANTHROPIC_API_KEY = "..."             # put a spend cap on it first
 IDENTIFICATION_MODEL = "claude-opus-5"
 KNOWLEDGE_MODEL = "claude-opus-5"
 CARE_MODEL = "claude-opus-5"
 HEALTH_MODEL = "claude-opus-5"
+
+# Optional. Vendor per agent - anthropic (default) | google | openai. Add the
+# matching GOOGLE_API_KEY or OPENAI_API_KEY when you point one at another vendor.
+# IDENTIFICATION_PROVIDER = "google"
 INTERNAL_TICK_SECRET = "<any long random string>"
 
 # The two that make this a single-process deployment.
 EMBEDDED_API = "true"
 API_BASE_URL = "http://127.0.0.1:8000"
 ```
+
+An existing deployment whose secret is still `AI_API_KEY` keeps working: it is
+accepted as a fallback for `ANTHROPIC_API_KEY`. Rename it when convenient - the
+fallback exists so a push cannot break the app before the secret is edited.
 
 `RESEND_API_KEY` and `RESEND_FROM_EMAIL` together enable email. Without both, the
 app runs with a null email provider rather than failing.

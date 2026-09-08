@@ -14,7 +14,13 @@ dependencies = [
     "httpx>=0.27",
     "pillow>=11.0",
     "structlog>=24.4",
+    # One SDK per provider in `app/infrastructure/ai/providers/`. All three are
+    # hard dependencies rather than extras: the registry imports every provider
+    # module so mypy can check it, and a vendor that is installed only sometimes
+    # turns a configuration mistake into an ImportError at request time.
     "anthropic>=0.40",
+    "google-genai>=1.0",
+    "openai>=1.60",
     "resend>=2.5",
     "pyjwt[crypto]>=2.9",
     # Required for zoneinfo on Windows — the scheduler depends on IANA tz data.

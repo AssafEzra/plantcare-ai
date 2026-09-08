@@ -1433,6 +1433,43 @@ HealthAgent.assess()
 
 Agents must not be tied to a specific provider.
 
+**Provider selection is per agent, and it did not exist until PR AI_provider
+(recorded per §37).** The abstraction itself was honoured from the start - a
+one-method `AIProvider` Protocol, agents that name no vendor, and a whole test
+suite running against a second implementation. Choosing an implementation was not:
+a `AI_PROVIDER` setting existed, **nothing read it**, and five call sites
+constructed the Anthropic provider directly. Configuration advertised a capability
+the code lacked, and no test failed, so the gap was invisible until somebody asked
+how to add Gemini.
+
+What is true now:
+
+- Vendor is chosen per agent, from `<AGENT>_PROVIDER` - `anthropic`, `google` or
+  `openai`. Per agent rather than per application because the reason to want a
+  second vendor is to compare it against the first on the same prompt, and one
+  prompt across vendors is the only comparison that means anything.
+- The **model string is passed to the vendor untouched**, from `<AGENT>_MODEL`. The
+  application keeps no catalogue of anyone else's product line, so a model released
+  after this code was written needs no code change.
+- The two are validated differently, deliberately. A wrong **vendor** name refuses
+  to start, because that set is ours and finite. A wrong **model** name reaches the
+  vendor, returns 404 before any generation, costs nothing and fails once - a
+  `ProviderError` is not retried. Validating it here would cost a network call on
+  every cold start.
+- Consequently a real call can have **no known price**. That is recorded as `NULL`
+  and surfaced in `ניהול` as a count of executions with no cost, never as `$0.00`.
+  The previous behaviour returned zero for any unrecognised model, which is how a
+  90-second billed Knowledge generation came to be reported as free and why the
+  spend figure disagreed with the invoice. A cost that is unknown and a cost that
+  is nothing are different claims.
+- Capability is **not** modelled. Pointing a vision agent at a text-only model
+  fails at the vendor, like any other unusable model string.
+
+One SDK per vendor lives in `app/infrastructure/ai/providers/`, and a test asserts
+that nothing outside that package imports one. That test, rather than this
+paragraph, is what keeps the seam intact - the first version of this section was
+also true when written.
+
 Suggested interface:
 
 ```text

@@ -109,7 +109,6 @@ def _reconcile_plans() -> int:
     at once.
     """
     from app.agents.care.agent import CareAgent
-    from app.infrastructure.ai.anthropic_provider import AnthropicProvider
     from app.infrastructure.ai.gateway import AIGateway
     from app.orchestration.services.agent_requests import InlineExecutor
     from app.orchestration.workflows import care as care_workflow
@@ -117,7 +116,7 @@ def _reconcile_plans() -> int:
     try:
         return care_workflow.reconcile_missing_plans(
             executor=InlineExecutor(),
-            agent=CareAgent(AIGateway(AnthropicProvider())),
+            agent=CareAgent(AIGateway()),
         )
     except Exception as exc:
         log.warning("scheduler.plan_reconcile_failed", error_type=type(exc).__name__)

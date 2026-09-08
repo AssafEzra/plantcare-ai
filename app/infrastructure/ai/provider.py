@@ -23,6 +23,9 @@ from typing import Any, Protocol, TypeVar
 
 from pydantic import BaseModel
 
+from app.common.errors import ConfigurationError
+from app.config.settings import get_settings
+
 SchemaT = TypeVar("SchemaT", bound=BaseModel)
 
 
@@ -35,6 +38,18 @@ class ImageInput:
 
 
 @dataclass(frozen=True)
+class ModelSpec:
+    """List price for one model, USD per million tokens.
+
+    Each provider owns the table for its own models, because a price is a fact
+    about a vendor's product rather than about this application.
+    """
+
+    input: float
+    output: float
+
+
+@dataclass(frozen=True)
 class Usage:
     """What a call cost, for `agent_executions`.
 
@@ -42,32 +57,65 @@ class Usage:
     reasoning, prompts or responses, because FINAL §23 forbids storing
     chain-of-thought and the cheapest way to guarantee that is to have nowhere to
     put it.
+
+    Every field is optional and defaults to ``None``, which means *unknown* and
+    is not the same claim as zero. A model the app has no price for still runs -
+    the model string is passed through to the vendor unvalidated, so that it can
+    be a model released after this code was written - and its cost is recorded as
+    unknown rather than as free. The previous version returned ``0.0`` for an
+    unrecognised model, which is how three billed calls came to be reported as
+    costing nothing.
     """
 
-    input_tokens: int = 0
-    output_tokens: int = 0
+    input_tokens: int | None = None
+    output_tokens: int | None = None
     model: str = ""
     latency_ms: int = 0
+    estimated_cost: float | None = None
 
-    @property
-    def estimated_cost(self) -> float:
-        """Rough USD estimate for admin monitoring (FINAL §29).
+    @classmethod
+    def measured(
+        cls,
+        *,
+        input_tokens: int,
+        output_tokens: int,
+        model: str,
+        latency_ms: int,
+        price: ModelSpec | None,
+    ) -> Usage:
+        """Build usage for a completed call, costing it when a price is known.
 
-        Prices are per million tokens and change; this is a monitoring signal, not
-        an invoice, and the admin view labels it as an estimate.
+        The arithmetic lives here so that three providers cannot disagree about
+        it, and `price=None` is the ordinary case for a model nobody has priced
+        yet rather than an error.
         """
-        rates = _PRICE_PER_MTOK.get(self.model)
-        if not rates:
-            return 0.0
-        return (self.input_tokens * rates[0] + self.output_tokens * rates[1]) / 1_000_000
+        cost = None
+        if price is not None:
+            cost = (input_tokens * price.input + output_tokens * price.output) / 1_000_000
+        return cls(
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            model=model,
+            latency_ms=latency_ms,
+            estimated_cost=cost,
+        )
 
 
-# Anthropic list prices, USD per million tokens (input, output).
-_PRICE_PER_MTOK: dict[str, tuple[float, float]] = {
-    "claude-opus-5": (5.00, 25.00),
-    "claude-sonnet-5": (2.00, 10.00),
-    "claude-haiku-4-5": (1.00, 5.00),
-}
+def require_api_key(setting: str, *, fallback: str | None = None) -> str:
+    """The credential for one provider, or a configuration error naming it.
+
+    Read here rather than in each provider so the failure is identical for all
+    three, and raised at construction so a missing key is not discovered by the
+    vendor's SDK in the middle of a user's request.
+    """
+    settings = get_settings()
+    value = getattr(settings, setting, None)
+    if not value and fallback:
+        value = getattr(settings, fallback, None)
+    if not value:
+        wanted = setting.upper() + (f" (or {fallback.upper()})" if fallback else "")
+        raise ConfigurationError(f"{wanted} is not set, and this agent is configured to use it")
+    return str(value)
 
 
 @dataclass

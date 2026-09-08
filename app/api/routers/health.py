@@ -24,7 +24,6 @@ from app.agents.health.contract import MAX_IMAGES, MIN_IMAGES
 from app.api.dependencies import AIRateLimitDep, CurrentUserDep
 from app.api.schemas.common import DataEnvelope, UniqueImageIds
 from app.common.enums import ConfidenceLevel, HealthStatus, HealthTrend
-from app.infrastructure.ai.anthropic_provider import AnthropicProvider
 from app.infrastructure.ai.gateway import AIGateway
 from app.orchestration.services.agent_requests import BackgroundTasksExecutor
 from app.orchestration.workflows import health as workflow
@@ -34,7 +33,7 @@ router = APIRouter(tags=["health"])
 
 def get_health_agent() -> HealthAgent:
     """The agent, as a dependency, so a test can substitute a scripted provider."""
-    return HealthAgent(AIGateway(AnthropicProvider()))
+    return HealthAgent(AIGateway())
 
 
 HealthAgentDep = Annotated[HealthAgent, Depends(get_health_agent)]

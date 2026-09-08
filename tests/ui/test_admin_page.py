@@ -95,6 +95,29 @@ def page(monkeypatch: pytest.MonkeyPatch):
                 return drafts
             if "approved-sources" in path:
                 return sources or []
+            if "agent-executions" in path:
+                # A row whose tokens and cost are unknown: a call that failed
+                # after the model had generated, so it was billed and cannot be
+                # costed. Formatting `None` with `:.4f` raises, so this row is
+                # what stands between the monitoring tab and a crash.
+                return [
+                    {
+                        "id": "00000000-0000-0000-0000-000000000001",
+                        "agent_request_id": "00000000-0000-0000-0000-000000000002",
+                        "agent_type": "KNOWLEDGE",
+                        "model": "claude-opus-5",
+                        "prompt_version": "knowledge/research.v001",
+                        "status": "FAILED",
+                        "attempt": 1,
+                        "input_tokens": None,
+                        "output_tokens": None,
+                        "estimated_cost": None,
+                        "latency_ms": 90354,
+                        "error_code": "AGENT_TIMEOUT",
+                        "error_message": None,
+                        "created_at": "2026-09-05T21:40:15+00:00",
+                    }
+                ]
             if path.endswith("/overview"):
                 # PR 22 added the overview tab, which reads an object rather than
                 # a list. A stub that returned `[]` for everything made the page
@@ -291,3 +314,19 @@ def test_anonymisation_explains_that_nothing_is_deleted(page):
     captions = " ".join(str(c.value) for c in app.caption)
     assert "אינם נמחקים" in captions
     assert "משמרת את ההיסטוריה" in captions
+
+
+def test_an_execution_with_no_recorded_cost_renders_instead_of_crashing(page) -> None:
+    """`None` formatted with `:.4f` raises, and the row would take the tab with it.
+
+    It also must not read as free. An unknown cost and a zero cost are different
+    claims, and conflating them is why the reported AI spend disagreed with the
+    invoice.
+    """
+    app = page([])
+    app.run()
+
+    assert not app.exception
+    rendered = texts(app)
+    assert "לא תועד" in rendered
+    assert "$0.0000" not in rendered

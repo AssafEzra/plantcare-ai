@@ -61,9 +61,13 @@ class ExecutionResponse(BaseModel):
     prompt_version: str
     status: AgentRequestStatus
     attempt: int
-    input_tokens: int = 0
-    output_tokens: int = 0
-    estimated_cost: float = 0.0
+    # Nullable, and the null means unknown rather than zero. A call that failed
+    # after the model generated, and a model with no price in its provider's
+    # table, both leave these genuinely unknown; typing them as `int`/`float` here
+    # would turn such a row into a 500 on this route.
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+    estimated_cost: float | None = None
     latency_ms: int = 0
     error_code: str | None = None
     error_message: str | None = None
@@ -103,6 +107,13 @@ class OverviewResponse(BaseModel):
     failed_notifications: int
     agent_stats: list[AgentStats] = Field(default_factory=list)
     total_estimated_cost: float = 0.0
+    # How many executions in the window carry no cost at all, so the total can be
+    # read as the floor it is rather than as a complete figure. Two things produce
+    # one: a model nobody has priced (the model string is passed through to the
+    # vendor unvalidated, so it can be newer than this code), and a call that
+    # failed after the model had already generated and been billed. Both used to
+    # record $0.00, which is why the reported spend disagreed with the invoice.
+    executions_missing_cost: int = 0
 
 
 class KnowledgeReportResponse(BaseModel):
@@ -242,6 +253,7 @@ async def get_overview(
             failed_notifications=len(failed_sends),
             agent_stats=stats,
             total_estimated_cost=round(sum(s.estimated_cost for s in stats), 4),
+            executions_missing_cost=sum(1 for e in executions if e.get("estimated_cost") is None),
         ),
         request_id=request.state.request_id,
     )
