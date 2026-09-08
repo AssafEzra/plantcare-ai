@@ -164,13 +164,13 @@ enabled = true
 # DEPLOYMENT_AND_OPERATIONS 4a listed this as a DEV/PROD difference on the assumption
 # that DEV is only ever a developer's laptop. Since PR HF, DEV is also the deployment
 # real testers use, so DEV names its own origin (FINAL 37).
-site_url = "https://plantcare-ai-ery8ebljoytcmqbata7hj6.streamlit.app"
+site_url = "https://plantcare-ai-fcrp66qd7akvrmrdmwjyga.streamlit.app"
 # The public URL that Auth serves on. Defaults to the API external URL with `/auth/v1` appended.
 # external_url = ""
 # A list of *exact* URLs that auth providers are permitted to redirect to post authentication.
 # Localhost stays allowed so the same project still serves local development.
 additional_redirect_urls = [
-  "https://plantcare-ai-ery8ebljoytcmqbata7hj6.streamlit.app",
+  "https://plantcare-ai-fcrp66qd7akvrmrdmwjyga.streamlit.app",
   "http://localhost:8501",
   "http://127.0.0.1:8501",
 ]
