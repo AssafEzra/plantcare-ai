@@ -19,10 +19,12 @@ from pydantic import BaseModel, ValidationError
 
 from app.config.settings import get_settings
 from app.infrastructure.ai.provider import (
+    TRANSIENT_STATUSES,
     ImageInput,
     ModelSpec,
     ProviderError,
     ProviderTimeoutError,
+    ProviderUnavailableError,
     SchemaValidationFailedError,
     StructuredResult,
     Usage,
@@ -150,6 +152,10 @@ class AnthropicProvider:
         except anthropic.APITimeoutError as exc:
             raise ProviderTimeoutError("הניתוח נמשך זמן רב מדי.") from exc
         except anthropic.APIStatusError as exc:
+            if exc.status_code in TRANSIENT_STATUSES:
+                raise ProviderUnavailableError(
+                    f"anthropic returned {exc.status_code}: {_vendor_message(exc)}"
+                ) from exc
             raise ProviderError(
                 f"anthropic returned {exc.status_code}: {_vendor_message(exc)}"
             ) from exc

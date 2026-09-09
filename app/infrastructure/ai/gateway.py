@@ -11,10 +11,21 @@ at most three attempts. The ceiling is validated in configuration and asserted b
 a CHECK constraint on `agent_executions.attempt`, so it cannot be loosened by an
 environment variable or a stray loop.
 
-**Only schema failures are retried.** Retrying a timeout or an authentication
-failure wastes the budget on something that will not succeed, and delays the
-graceful failure the user is waiting for. A malformed response, by contrast,
-often parses on the next attempt — which is exactly the case §23 has in mind.
+**Only two kinds of failure are retried, on separate budgets.** A malformed
+response often parses on the next attempt, which is the case §23 has in mind; it
+is retried up to twice and each attempt pays for a whole generation. A transient
+vendor failure — a 503, a 429, a gateway timeout — is retried on its own small
+budget, because the model never ran: nothing was billed and there is no bad
+output to be wrong about, so the only cost is one more request against quota.
+That one was added after four consecutive Knowledge runs each died on a single
+503 that would very likely have cleared seconds later.
+
+Everything else is still fatal on the first failure. Retrying a timeout or an
+authentication failure spends the budget on something that will not succeed and
+delays the graceful failure the user is waiting for.
+
+Only the first kind advances `attempt`. That column is capped at 3 by a CHECK
+constraint, and a transient failure is not an attempt at producing a response.
 """
 
 from __future__ import annotations
@@ -36,6 +47,7 @@ from app.infrastructure.ai.provider import (
     ImageInput,
     ProviderError,
     ProviderTimeoutError,
+    ProviderUnavailableError,
     SchemaValidationFailedError,
     StructuredResult,
 )
@@ -43,6 +55,18 @@ from app.infrastructure.ai.providers import provider_for
 from app.infrastructure.supabase.client import service_client
 
 log = get_logger(__name__)
+
+#: How many times a transient vendor failure (503, 429, a gateway timeout) is
+#: retried, and how long to wait before each. Deliberately not a setting: the
+#: right number is a fact about how long a vendor's capacity blip lasts, not a
+#: choice a deployment makes. Two retries over about four seconds covers the
+#: short spike without leaving a user waiting on a vendor that is properly down.
+#:
+#: Cheap in a way the schema retry is not. A schema retry pays for a whole
+#: generation each time; here the model never ran, so the only cost is one more
+#: request against quota.
+_TRANSIENT_RETRIES = 2
+_TRANSIENT_BACKOFF_SECONDS = (1.0, 3.0)
 
 
 @dataclass
@@ -187,8 +211,17 @@ class AIGateway:
 
         executions: list[ExecutionRecord] = []
         last_error: Exception | None = None
+        schema_failures = 0
+        transient_failures = 0
 
-        for attempt in range(1, max_attempts + 1):
+        while True:
+            # Derived, never incremented per iteration. `attempt` counts attempts
+            # at *producing a response*, and `agent_executions.attempt` is capped
+            # at 3 by a CHECK constraint enforcing §23's retry ceiling. A transient
+            # failure never reached the model, so it is not one of those attempts -
+            # counting it would push a later row past 3 and the database would
+            # reject the whole execution log rather than the one row.
+            attempt = schema_failures + 1
             started = time.perf_counter()
             try:
                 result: StructuredResult[T] = provider.structured_output(
@@ -215,12 +248,15 @@ class AIGateway:
                         str(exc),
                     )
                 )
+                schema_failures += 1
                 log.warning(
                     "agent.schema_invalid",
                     agent_type=agent.value,
                     attempt=attempt,
                     of=max_attempts,
                 )
+                if schema_failures >= max_attempts:
+                    break
                 continue
             except ProviderTimeoutError as exc:
                 # Not retried: a timeout will not become a well-formed response,
@@ -239,6 +275,45 @@ class AIGateway:
                 )
                 self._persist(executions)
                 raise AgentTimeoutError() from exc
+            except ProviderUnavailableError as exc:
+                # The cheap retry. The model never ran, so nothing was billed and
+                # there is no bad output to be wrong about - the only cost of
+                # trying again is one request against the vendor's quota.
+                #
+                # This exists because four consecutive knowledge runs died on a
+                # single 503 apiece. Each would probably have succeeded seconds
+                # later; none was retried, because a 503 was indistinguishable
+                # here from a 400.
+                transient_failures += 1
+                last_error = exc
+                executions.append(
+                    self._failed(
+                        request_id,
+                        agent,
+                        model,
+                        prompt,
+                        attempt,
+                        started,
+                        "AGENT_UNAVAILABLE",
+                        str(exc),
+                    )
+                )
+                if transient_failures > _TRANSIENT_RETRIES:
+                    self._persist(executions)
+                    log.warning(
+                        "agent.unavailable",
+                        agent_type=agent.value,
+                        attempts=transient_failures,
+                    )
+                    raise AgentError() from exc
+                log.info(
+                    "agent.unavailable_retrying",
+                    agent_type=agent.value,
+                    attempt=attempt,
+                    waiting=_TRANSIENT_BACKOFF_SECONDS[transient_failures - 1],
+                )
+                time.sleep(_TRANSIENT_BACKOFF_SECONDS[transient_failures - 1])
+                continue
             except ProviderError as exc:
                 executions.append(
                     self._failed(

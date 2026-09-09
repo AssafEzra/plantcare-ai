@@ -135,6 +135,28 @@ class ProviderTimeoutError(ProviderError):
     """The provider did not answer within the configured timeout."""
 
 
+#: HTTP statuses that mean "ask again shortly", rather than "this request is
+#: wrong". Every provider maps its vendor's error onto this set, so the gateway
+#: does not need to know one vendor's status codes from another's.
+TRANSIENT_STATUSES = frozenset({408, 429, 500, 502, 503, 504})
+
+
+class ProviderUnavailableError(ProviderError):
+    """The vendor could not serve this request now, but the request was fine.
+
+    Separated from :class:`ProviderError` because it is the second kind of
+    failure worth retrying, and it is the cheap kind: the model never ran, so
+    nothing was billed and nothing was generated to be wrong. A schema retry pays
+    full price for every attempt; this one pays only a request against quota.
+
+    Introduced after four consecutive knowledge runs failed on a free-tier Gemini
+    key with `503 This model is currently experiencing high demand`. Each was a
+    single attempt that was never retried, because a 503 arrived here as an
+    ordinary `ProviderError` and the gateway - correctly, for a 400 or an auth
+    failure - does not retry those.
+    """
+
+
 class SchemaValidationFailedError(ProviderError):
     """The response did not match the requested schema.
 

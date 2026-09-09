@@ -21,10 +21,12 @@ from google.genai import types
 from pydantic import BaseModel, ValidationError
 
 from app.infrastructure.ai.provider import (
+    TRANSIENT_STATUSES,
     ImageInput,
     ModelSpec,
     ProviderError,
     ProviderTimeoutError,
+    ProviderUnavailableError,
     SchemaValidationFailedError,
     StructuredResult,
     Usage,
@@ -256,6 +258,11 @@ class GoogleProvider:
         except httpx.TimeoutException as exc:
             raise ProviderTimeoutError("הניתוח נמשך זמן רב מדי.") from exc
         except genai_errors.APIError as exc:
+            status = getattr(exc, "code", None)
+            if status in TRANSIENT_STATUSES:
+                raise ProviderUnavailableError(
+                    f"google returned {status}: {_vendor_message(exc)}"
+                ) from exc
             # ClientError (4xx, including a mistyped model) and ServerError (5xx)
             # both land here; `code` carries the HTTP status.
             raise ProviderError(

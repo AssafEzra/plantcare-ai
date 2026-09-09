@@ -276,3 +276,94 @@ def test_the_timeout_reaches_the_provider(env):
     )
 
     assert provider.calls[0]["timeout_seconds"] == 600
+
+
+# --- transient vendor failures -------------------------------------------------
+#
+# Four consecutive Knowledge runs failed on a free-tier Gemini key, each on a
+# single `503 This model is currently experiencing high demand`. None was retried:
+# a 503 arrived as an ordinary `ProviderError`, indistinguishable here from a 400.
+# Each would very likely have succeeded seconds later, and none of them billed
+# anything, because the model never ran.
+
+
+def test_a_transient_failure_is_retried(env, monkeypatch):
+    from app.infrastructure.ai.provider import ProviderUnavailableError
+
+    monkeypatch.setattr("app.infrastructure.ai.gateway.time.sleep", lambda _s: None)
+    provider = MockProvider([ProviderUnavailableError("google returned 503"), GOOD])
+
+    result = run(gateway(provider))
+
+    assert provider.call_count == 2
+    assert result.value == GOOD
+
+
+def test_a_transient_failure_does_not_advance_the_attempt_number(env, monkeypatch):
+    """`agent_executions.attempt` is capped at 3 by a CHECK constraint.
+
+    A transient failure is not an attempt at producing a response - the model
+    never ran - so counting it would let a later row carry attempt 4 or 5, and
+    Postgres would reject the whole execution log rather than the offending row.
+    """
+    from app.infrastructure.ai.provider import ProviderUnavailableError
+
+    monkeypatch.setattr("app.infrastructure.ai.gateway.time.sleep", lambda _s: None)
+    provider = MockProvider([ProviderUnavailableError("503"), GOOD])
+
+    result = run(gateway(provider))
+
+    assert result.attempts == 1
+
+
+def test_the_two_budgets_together_never_exceed_the_attempt_ceiling(env, monkeypatch):
+    """The combination that would breach the constraint if the budgets shared one
+    counter: transient failures interleaved with schema failures."""
+    from app.infrastructure.ai.provider import ProviderUnavailableError
+
+    monkeypatch.setattr("app.infrastructure.ai.gateway.time.sleep", lambda _s: None)
+    provider = MockProvider(
+        [
+            ProviderUnavailableError("503"),
+            {"bad": 1},
+            ProviderUnavailableError("503"),
+            {"bad": 2},
+            GOOD,
+        ]
+    )
+
+    result = run(gateway(provider))
+
+    assert result.attempts == 3
+    assert all(1 <= record.attempt <= 3 for record in result.executions)
+
+
+def test_a_persistent_outage_fails_without_exhausting_the_schema_budget(env, monkeypatch):
+    """Three 503s in a row is a vendor that is down, not a blip.
+
+    It must fail as unavailable rather than burn the schema retries, which pay for
+    a whole generation each and would not have helped.
+    """
+    from app.infrastructure.ai.provider import ProviderUnavailableError
+
+    monkeypatch.setattr("app.infrastructure.ai.gateway.time.sleep", lambda _s: None)
+    provider = MockProvider([ProviderUnavailableError("503")] * 4 + [GOOD])
+
+    with pytest.raises(AgentError):
+        run(gateway(provider))
+
+    assert provider.call_count == 3
+
+
+def test_a_permanent_provider_error_is_still_not_retried(env):
+    """The distinction the whole change rests on.
+
+    A 400 or an auth failure will fail identically on the next attempt, and
+    retrying only delays the failure the user is waiting for.
+    """
+    provider = MockProvider([ProviderError("google returned 400: bad schema"), GOOD])
+
+    with pytest.raises(AgentError):
+        run(gateway(provider))
+
+    assert provider.call_count == 1
