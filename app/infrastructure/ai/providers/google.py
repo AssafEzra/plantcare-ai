@@ -11,6 +11,7 @@ absolute, so a module may share a vendor's name without shadowing it.
 from __future__ import annotations
 
 import time
+from copy import deepcopy
 from typing import Any, ClassVar, cast
 
 import httpx
@@ -50,6 +51,82 @@ _THINKING_LEVEL: dict[str, types.ThinkingLevel] = {
 # could help. A truncated response is unparseable JSON, which is the same shape
 # of failure as a schema violation and is what the gateway's retry budget is for.
 _BLOCKED = {"SAFETY", "RECITATION", "PROHIBITED_CONTENT", "BLOCKLIST", "SPII"}
+
+
+#: JSON Schema keywords Gemini will not accept in a `response_json_schema`, at
+#: least in combination. `description` is deliberately absent - see below.
+_UNSUPPORTED_SCHEMA_KEYWORDS = frozenset(
+    {"title", "default", "minLength", "maxLength", "minimum", "maximum", "minItems", "maxItems"}
+)
+
+
+def _to_gemini_schema(schema: type[BaseModel]) -> dict[str, Any]:
+    """The agent's contract as a schema Gemini will accept.
+
+    Two vendor limits, both found the expensive way - in production, against a
+    live key, after every knowledge run failed.
+
+    The first is why this returns JSON Schema at all rather than handing the SDK
+    the Pydantic class: `response_schema` converts through Gemini's own Schema
+    proto, which has no `additionalProperties`, so every contract declaring
+    `extra="forbid"` was refused outright.
+
+    The second is why the result is filtered. `KnowledgeOutput` was still refused
+    by `response_json_schema` with an unlocalised "Request contains an invalid
+    argument" - no field named, no path. Removing the keywords above makes it
+    accepted; `description` may stay, which matters because a description is
+    instruction to the model rather than decoration.
+
+    **Which single keyword is responsible is not established.** The free-tier
+    quota ran out during the bisect, and an earlier attempt was invalidated when
+    several apparent rejections turned out to be 429s. Rather than record a guess
+    as a finding, the whole non-semantic set is dropped. Narrow it when there is
+    quota to do so honestly.
+
+    Dropping the constraints costs nothing in correctness: the response is
+    validated against the Pydantic model on return, so `maxLength` and the rest
+    are still enforced - they are simply no longer advertised to the model.
+
+    `$defs` are inlined because a filtered schema and an unfiltered `$defs` block
+    would disagree, and Gemini accepts the inlined form.
+    """
+    root = schema.model_json_schema()
+    definitions = root.get("$defs", {})
+
+    def convert(node: Any) -> Any:
+        if isinstance(node, list):
+            return [convert(item) for item in node]
+        if not isinstance(node, dict):
+            return node
+
+        if "$ref" in node:
+            target = definitions[node["$ref"].rsplit("/", 1)[-1]]
+            resolved = convert(deepcopy(target))
+            # A sibling of `$ref` (a description on the field, say) still applies.
+            resolved.update(
+                {
+                    k: convert(v)
+                    for k, v in node.items()
+                    if k != "$ref" and k not in _UNSUPPORTED_SCHEMA_KEYWORDS
+                }
+            )
+            return resolved
+
+        converted: dict[str, Any] = {}
+        for key, value in node.items():
+            if key == "$defs" or key in _UNSUPPORTED_SCHEMA_KEYWORDS:
+                continue
+            if key == "properties":
+                # These keys are property *names*, not keywords, and one of the
+                # knowledge sections is literally called "description". Filtering
+                # by name here deletes it from `properties` while `required` still
+                # demands it, which Gemini rejects - accurately, for once.
+                converted[key] = {name: convert(sub) for name, sub in value.items()}
+            else:
+                converted[key] = convert(value)
+        return converted
+
+    return cast(dict[str, Any], convert(deepcopy(root)))
 
 
 def _vendor_message(exc: Exception) -> str:
@@ -151,7 +228,7 @@ class GoogleProvider:
             # `model_json_schema()` produces and what the agents' contracts are
             # written as. `_extract` already falls back to parsing `text` when the
             # SDK does not hand back a typed object, which this path does not.
-            response_json_schema=schema.model_json_schema(),
+            response_json_schema=_to_gemini_schema(schema),
             max_output_tokens=max_tokens,
             thinking_config=types.ThinkingConfig(
                 thinking_level=_THINKING_LEVEL.get(effort, types.ThinkingLevel.HIGH),
