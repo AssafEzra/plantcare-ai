@@ -443,6 +443,51 @@ async def list_accounts(
     )
 
 
+@router.post("/accounts/{user_id}/view-as", response_model=DataEnvelope[AccountResponse])
+async def view_as_account(
+    request: Request, user_id: UUID, admin: AdminDep
+) -> DataEnvelope[AccountResponse]:
+    """Record that an administrator is about to look at this account's data.
+
+    The endpoint grants nothing. Authorisation for the reads that follow lives in
+    `X-Act-As-User` and the `_select_admin` RLS policies; this exists so the access
+    leaves a trace, because reading a stranger's plants, photographs and health
+    history is the kind of thing that should be reviewable afterwards.
+
+    No reason is collected (a product decision). The row still says who looked at
+    whom and when, which is what makes a review possible at all; the body is empty,
+    so adding a reason later breaks no caller.
+
+    `admin_audit_log` needed no migration: `action` is free text precisely so that
+    "an audit log must never block a feature", and the table is append-only even for
+    administrators.
+    """
+    profile = first_row(
+        admin.client.table("profiles")
+        .select("id, email, display_name, role, is_active, anonymized_at, created_at")
+        .eq("id", str(user_id))
+        .execute()
+    )
+    if profile is None:
+        raise NotFoundError("החשבון לא נמצא.")
+
+    admin.client.table("admin_audit_log").insert(
+        {
+            "admin_user_id": str(admin.id),
+            "action": "VIEW_AS_USER",
+            "target_table": "profiles",
+            "target_id": str(user_id),
+            # The email as it stands now, so a later anonymisation does not leave
+            # this row pointing at a profile with nothing identifying left in it.
+            "payload": {"email": profile.get("email")},
+        }
+    ).execute()
+
+    log.info("admin.view_as_user", target=str(user_id))
+
+    return DataEnvelope(data=AccountResponse(**profile), request_id=request.state.request_id)
+
+
 @router.post("/accounts/{user_id}/anonymize", response_model=DataEnvelope[AccountResponse])
 async def anonymize_account(
     request: Request, user_id: UUID, payload: AnonymizeRequest, admin: AdminDep

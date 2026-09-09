@@ -27,6 +27,7 @@ from app.ui.components.layout import (
     show_flash,
 )
 from app.ui.components.sources import render_sources
+from app.ui.state import view_as
 from app.ui.state.api_client import ApiError, cached_get, get, patch, post
 
 SECTION_LABELS: dict[str, str] = {
@@ -778,6 +779,21 @@ with accounts_tab:
                     continue
                 if not profile.get("is_active"):
                     st.badge("מושבת", color="gray")
+
+                # Read-only, and audited. The API refuses every non-GET carrying the
+                # act-as header, so this cannot change anything in the user's account;
+                # what it can do is show an administrator why a user is confused,
+                # which no admin screen could do before.
+                if st.button(
+                    "צפייה כמשתמש",
+                    key=f"view_as_{profile['id']}",
+                    icon=":material/visibility:",
+                ):
+                    try:
+                        post(f"/v1/admin/accounts/{profile['id']}/view-as")
+                        view_as.enter(profile["id"], profile.get("email"))
+                    except ApiError as exc:
+                        show_error(exc)
 
                 reason = st.text_input(
                     "סיבה",

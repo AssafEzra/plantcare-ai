@@ -91,11 +91,32 @@ class ApiError(Exception):
         return self.code == "UNAUTHENTICATED" or self.status == 401
 
 
+#: Session-state key holding the user an administrator is currently looking at.
+#: Read here rather than passed per call because every request must carry the header
+#: for the mode to be coherent - a page that forgot it would show the admin their own
+#: empty account mixed into somebody else's session.
+ACT_AS_KEY = "pc_act_as"
+
+
+def acting_as() -> str | None:
+    """The user id being viewed, if the "view as user" mode is active."""
+    try:
+        return st.session_state.get(ACT_AS_KEY)
+    except Exception:  # pragma: no cover - no script run context (tests, threads)
+        return None
+
+
 def _headers() -> dict[str, str]:
     headers = {"Accept": "application/json"}
     token = session.access_token()
     if token:
         headers["Authorization"] = f"Bearer {token}"
+
+    # One place, so no caller can forget it. The API refuses any non-GET carrying
+    # this header, so the mode cannot write even if a screen offers a button.
+    target = acting_as()
+    if target:
+        headers["X-Act-As-User"] = str(target)
     return headers
 
 
@@ -183,9 +204,17 @@ def cached_get(path: str, *, params: dict[str, Any] | None = None) -> Any:
 
     Params are flattened to a sorted tuple because Streamlit hashes each argument
     to build the key, and a dict is not reliably hashable there.
+
+    "View as user" is part of the identity for exactly the reason above. The signed-in
+    admin does not change when the mode is entered, so a key of `user_key()` alone
+    would serve them their own cached plants while they believed they were looking at
+    somebody else's - the same defect as leaking between accounts, only harder to
+    notice because both answers look plausible.
     """
     key = tuple(sorted(params.items())) if params else None
-    return _cached(session.user_key(), path, key)
+    target = acting_as()
+    identity = f"{session.user_key()}|as:{target}" if target else session.user_key()
+    return _cached(identity, path, key)
 
 
 def clear_cache() -> None:

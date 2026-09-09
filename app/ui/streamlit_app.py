@@ -13,7 +13,7 @@ import streamlit as st
 
 from app.common.enums import UserRole
 from app.ui import embedded_api
-from app.ui.state import session
+from app.ui.state import session, view_as
 from app.ui.state.api_client import ApiError, get
 from app.ui.styles.rtl import apply_rtl
 
@@ -33,13 +33,19 @@ embedded_api.start_if_configured()
 
 
 @st.cache_data(ttl=60, show_spinner=False)
-def _profile(user_id: str, token_fingerprint: str) -> dict | None:
+def _profile(user_id: str, token_fingerprint: str, acting_as: str | None = None) -> dict | None:
     """The signed-in user's profile.
 
     Cached briefly because it is read on every rerun to decide whether the admin
     section belongs in the navigation. Keyed on the user id so one account can
     never see another's cached profile, and on a token fingerprint so a
     re-authentication refreshes it.
+
+    `acting_as` is part of the key and does nothing else. Under "view as user" this
+    endpoint returns the *viewed* account's profile, but neither the signed-in id nor
+    the token changes when the mode is entered - so without it the administrator
+    would keep being served their own cached profile, the navigation would never
+    switch to the gardener pages, and pressing the button would appear to do nothing.
     """
     try:
         return get("/v1/me")
@@ -94,7 +100,11 @@ if not session.is_signed_in():
     pages = [st.Page("app_pages/auth.py", title="כניסה", icon=":material/login:")]
 else:
     current = session.current()
-    profile = _profile(current.user_id, current.access_token[-16:]) or {} if current else {}
+    profile = (
+        _profile(current.user_id, current.access_token[-16:], view_as.active_target()) or {}
+        if current
+        else {}
+    )
     if profile:
         _sync_timezone(profile)
 
@@ -143,5 +153,9 @@ if session.is_signed_in():
             session.sign_out()
             _profile.clear()
             st.rerun()
+
+# Above the page, on every page. The mode changes what every screen means, so the
+# notice cannot be something an individual page remembers to draw.
+view_as.banner()
 
 page.run()

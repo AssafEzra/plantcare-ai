@@ -23,6 +23,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from app.api.dependencies import ACT_AS_HEADER
 from app.api.routers import (
     admin,
     agent_requests,
@@ -37,10 +38,15 @@ from app.api.routers import (
     profile,
 )
 from app.api.routers import health as health_router
-from app.common.errors import AppError, NotFoundError, ValidationFailedError
+from app.common.errors import AppError, ForbiddenError, NotFoundError, ValidationFailedError
 from app.config.logging import configure_logging, get_logger
 from app.config.settings import get_settings
 from app.infrastructure.supabase.client import anon_client
+
+#: The verbs a "view as user" request may use. HEAD and OPTIONS are included
+#: because a browser or client library sends them on its own and refusing them
+#: would break the mode without protecting anything.
+_READ_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 
 log = get_logger(__name__)
 
@@ -140,6 +146,36 @@ def create_app() -> FastAPI:
             duration=duration_ms,
         )
         return response
+
+    # Registered after `request_context`, so it runs *inside* it and its refusal is
+    # logged with a request id like any other response. Starlette applies HTTP
+    # middleware in reverse registration order.
+    @app.middleware("http")
+    async def act_as_is_read_only(
+        request: Request, call_next: Callable[[Request], Awaitable[JSONResponse]]
+    ):
+        """A "view as user" request may read and nothing else.
+
+        Enforced here rather than per route so no route can forget it, and before
+        authentication rather than after because the answer does not depend on who is
+        asking: the header means "I am looking at somebody else's account", and
+        looking is all it ever authorises.
+
+        The database is the backstop, not the control. Every write policy is
+        `*_own` (`with check (user_id = auth.uid())`), so an impersonated write would
+        be refused by Postgres regardless - but as an opaque PostgREST failure rather
+        than a clean 403, and a rule that merely happens to fail is not a rule.
+
+        This also settles the AI routes for nothing: no POST means no model call, no
+        spend, and no `agent_requests` row attributed to a user who never asked for
+        one.
+        """
+        if request.headers.get(ACT_AS_HEADER) and request.method not in _READ_METHODS:
+            return _envelope(
+                request,
+                ForbiddenError("במצב צפייה כמשתמש אפשר לצפות בלבד."),
+            )
+        return await call_next(request)
 
     def _envelope(request: Request, error: AppError) -> JSONResponse:
         request_id = getattr(request.state, "request_id", "unknown")
