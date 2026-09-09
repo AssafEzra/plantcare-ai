@@ -98,6 +98,22 @@ def create_plant(api: TestClient, auth: dict, **body) -> dict:
     return response.json()["data"]
 
 
+def listed_plant(api: TestClient, auth: dict, admin_sdk, **body) -> dict:
+    """A plant in a state My Plants actually shows.
+
+    `POST /v1/plants` creates a plant in PENDING_IDENTIFICATION, and the grid no
+    longer lists those: a plant appears once the user has something to approve, or
+    has approved it. Thirty-three abandoned rows made that necessary.
+
+    Tests about ownership scoping or about search are not about that rule, and
+    should not quietly become tests of it. They promote past it here rather than
+    assert around it.
+    """
+    plant = create_plant(api, auth, **body)
+    admin_sdk.table("plants").update({"status": "IDENTIFIED"}).eq("id", plant["id"]).execute()
+    return plant
+
+
 def events(admin_sdk, plant_id: str) -> list[str]:
     result = (
         admin_sdk.table("system_events")
@@ -160,11 +176,11 @@ def test_a_client_cannot_set_privileged_fields(api: TestClient, account):
 # --- listing and isolation ----------------------------------------------------
 
 
-def test_a_user_sees_only_their_own_plants(api: TestClient, account):
+def test_a_user_sees_only_their_own_plants(api: TestClient, account, admin_sdk):
     _, alice = account()
     _, bob = account()
-    create_plant(api, alice, name="alice-plant")
-    create_plant(api, bob, name="bob-plant")
+    listed_plant(api, alice, admin_sdk, name="alice-plant")
+    listed_plant(api, bob, admin_sdk, name="bob-plant")
 
     names = [p["name"] for p in api.get("/v1/plants", headers=alice).json()["data"]]
 
@@ -182,10 +198,10 @@ def test_another_users_plant_is_not_found(api: TestClient, account):
     assert response.status_code == 404
 
 
-def test_search_filters_by_name(api: TestClient, account):
+def test_search_filters_by_name(api: TestClient, account, admin_sdk):
     _, auth = account()
-    create_plant(api, auth, name="מונסטרה")
-    create_plant(api, auth, name="פיקוס")
+    listed_plant(api, auth, admin_sdk, name="מונסטרה")
+    listed_plant(api, auth, admin_sdk, name="פיקוס")
 
     found = api.get("/v1/plants", headers=auth, params={"q": "מונ"}).json()["data"]
 
@@ -558,7 +574,7 @@ def test_an_admin_sees_only_their_own_plants(api, account, admin_sdk):
     owner_id, owner_auth = account()
     other_id, _ = account()
 
-    mine = api.post("/v1/plants", headers=owner_auth, json={"name": "שלי"}).json()["data"]
+    mine = listed_plant(api, owner_auth, admin_sdk, name="שלי")
     theirs = (
         admin_sdk.table("plants")
         .insert({"user_id": other_id, "name": "של מישהו אחר"})
@@ -585,7 +601,7 @@ def test_an_admin_sees_only_their_own_plants(api, account, admin_sdk):
 # --- what the grid needs (PROGRESS §10) -------------------------------------------
 
 
-def test_the_list_carries_the_thumbnail_the_card_renders(api: TestClient, account):
+def test_the_list_carries_the_thumbnail_the_card_renders(api: TestClient, account, admin_sdk):
     """The regression that made My Plants a grid of grey placeholders.
 
     `plant_card` had read `thumbnail_url` since PR 9 and this endpoint never set
@@ -594,7 +610,7 @@ def test_the_list_carries_the_thumbnail_the_card_renders(api: TestClient, accoun
     a signed URL it can put in an `<img>`.
     """
     _, auth = account()
-    plant = create_plant(api, auth)
+    plant = listed_plant(api, auth, admin_sdk)
     api.post(
         f"/v1/plants/{plant['id']}/images",
         headers=auth,
@@ -676,11 +692,11 @@ def test_the_list_carries_the_nearest_open_task(api: TestClient, account, admin_
     assert (due - datetime.now(UTC)).days < 5, "the later task was returned"
 
 
-def test_a_plant_with_nothing_to_show_carries_nulls_not_errors(api: TestClient, account):
+def test_a_plant_with_nothing_to_show_carries_nulls_not_errors(api: TestClient, account, admin_sdk):
     """A plant between creation and identification has no image, no species and no
     schedule. The card is written for that; the endpoint must not fail on it."""
     _, auth = account()
-    plant = create_plant(api, auth)
+    plant = listed_plant(api, auth, admin_sdk)
 
     listed = api.get("/v1/plants", headers=auth).json()["data"]
     mine = next(p for p in listed if p["id"] == plant["id"])
@@ -726,7 +742,7 @@ def _plant_with_rules(admin_sdk, user_id: str) -> tuple[dict, dict]:
     return plant, version
 
 
-def test_an_identification_photo_becomes_the_main_image(api: TestClient, account):
+def test_an_identification_photo_becomes_the_main_image(api: TestClient, account, admin_sdk):
     """Reported from real use: a plant added the normal way showed no image.
 
     Add Plant uploads with context `identification`, and only a `gallery` upload
@@ -736,7 +752,7 @@ def test_an_identification_photo_becomes_the_main_image(api: TestClient, account
     dashboard lists images regardless of context.
     """
     _, auth = account()
-    plant = create_plant(api, auth)
+    plant = listed_plant(api, auth, admin_sdk)
 
     uploaded = api.post(
         f"/v1/plants/{plant['id']}/images",
@@ -779,7 +795,7 @@ def test_the_grid_falls_back_to_the_newest_photograph(api: TestClient, account, 
     which is exactly the state those rows are in.
     """
     _, auth = account()
-    plant = create_plant(api, auth)
+    plant = listed_plant(api, auth, admin_sdk)
     api.post(
         f"/v1/plants/{plant['id']}/images",
         headers=auth,

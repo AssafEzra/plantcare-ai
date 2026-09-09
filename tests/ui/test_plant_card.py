@@ -148,3 +148,28 @@ def test_a_plant_waiting_on_the_user_says_so_rather_than_waiting_on_us(page):
     text = _text(app)
     assert "ממתין לאישור שלך" in text
     assert "ממתין לזיהוי" not in text
+
+
+def test_a_plant_waiting_on_the_user_offers_the_button_that_finishes_it(page):
+    """Saying so was not enough.
+
+    Four identifications sat unconfirmed on DEV while the card described their
+    state accurately and offered nothing to do about it. Since abandoned plants
+    are no longer listed at all, this is the *only* unidentified plant that
+    reaches the grid - so this button is the entire route back to a confirmation.
+    """
+    app = page([{**BARE, "awaiting_confirmation": True}])
+
+    labels = [button.label for button in app.button]
+    assert "אישור הזיהוי" in labels
+    # Not both: two buttons doing the same thing on one card is a choice the
+    # reader has to make for no reason.
+    assert "פתיחה" not in labels
+
+
+def test_an_ordinary_plant_keeps_the_plain_open_button(page):
+    app = page([FULL])
+
+    labels = [button.label for button in app.button]
+    assert "פתיחה" in labels
+    assert "אישור הזיהוי" not in labels

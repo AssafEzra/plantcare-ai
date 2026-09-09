@@ -157,13 +157,73 @@ def execute(
                 "candidate_count": len(result.candidates),
             },
         )
+
+        # A successful run that identified nothing. `NEEDS_MORE_INFORMATION` and a
+        # non-success result never reach the `except` below, because the agent did
+        # its job - so without this the commonest disappointing outcome would be
+        # the one case that still left a plant behind.
+        if not result.succeeded:
+            _archive_abandoned(admin, user_id, plant_id)
     except Exception as exc:
-        # FINAL §25: no authoritative record. The request is marked FAILED and
-        # nothing about the plant has changed, because nothing in this function
-        # touches the plant.
+        # FINAL §25: no authoritative record - nothing here writes a species, a
+        # confidence or a care plan. The plant itself is archived, which is the
+        # one thing about it that does change: it was created as a placeholder for
+        # this run (FINAL §3 puts naming after confirmation), and a run that
+        # failed leaves a placeholder nobody can ever finish.
         log.exception("identification.execute_failed", request_id=str(request_id))
         requests_service.mark_failed(request_id, "AGENT_FAILED")
+        _archive_abandoned(admin, user_id, plant_id)
         raise exc from None
+
+
+def _archive_abandoned(admin: Client, user_id: UUID, plant_id: UUID) -> None:
+    """Retire a plant whose identification will never be finished.
+
+    The plant row exists before identification runs, because FINAL §3 puts naming
+    after confirmation. Every route out of `PENDING_IDENTIFICATION` except "the
+    user confirms" therefore abandons it, and nothing ever picked those up: they
+    sat in My Plants reading "ממתין לזיהוי" for identifications that had failed
+    days earlier.
+
+    Two guards, and both are load-bearing:
+
+    * **Only a plant still PENDING_IDENTIFICATION.** Re-identification of an
+      established plant runs through this same function, and `ACTIVE -> ACTIVE` is
+      a supported path (A21). A failed re-identification must leave a working
+      plant exactly as it was.
+    * **Never one with a successful identification.** That plant is waiting on the
+      *user*, not on the model; the grid lists it and offers the button that
+      accepts it. Archiving it would throw away a result they can still take.
+
+    Best-effort by construction. This runs inside a failure path, and a plant that
+    could not be archived is a great deal less serious than an exception that
+    replaces the error the user and `agent_requests` are waiting to see.
+    """
+    try:
+        plant = first_row(
+            admin.table("plants").select("id, status").eq("id", str(plant_id)).execute()
+        )
+        if plant is None or plant["status"] != PlantStatus.PENDING_IDENTIFICATION.value:
+            return
+
+        if plants_repo.confirmable_plant_ids(admin, [str(plant_id)]):
+            return
+
+        ensure_transition(PlantStatus(plant["status"]), PlantStatus.ARCHIVED)
+        plants_repo.update(admin, plant_id, {"status": "ARCHIVED", "archived_at": "now()"})
+        plants_repo.record_event(
+            admin,
+            user_id=user_id,
+            plant_id=plant_id,
+            event_type=SystemEventType.PLANT_ARCHIVED,
+            payload={
+                "previous_status": plant["status"],
+                "reason": "IDENTIFICATION_FAILED",
+            },
+        )
+        log.info("identification.plant_archived", plant_id=str(plant_id))
+    except Exception:
+        log.exception("identification.archive_failed", plant_id=str(plant_id))
 
 
 def _load_images(

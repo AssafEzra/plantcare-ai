@@ -28,6 +28,37 @@ _RTL_CSS = """
     text-align: right;
   }
 
+  /* Markdown lists, which the rule above cannot reach.
+
+     Streamlit's own stylesheet sets `text-align: left` directly on the list and
+     indents each item with `margin-left`/`padding-left`. A declaration on the
+     element beats an inherited value whatever the specificity, so the heading
+     above a list obeyed the rule above while the list itself did not - which is
+     what "מה נראה בתמונות" and "מה כדאי לעשות" were reported for.
+
+     Anchored on the container's `data-testid`, verified to be the element
+     carrying those rules' hashed class. Never the hash itself: see the module
+     docstring. Specificity is (0,2,1) against Streamlit's (0,1,1).
+
+     Physical properties rather than `margin-inline-start`, because the value
+     being overridden is set through a `margin` shorthand and has to be zeroed
+     explicitly - and this file is the right-to-left stylesheet, where "right" is
+     the fact rather than an assumption. */
+  [data-testid="stAppViewContainer"] [data-testid="stMarkdownContainer"] > ul,
+  [data-testid="stAppViewContainer"] [data-testid="stMarkdownContainer"] > ol,
+  [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] > ul,
+  [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] > ol {
+    text-align: right;
+  }
+
+  [data-testid="stAppViewContainer"] [data-testid="stMarkdownContainer"] li,
+  [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] li {
+    margin-left: 0;
+    margin-right: 1.15em;
+    padding-left: 0;
+    padding-right: 0.3em;
+  }
+
   /* Code, identifiers and URLs stay left-to-right: a UUID or a path reads as
      nonsense when the browser reorders it bidirectionally. */
   code, pre, kbd, samp, [data-testid="stCode"], .stCodeBlock {

@@ -22,7 +22,7 @@ from uuid import UUID
 
 from postgrest.types import CountMethod
 
-from app.common.enums import ImageContextType, SystemEventType
+from app.common.enums import ImageContextType, PlantStatus, SystemEventType
 from app.common.errors import PlantNotFoundError
 from app.repositories.base import Row, first_row, require_row, rows
 from supabase import Client
@@ -108,7 +108,63 @@ def list_for_user(
             return []
         builder = builder.ilike("name", f"%{safe}%")
 
-    return rows(builder.order("created_at", desc=True).execute())
+    found = rows(builder.order("created_at", desc=True).execute())
+
+    # Only when the caller named no status: an explicit
+    # `?status=PENDING_IDENTIFICATION` still returns everything, which the admin
+    # and diagnostic paths rely on.
+    if not status:
+        found = _drop_abandoned(client, found)
+
+    return found
+
+
+def confirmable_plant_ids(client: Client, plant_ids: list[str]) -> set[str]:
+    """Of these plants, the ones with an identification the user could accept.
+
+    The question two screens and one sweep all have to answer the same way, which
+    is why it lives here rather than being written out at each of them.
+    """
+    if not plant_ids:
+        return set()
+
+    return {
+        str(row["plant_id"])
+        for row in rows(
+            client.table("identifications")
+            .select("plant_id")
+            .in_("plant_id", plant_ids)
+            .eq("status", "SUCCESS")
+            .execute()
+        )
+    }
+
+
+def _drop_abandoned(client: Client, found: list[Row]) -> list[Row]:
+    """Hide plants the user never approved and never will.
+
+    A plant is created in PENDING_IDENTIFICATION before identification runs, since
+    FINAL §3 puts naming after confirmation. Every route out of that state except
+    "the user confirms" abandons the row, and it stayed in My Plants for good -
+    thirty-three of them, showing "ממתין לזיהוי" for identifications that had
+    failed days earlier.
+
+    The surviving exception is the one state where the user actually has something
+    to do: an identification that succeeded and is waiting to be accepted. Those
+    stay listed, and the card offers the button that accepts them.
+    """
+    pending = [row for row in found if row["status"] == PlantStatus.PENDING_IDENTIFICATION.value]
+    if not pending:
+        return found
+
+    confirmable = confirmable_plant_ids(client, [str(row["id"]) for row in pending])
+
+    return [
+        row
+        for row in found
+        if row["status"] != PlantStatus.PENDING_IDENTIFICATION.value
+        or str(row["id"]) in confirmable
+    ]
 
 
 def _search_term(query: str) -> str:

@@ -66,7 +66,25 @@ def plant_card(plant: dict, *, on_open: Callable[[str], None] | None = None) -> 
             # out whether it had already passed.
             st.caption(f"{icon} {label} · {when}" if when else f"{icon} {label}")
 
-        if on_open and st.button(
+        # A plant waiting on the user gets the action, not just the notice. This
+        # is now the only unidentified plant that appears in the grid at all -
+        # the rest are abandoned and hidden - so this button is the whole route
+        # back to a confirmation, and four of them sat unconfirmed for want of it.
+        #
+        # It opens the plant rather than confirming here: the dashboard already
+        # renders the candidates with their confidence and evidence, and a card
+        # that accepted an identification without showing what it was accepting
+        # would be the wrong place to make that decision.
+        if on_open and plant.get("awaiting_confirmation"):
+            if st.button(
+                "אישור הזיהוי",
+                key=f"confirm_{plant['id']}",
+                width="stretch",
+                type="primary",
+                icon=":material/how_to_reg:",
+            ):
+                on_open(plant["id"])
+        elif on_open and st.button(
             "פתיחה", key=f"open_{plant['id']}", width="stretch", icon=":material/arrow_back:"
         ):
             on_open(plant["id"])

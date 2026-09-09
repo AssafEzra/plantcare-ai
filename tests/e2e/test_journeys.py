@@ -622,8 +622,13 @@ def test_no_journey_can_reach_a_live_model(api, account, script):
     # than inventing a plausible identification.
     assert script.identification.call_count == 1
 
+    # And nothing authoritative was written from a failed run (FINAL §25). The
+    # plant is now ARCHIVED rather than left in PENDING_IDENTIFICATION: a plant
+    # created as a placeholder for a run that failed is one nobody can ever
+    # finish, and thirty-three of them accumulated in My Plants before that was
+    # noticed. The species is the assertion that carries §25 here.
     plant = api.get(f"/v1/plants/{plant_id}", headers=user.auth).json()["data"]
-    assert plant["status"] == PlantStatus.PENDING_IDENTIFICATION.value
+    assert plant["status"] == PlantStatus.ARCHIVED.value
     assert plant["species_id"] is None
 
 

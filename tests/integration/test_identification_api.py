@@ -566,16 +566,22 @@ def test_a_confirmed_plant_offers_no_pending_identification(api, account, script
 
 def test_the_grid_says_a_plant_is_waiting_on_the_user(api, account, scripted, admin_sdk):
     """Waiting on the model and waiting on the user look identical otherwise, and
-    a card that still says "ממתין לזיהוי" an hour later reads as a failure."""
+    a card that still says "ממתין לזיהוי" an hour later reads as a failure.
+
+    The first assertion changed when abandoned plants stopped being listed. A
+    plant that has been created but not yet identified is not in the grid at all
+    now - the user is in the add-plant flow looking at it, not at My Plants - so
+    the question this test asks only becomes meaningful once there is a result.
+    """
     _, auth = account()
     plant_id, image_id = plant_with_photo(api, auth)
     scripted.queue(success("Monstera deliciosa"))
 
-    def card() -> dict:
+    def card() -> dict | None:
         listed = api.get("/v1/plants", headers=auth).json()["data"]
-        return next(p for p in listed if p["id"] == plant_id)
+        return next((p for p in listed if p["id"] == plant_id), None)
 
-    assert card()["awaiting_confirmation"] is False
+    assert card() is None
 
     run_identification(api, auth, plant_id, image_id)
     assert card()["awaiting_confirmation"] is True
@@ -661,3 +667,108 @@ def test_an_empty_correction_is_refused(api, account, scripted, admin_sdk):
     response = api.post(f"/v1/identifications/{record['id']}/correct", headers=auth, json={})
 
     assert response.status_code == 422
+
+
+# --- abandoned plants ----------------------------------------------------------
+#
+# The plant row is created before identification runs, because FINAL §3 puts
+# naming after confirmation. Every route out of PENDING_IDENTIFICATION except "the
+# user confirms" therefore abandons it, and nothing picked those up: thirty-three
+# of them sat in My Plants on DEV reading "ממתין לזיהוי" for identifications that
+# had failed days earlier.
+
+
+def plant_status(admin_sdk, plant_id: str) -> str:
+    return admin_sdk.table("plants").select("status").eq("id", plant_id).execute().data[0]["status"]
+
+
+def test_a_failed_identification_archives_the_plant(api, account, scripted, admin_sdk):
+    """The reported bug, at its source."""
+    _, auth = account()
+    plant_id, image_id = plant_with_photo(api, auth)
+    scripted.queue({"bad": 1}, {"bad": 2}, {"bad": 3})
+
+    run_identification(api, auth, plant_id, image_id)
+
+    assert plant_status(admin_sdk, plant_id) == "ARCHIVED"
+
+
+def test_an_archived_plant_leaves_the_grid(api, account, scripted):
+    """Archiving is the mechanism; disappearing from My Plants is the point."""
+    _, auth = account()
+    plant_id, image_id = plant_with_photo(api, auth)
+    scripted.queue({"bad": 1}, {"bad": 2}, {"bad": 3})
+
+    run_identification(api, auth, plant_id, image_id)
+
+    listed = api.get("/v1/plants", headers=auth).json()["data"]
+    assert plant_id not in {p["id"] for p in listed}
+
+
+def test_a_plant_awaiting_confirmation_survives_and_is_still_listed(
+    api, account, scripted, admin_sdk
+):
+    """The exception, and the half that is easy to lose.
+
+    This plant is waiting on the *user*, not on the model. Archiving it would
+    throw away a result they can still accept in one click - and since the
+    add-plant flow keeps its state in the session, there would be no route back.
+    """
+    _, auth = account()
+    plant_id, image_id = plant_with_photo(api, auth)
+    scripted.queue(success())
+
+    run_identification(api, auth, plant_id, image_id)
+
+    assert plant_status(admin_sdk, plant_id) == "PENDING_IDENTIFICATION"
+
+    listed = api.get("/v1/plants", headers=auth).json()["data"]
+    mine = next(p for p in listed if p["id"] == plant_id)
+    # And the card needs this flag to render the button that accepts it.
+    assert mine["awaiting_confirmation"] is True
+
+
+def test_a_failed_re_identification_leaves_an_active_plant_alone(api, account, scripted, admin_sdk):
+    """The guard that matters most.
+
+    Re-identifying an established plant runs through the same function, and
+    ACTIVE -> ACTIVE is a supported path (A21). A failure there must not archive a
+    plant the user has been using - it would take its care plan and its history
+    out of the grid on one bad model call.
+    """
+    _, auth = account()
+    plant_id, image_id = plant_with_photo(api, auth)
+    scripted.queue(success())
+    run_identification(api, auth, plant_id, image_id)
+
+    identification = latest_identification(admin_sdk, plant_id)
+    candidate = (
+        admin_sdk.table("identification_candidates")
+        .select("id")
+        .eq("identification_id", identification["id"])
+        .execute()
+        .data[0]
+    )
+    api.post(
+        f"/v1/identifications/{identification['id']}/confirm",
+        headers=auth,
+        json={"candidate_id": candidate["id"], "name": "הצמח שלי"},
+    )
+    before = plant_status(admin_sdk, plant_id)
+    assert before != "PENDING_IDENTIFICATION"
+
+    scripted.queue({"bad": 1}, {"bad": 2}, {"bad": 3})
+    run_identification(api, auth, plant_id, image_id)
+
+    assert plant_status(admin_sdk, plant_id) == before
+
+
+def test_an_explicit_status_filter_still_finds_an_abandoned_plant(api, account, scripted):
+    """Hidden from the grid is not hidden from a caller that asks for it."""
+    _, auth = account()
+    plant_id, image_id = plant_with_photo(api, auth)
+    scripted.queue({"bad": 1}, {"bad": 2}, {"bad": 3})
+    run_identification(api, auth, plant_id, image_id)
+
+    found = api.get("/v1/plants", headers=auth, params={"status": "ARCHIVED"}).json()["data"]
+    assert plant_id in {p["id"] for p in found}

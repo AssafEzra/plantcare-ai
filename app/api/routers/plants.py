@@ -23,7 +23,6 @@ from app.api.schemas.plants import (
 from app.common.enums import (
     CareTaskStatus,
     HealthStatus,
-    IdentificationStatus,
     PlantStatus,
     SystemEventType,
 )
@@ -193,21 +192,15 @@ def _decorate_for_grid(client, access_token: str, plants: list[dict]) -> list[di
     # the model. The two look identical on a card otherwise, and "ממתין לזיהוי"
     # on a plant that was identified an hour ago is how a user concludes the
     # identification failed - which is exactly what happened before this.
+    #
+    # Load-bearing twice over now: `list_for_user` uses the same answer to decide
+    # that these are the only unidentified plants worth listing at all, and the
+    # card turns this flag into the button that accepts the identification. The
+    # query moved into the repository so the two cannot drift apart.
     unconfirmed = [
         str(p["id"]) for p in plants if p["status"] == PlantStatus.PENDING_IDENTIFICATION.value
     ]
-    awaiting_confirmation: set[str] = set()
-    if unconfirmed:
-        awaiting_confirmation = {
-            str(row["plant_id"])
-            for row in rows(
-                client.table("identifications")
-                .select("plant_id")
-                .in_("plant_id", unconfirmed)
-                .eq("status", IdentificationStatus.SUCCESS.value)
-                .execute()
-            )
-        }
+    awaiting_confirmation = repo.confirmable_plant_ids(client, unconfirmed)
 
     return [
         {

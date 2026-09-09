@@ -33,7 +33,7 @@ from app.config.logging import get_logger
 from app.config.settings import get_settings
 from app.domain.rules import recurrence
 from app.orchestration.services import scheduler, tick
-from app.repositories.base import rows
+from app.repositories import plants as plants_repo
 
 log = get_logger(__name__)
 
@@ -108,6 +108,8 @@ class TickResponse(BaseModel):
     missed: int
     # Agent runs whose worker never came back — see `reap_abandoned`.
     abandoned: int = 0
+    # Plants retired because their identification was never going to finish.
+    archived_plants: int = 0
     plans_queued: int = 0
     emails_sent: int = 0
     emails_skipped: int = 0
@@ -194,14 +196,11 @@ async def get_dashboard(request: Request, user: CurrentUserDep) -> DataEnvelope[
     ]
     summaries = recurrence.summarize_overdue(overdue_items)
 
-    plants = rows(
-        user.client.table("plants")
-        .select("id, name, status, current_health_status, main_image_id")
-        .eq("user_id", str(user.id))
-        .neq("status", PlantStatus.ARCHIVED.value)
-        .order("created_at", desc=True)
-        .execute()
-    )
+    # Through the repository rather than a query of its own. This screen and
+    # "My Plants" have to agree on what a plant the user owns *is*, and they did
+    # not: this one listed everything unarchived, including thirty-three plants
+    # whose identification had failed days earlier.
+    plants = plants_repo.list_for_user(user.client, owner_id=user.id)
     attention = [
         plant
         for plant in plants
