@@ -138,7 +138,20 @@ class GoogleProvider:
         config = types.GenerateContentConfig(
             system_instruction=system,
             response_mime_type="application/json",
-            response_schema=schema,
+            # `response_json_schema`, not `response_schema`. Handing the SDK a
+            # Pydantic class routes it through Gemini's own Schema proto, which
+            # has no field for `additionalProperties` - so every model declaring
+            # `extra="forbid"` (knowledge, care and health; not identification)
+            # was rejected before generation with:
+            #
+            #   400 Unknown name "additional_properties" at
+            #   'generation_config.response_schema'
+            #
+            # `response_json_schema` accepts standard JSON Schema, which is what
+            # `model_json_schema()` produces and what the agents' contracts are
+            # written as. `_extract` already falls back to parsing `text` when the
+            # SDK does not hand back a typed object, which this path does not.
+            response_json_schema=schema.model_json_schema(),
             max_output_tokens=max_tokens,
             thinking_config=types.ThinkingConfig(
                 thinking_level=_THINKING_LEVEL.get(effort, types.ThinkingLevel.HIGH),
