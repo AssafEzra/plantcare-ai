@@ -104,6 +104,13 @@ class IdentificationResponse(BaseModel):
     confidence_level: ConfidenceLevel | None = None
     image_quality: str | None = None
     request_more_photos: bool = False
+    # The model's own account of what was missing, for a NEEDS_MORE_INFORMATION
+    # result. Persisted in `raw_result` since PR 9 and exposed by nothing, so no
+    # screen could show it and every unsuccessful identification got the same
+    # generic sentence about photographs. Read out of `raw_result` rather than
+    # returning that column: it also holds the candidate list, which has its own
+    # table and its own shape here.
+    insufficient_reason: str | None = None
     wikipedia_url: str | None = None
     created_at: datetime
     candidates: list[CandidateResponse] = Field(default_factory=list)
@@ -206,13 +213,19 @@ async def get_identification(
         user.client.table("identifications")
         .select(
             "id, plant_id, status, method, confidence_score, confidence_level, "
-            "image_quality, request_more_photos, wikipedia_url, created_at"
+            "image_quality, request_more_photos, wikipedia_url, created_at, raw_result"
         )
         .eq("id", str(identification_id))
         .execute()
     )
     if record is None:
         raise NotFoundError("הזיהוי לא נמצא.")
+
+    # `raw_result` itself is not returned - only this one string out of it. The
+    # column also carries the candidate list, which is served from its own table
+    # with its own ids, and returning both would be two answers to one question.
+    raw = record.pop("raw_result", None) or {}
+    record["insufficient_reason"] = raw.get("insufficient_reason")
 
     candidates = rows(
         user.client.table("identification_candidates")

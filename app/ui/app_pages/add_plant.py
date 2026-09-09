@@ -119,7 +119,24 @@ elif step == "identifying":
             st.rerun()
     elif final["status"] == "FAILED":
         # FINAL §25: the failure is visible and nothing authoritative was written.
-        st.error("הזיהוי לא הושלם. אפשר לנסות שוב עם תמונות אחרות.", icon=":material/error:")
+        #
+        # Reachable only since the workflow stopped marking a request SUCCEEDED
+        # when the model never answered. Before that, every model failure fell
+        # through to step 3, which told the user their photographs were inadequate
+        # - including for a 429 that was refused before anything looked at them.
+        #
+        # So this branch says nothing about photographs. It cannot know they were
+        # the problem, and on the common failure they were not.
+        if final.get("error_code") == "AGENT_UNAVAILABLE":
+            st.warning(
+                "שירות הזיהוי עמוס כרגע. אפשר לנסות שוב בעוד כמה דקות.",
+                icon=":material/hourglass_top:",
+            )
+        else:
+            st.error("הזיהוי לא הושלם. אפשר לנסות שוב.", icon=":material/error:")
+
+        # Starting over, not retrying: a failed identification archives its plant,
+        # so there is no row left to run a second attempt against.
         if st.button("התחלה מחדש", type="primary"):
             reset()
             st.rerun()
@@ -151,11 +168,23 @@ elif step == "confirm":
     candidates = identification.get("candidates") or []
 
     if identification["status"] != "SUCCESS" or not candidates:
+        # This is now only ever "the model looked and could not tell" - a FAILED
+        # run never reaches step 3. So the model's own account of what was missing
+        # is worth showing, and asking for photographs is honest here.
+        #
+        # `request_more_photos` gates the ask rather than being assumed: it is the
+        # field whose entire job is to say whether more photographs would help, and
+        # the model sets it false when they would not.
         st.warning(
-            "לא הצלחנו לזהות את הצמח מהתמונות האלה. תמונות נוספות או ברורות יותר יעזרו.",
+            identification.get("insufficient_reason") or "לא הצלחנו לזהות את הצמח מהתמונות האלה.",
             icon=":material/photo_camera:",
         )
-        if st.button("העלאת תמונות אחרות", type="primary"):
+        if identification.get("request_more_photos"):
+            st.caption("תמונות נוספות או ברורות יותר יעזרו.")
+        if st.button(
+            "העלאת תמונות אחרות" if identification.get("request_more_photos") else "התחלה מחדש",
+            type="primary",
+        ):
             reset()
             st.rerun()
         st.stop()

@@ -262,6 +262,104 @@ def test_a_failed_run_creates_no_authoritative_record(api, account, scripted, ad
     assert plant["species_id"] is None
 
 
+# --- what the failure looks like from outside ----------------------------------
+#
+# Reported from real use: *"just made identification attempt, the agent failed yet
+# I got 'unable to identify' notification."* Three executions had failed on a Google
+# 429, and the *request* said SUCCEEDED - so the poller went to the confirmation
+# screen, which found no candidates and told the user their photographs were
+# inadequate. The screen with the honest message was unreachable for every model
+# failure, because `identify` returns FAILED rather than raising and nothing
+# reached the workflow's except clause.
+
+
+def agent_request_of(admin_sdk, plant_id: str) -> dict:
+    return (
+        admin_sdk.table("agent_requests")
+        .select("status, error_code")
+        .eq("plant_id", plant_id)
+        .order("created_at", desc=True)
+        .limit(1)
+        .execute()
+        .data[0]
+    )
+
+
+def test_a_failed_run_leaves_the_request_failed_not_succeeded(api, account, scripted, admin_sdk):
+    """The defect that made the honest screen unreachable."""
+    _, auth = account()
+    plant_id, image_id = plant_with_photo(api, auth)
+    scripted.queue({"bad": 1}, {"bad": 2}, {"bad": 3})
+
+    run_identification(api, auth, plant_id, image_id)
+
+    assert agent_request_of(admin_sdk, plant_id)["status"] == "FAILED"
+
+
+def test_an_unavailable_vendor_reaches_the_screen_as_unavailable(
+    api, account, scripted, admin_sdk, monkeypatch
+):
+    """The error code is what the screen keys its message on, and "the service is
+    busy" is the only one of the two messages a user can act on."""
+    from app.infrastructure.ai.provider import ProviderUnavailableError
+
+    monkeypatch.setattr("app.infrastructure.ai.gateway.time.sleep", lambda _s: None)
+    _, auth = account()
+    plant_id, image_id = plant_with_photo(api, auth)
+    scripted.queue(*[ProviderUnavailableError("google returned 429: quota")] * 3)
+
+    run_identification(api, auth, plant_id, image_id)
+
+    assert agent_request_of(admin_sdk, plant_id)["error_code"] == "AGENT_UNAVAILABLE"
+
+
+def test_needing_more_information_still_leaves_the_request_succeeded(
+    api, account, scripted, admin_sdk
+):
+    """The whole distinction. Here the model *did* answer, and its answer was "I
+    need more" - which is a result to show, not a failure to report."""
+    _, auth = account()
+    plant_id, image_id = plant_with_photo(api, auth)
+    scripted.queue(
+        IdentificationOutput(
+            status=IdentificationStatus.NEEDS_MORE_INFORMATION,
+            candidates=[],
+            request_more_photos=True,
+            insufficient_reason="העלים מטושטשים ולא נראה מבנה הגבעול.",
+        )
+    )
+
+    run_identification(api, auth, plant_id, image_id)
+
+    assert agent_request_of(admin_sdk, plant_id)["status"] == "SUCCEEDED"
+
+
+def test_the_models_own_reason_is_readable_by_the_client(api, account, scripted, admin_sdk):
+    """It was persisted in `raw_result` from the start and exposed by no field, so
+    no screen could show it and every unsuccessful run got one generic sentence."""
+    _, auth = account()
+    plant_id, image_id = plant_with_photo(api, auth)
+    reason = "העלים מטושטשים ולא נראה מבנה הגבעול."
+    scripted.queue(
+        IdentificationOutput(
+            status=IdentificationStatus.NEEDS_MORE_INFORMATION,
+            candidates=[],
+            request_more_photos=True,
+            insufficient_reason=reason,
+        )
+    )
+    run_identification(api, auth, plant_id, image_id)
+    identification_id = latest_identification(admin_sdk, plant_id)["id"]
+
+    body = api.get(f"/v1/identifications/{identification_id}", headers=auth).json()["data"]
+
+    assert body["insufficient_reason"] == reason
+    assert body["request_more_photos"] is True
+    # The column it came out of is not returned: it also holds the candidate list,
+    # which is served from its own table with its own ids.
+    assert "raw_result" not in body
+
+
 def test_an_image_from_another_plant_is_refused(api, account, scripted):
     """RLS already excludes another user's images; this stops one plant's photos
     being used to identify a different plant."""

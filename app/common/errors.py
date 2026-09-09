@@ -143,6 +143,25 @@ class AgentTimeoutError(AgentError):
     message = "The AI service did not respond in time."
 
 
+class AgentUnavailableError(AgentError):
+    """The vendor refused the request, and the model never ran.
+
+    Distinct from a bare `AgentError` because the two say different things to a
+    user. "The service is busy, try again in a few minutes" is an instruction they
+    can act on; "something went wrong" is not. On a free-tier key the busy case is
+    the common one, and collapsing them produced the failure that motivated this
+    class: a 429 was reported to the user as "we could not identify the plant from
+    these photographs", which blamed their photographs for a call that was refused
+    before anything looked at them.
+
+    Raised by the gateway only once its transient retry budget is exhausted, so it
+    means "still unavailable after retrying", not "unavailable once".
+    """
+
+    code = "AGENT_UNAVAILABLE"
+    message = "The AI service is busy. Please try again shortly."
+
+
 class UpstreamUnavailableError(AppError):
     code = "UPSTREAM_UNAVAILABLE"
     http_status = 503

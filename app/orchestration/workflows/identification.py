@@ -149,19 +149,33 @@ def execute(
             "id", [str(i) for i in image_ids]
         ).execute()
 
-        requests_service.mark_succeeded(
-            request_id,
-            {
-                "identification_id": str(identification_id),
-                "status": result.status.value,
-                "candidate_count": len(result.candidates),
-            },
-        )
+        if result.status is IdentificationStatus.FAILED:
+            # The model never answered. `identify` catches `AgentError` and returns
+            # a FAILED result rather than raising - deliberately, so the row below
+            # can be written - which meant nothing reached the `except` and the
+            # request was marked SUCCEEDED. A request whose every execution failed
+            # then read as a success in ניטור סוכנים, and the one screen with an
+            # honest message was unreachable for every model failure.
+            #
+            # `NEEDS_MORE_INFORMATION` stays SUCCEEDED, and that is the whole
+            # distinction: there the model did answer, and its answer was "I need
+            # more". Only this branch means "the service could not tell you
+            # anything".
+            requests_service.mark_failed(request_id, result.error_code or "AGENT_FAILED")
+        else:
+            requests_service.mark_succeeded(
+                request_id,
+                {
+                    "identification_id": str(identification_id),
+                    "status": result.status.value,
+                    "candidate_count": len(result.candidates),
+                },
+            )
 
-        # A successful run that identified nothing. `NEEDS_MORE_INFORMATION` and a
-        # non-success result never reach the `except` below, because the agent did
-        # its job - so without this the commonest disappointing outcome would be
-        # the one case that still left a plant behind.
+        # A run that identified nothing. `NEEDS_MORE_INFORMATION` and a FAILED
+        # result never reach the `except` below, because the agent handled the
+        # failure itself - so without this the commonest disappointing outcome
+        # would be the one case that still left a plant behind.
         if not result.succeeded:
             _archive_abandoned(admin, user_id, plant_id)
     except Exception as exc:

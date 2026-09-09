@@ -17,7 +17,7 @@ from app.agents.identification.contract import (
     IdentificationResult,
 )
 from app.common.enums import AgentType, IdentificationStatus
-from app.common.errors import AgentError
+from app.common.errors import AgentError, AgentUnavailableError
 from app.config.logging import get_logger
 from app.infrastructure.ai.prompts import load as load_prompt
 
@@ -55,15 +55,31 @@ class IdentificationAgent(Agent[IdentificationRequest, IdentificationResult]):
                 images=request.images[:MAX_IMAGES],
                 max_tokens=4000,
             )
-        except AgentError:
+        except AgentError as exc:
             # The gateway has already recorded the failed attempts. Returning
             # FAILED rather than re-raising lets the caller store a failed
             # identification row - which FINAL §25 permits, because a row whose
             # status is FAILED cannot carry a species or a confidence verdict.
-            log.info("identification.failed", request_id=str(request_id))
+            #
+            # `error_code` is carried out so the screen can say which failure this
+            # was. `AgentUnavailableError` means the vendor refused the call and
+            # the model never looked at anything, so asking the user for better
+            # photographs is not merely unhelpful - it is untrue. `request_more_photos`
+            # stays false on both paths for the same reason.
+            unavailable = isinstance(exc, AgentUnavailableError)
+            log.info(
+                "identification.failed",
+                request_id=str(request_id),
+                error_code=exc.code,
+            )
             return IdentificationResult(
                 status=IdentificationStatus.FAILED,
-                insufficient_reason="הזיהוי לא הושלם. אפשר לנסות שוב.",
+                insufficient_reason=(
+                    "שירות הזיהוי לא היה זמין. אפשר לנסות שוב בעוד כמה דקות."
+                    if unavailable
+                    else "הזיהוי לא הושלם. אפשר לנסות שוב."
+                ),
+                error_code=exc.code,
             )
 
         return self._interpret(result.value)

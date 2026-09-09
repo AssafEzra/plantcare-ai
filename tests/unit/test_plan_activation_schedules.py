@@ -165,3 +165,32 @@ def test_the_tick_is_callable_without_an_http_request(env, monkeypatch):
     assert outcome.marked_overdue == 2
     assert outcome.missed == 1
     assert outcome.emails_sent == 1
+
+
+def test_the_tick_never_builds_its_own_agent_when_given_one(env, monkeypatch):
+    """The seam that stops a test suite billing for model calls.
+
+    `_reconcile_plans` used to construct `CareAgent(AIGateway())` itself. The
+    gateway resolves its provider from configuration, so no dependency override
+    could reach it: running the scheduler suite and the e2e journeys made seventeen
+    real CARE calls on `claude-opus-5`, cost $1.11, and exhausted the Google quota
+    that a real user's next identification needed.
+    """
+    from app.orchestration.services import tick
+    from app.orchestration.workflows import care as care_workflow
+
+    sentinel = object()
+    seen: dict[str, object] = {}
+
+    def built() -> object:  # pragma: no cover - the point is that it is not called
+        raise AssertionError("the tick built its own agent instead of using the one passed")
+
+    def reconcile(*, executor, agent):
+        seen["agent"] = agent
+        return 2
+
+    monkeypatch.setattr(tick, "_default_care_agent", built)
+    monkeypatch.setattr(care_workflow, "reconcile_missing_plans", reconcile)
+
+    assert tick._reconcile_plans(sentinel) == 2  # type: ignore[arg-type]
+    assert seen["agent"] is sentinel

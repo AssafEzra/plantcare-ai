@@ -14,7 +14,12 @@ import pytest
 from pydantic import BaseModel, Field
 
 from app.common.enums import AgentRequestStatus, AgentType
-from app.common.errors import AgentError, AgentSchemaError, AgentTimeoutError
+from app.common.errors import (
+    AgentError,
+    AgentSchemaError,
+    AgentTimeoutError,
+    AgentUnavailableError,
+)
 from app.infrastructure.ai.gateway import AIGateway
 from app.infrastructure.ai.mock_provider import MockProvider
 from app.infrastructure.ai.prompts import Prompt
@@ -353,6 +358,52 @@ def test_a_persistent_outage_fails_without_exhausting_the_schema_budget(env, mon
         run(gateway(provider))
 
     assert provider.call_count == 3
+
+
+def test_an_exhausted_outage_is_reported_as_unavailable_not_as_a_bare_failure(env, monkeypatch):
+    """The distinction has to survive as far as the caller.
+
+    "The service is busy, try again in a few minutes" and "something went wrong"
+    are different instructions to a user, and the gateway is the only thing that
+    knows which happened. Raising a bare `AgentError` here threw that away, and the
+    identification screen - having nothing to go on - told users their photographs
+    were inadequate for a call that was refused on quota before anything looked at
+    them.
+    """
+    from app.infrastructure.ai.provider import ProviderUnavailableError
+
+    monkeypatch.setattr("app.infrastructure.ai.gateway.time.sleep", lambda _s: None)
+    provider = MockProvider([ProviderUnavailableError("google returned 429: quota")] * 4)
+
+    with pytest.raises(AgentUnavailableError) as raised:
+        run(gateway(provider))
+
+    assert raised.value.code == "AGENT_UNAVAILABLE"
+
+
+def test_a_permanent_provider_error_is_not_reported_as_unavailable(env):
+    """The other direction, which is what makes the distinction worth anything.
+
+    A 400 is our fault, not the vendor's capacity, and telling the user to wait a
+    few minutes would send them back to a failure that cannot clear.
+    """
+    provider = MockProvider([ProviderError("google returned 400: bad schema")])
+
+    with pytest.raises(AgentError) as raised:
+        run(gateway(provider))
+
+    assert not isinstance(raised.value, AgentUnavailableError)
+    assert raised.value.code == "AGENT_FAILED"
+
+
+def test_an_exhausted_schema_budget_is_not_reported_as_unavailable(env):
+    """A malformed response means the vendor answered. Waiting will not help."""
+    provider = MockProvider([{"species": "x"}] * 3)
+
+    with pytest.raises(AgentSchemaError) as raised:
+        run(gateway(provider))
+
+    assert not isinstance(raised.value, AgentUnavailableError)
 
 
 def test_a_permanent_provider_error_is_still_not_retried(env):

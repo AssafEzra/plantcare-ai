@@ -224,6 +224,58 @@ def test_a_timeout_produces_a_failed_result(env):
     assert identify(agent).status is IdentificationStatus.FAILED
 
 
+# --- which failure it was (and never blaming the photographs) -------------------
+#
+# Reported from real use: an identification failed on a Google 429 and the user was
+# told "we could not identify the plant from these photographs. More or clearer
+# photographs would help." Nothing had looked at the photographs.
+
+
+def test_an_unavailable_vendor_is_reported_as_unavailable(env, monkeypatch):
+    from app.infrastructure.ai.provider import ProviderUnavailableError
+
+    monkeypatch.setattr("app.infrastructure.ai.gateway.time.sleep", lambda _s: None)
+    agent, _ = agent_with(*[ProviderUnavailableError("google returned 429: quota")] * 3)
+
+    result = identify(agent)
+
+    assert result.status is IdentificationStatus.FAILED
+    assert result.error_code == "AGENT_UNAVAILABLE"
+
+
+def test_any_other_failure_stays_a_plain_agent_failure(env):
+    """The distinction has to be real in both directions, or it means nothing."""
+    agent, _ = agent_with({"bad": 1}, {"bad": 2}, {"bad": 3})
+
+    assert identify(agent).error_code == "AGENT_SCHEMA_INVALID"
+
+
+def test_a_failed_run_never_asks_for_more_photographs(env, monkeypatch):
+    """The agent did not look at them, so it cannot have an opinion about them.
+
+    `request_more_photos` is what the confirmation screen keys its photograph
+    prompt on, and a FAILED run must leave it false for both kinds of failure.
+    """
+    from app.infrastructure.ai.provider import ProviderUnavailableError
+
+    monkeypatch.setattr("app.infrastructure.ai.gateway.time.sleep", lambda _s: None)
+
+    unavailable, _ = agent_with(*[ProviderUnavailableError("429")] * 3)
+    broken, _ = agent_with({"bad": 1}, {"bad": 2}, {"bad": 3})
+
+    for agent in (unavailable, broken):
+        result = identify(agent)
+        assert result.request_more_photos is False
+        assert "תמונות" not in (result.insufficient_reason or "")
+
+
+def test_a_model_that_answered_carries_no_error_code(env):
+    """`error_code` says "the vendor failed". A model that replied did not."""
+    agent, _ = agent_with(output())
+
+    assert identify(agent).error_code is None
+
+
 def test_a_malformed_response_is_retried_then_succeeds(env):
     agent, provider = agent_with({"nonsense": True}, output())
 

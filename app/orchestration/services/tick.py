@@ -21,6 +21,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from typing import TYPE_CHECKING
 
 from app.common.enums import PlantStatus, SystemEventType
 from app.config.logging import get_logger
@@ -31,6 +32,9 @@ from app.orchestration.services import scheduler
 from app.repositories import plants as plants_repo
 from app.repositories.base import rows
 from supabase import Client
+
+if TYPE_CHECKING:  # pragma: no cover - import cycle: the agent imports the gateway
+    from app.agents.care.agent import CareAgent
 
 log = get_logger(__name__)
 
@@ -50,7 +54,7 @@ class TickOutcome:
     emails_failed: int = 0
 
 
-def run_tick(*, now_utc: datetime) -> TickOutcome:
+def run_tick(*, now_utc: datetime, care_agent: CareAgent | None = None) -> TickOutcome:
     """One sweep across every user, under the service role.
 
     The ordering is load-bearing and unchanged from the endpoint it came from:
@@ -58,6 +62,13 @@ def run_tick(*, now_utc: datetime) -> TickOutcome:
     was restarted reads as failed on this tick rather than as still running for
     one more cycle, and the reminders go out *after* the sweep so they describe
     the state this run settled rather than the one it started from.
+
+    `care_agent` is the seam every other agent path already has, and it is here
+    because this one did not: `_reconcile_plans` built its own `CareAgent(AIGateway())`,
+    so a test that ran a tick made real, billable CARE calls that no dependency
+    override could reach. `tests/integration/test_scheduler.py` and the e2e journeys
+    made seventeen of them in one afternoon, and the quota they consumed then made
+    the next real identification fail. Production still passes nothing.
     """
     admin = service_client()
 
@@ -77,7 +88,7 @@ def run_tick(*, now_utc: datetime) -> TickOutcome:
     # PR 33, which releases plants from a background task with no request-scoped
     # executor to submit with). Both failures were invisible - the plant looked
     # active and correct and never reminded anybody of anything.
-    plans = _reconcile_plans()
+    plans = _reconcile_plans(care_agent)
 
     dispatched = notifications.dispatch_due(admin, now_utc=now_utc)
 
@@ -180,7 +191,7 @@ def _archive_abandoned_plants(admin: Client, *, now_utc: datetime) -> int:
         return 0
 
 
-def _reconcile_plans() -> int:
+def _reconcile_plans(care_agent: CareAgent | None) -> int:
     """Queue a first care plan for any ACTIVE plant that has none.
 
     Isolated from the rest of the sweep: this one starts model calls, so a
@@ -192,17 +203,33 @@ def _reconcile_plans() -> int:
     is waiting on it, and `reconcile_plans` caps how many it starts per run so a
     backlog drains over several ticks instead of opening twenty-five model calls
     at once.
+
+    The agent is taken from the caller when it offers one. Constructing it here
+    unconditionally was the only live-model path in the application that a test
+    could not substitute - the gateway resolves its provider from configuration, so
+    a scripted double had nowhere to go in.
     """
-    from app.agents.care.agent import CareAgent
-    from app.infrastructure.ai.gateway import AIGateway
     from app.orchestration.services.agent_requests import InlineExecutor
     from app.orchestration.workflows import care as care_workflow
 
     try:
         return care_workflow.reconcile_missing_plans(
             executor=InlineExecutor(),
-            agent=CareAgent(AIGateway()),
+            agent=care_agent if care_agent is not None else _default_care_agent(),
         )
     except Exception as exc:
         log.warning("scheduler.plan_reconcile_failed", error_type=type(exc).__name__)
         return 0
+
+
+def _default_care_agent() -> CareAgent:
+    """The production agent, built only when nobody supplied one.
+
+    Deferred to call time rather than resolved at import: the agent pulls in the
+    gateway, which imports every provider SDK, and the tick module is imported by
+    the API's startup path.
+    """
+    from app.agents.care.agent import CareAgent
+    from app.infrastructure.ai.gateway import AIGateway
+
+    return CareAgent(AIGateway())

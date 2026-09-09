@@ -26,6 +26,10 @@ delays the graceful failure the user is waiting for.
 
 Only the first kind advances `attempt`. That column is capped at 3 by a CHECK
 constraint, and a transient failure is not an attempt at producing a response.
+
+An exhausted transient budget raises `AgentUnavailableError` rather than a bare
+`AgentError`, so a caller can tell "the vendor would not serve this" from "the
+vendor served something wrong" and say the true thing to the user.
 """
 
 from __future__ import annotations
@@ -38,7 +42,12 @@ from uuid import UUID
 from pydantic import BaseModel
 
 from app.common.enums import AgentRequestStatus, AgentType
-from app.common.errors import AgentError, AgentSchemaError, AgentTimeoutError
+from app.common.errors import (
+    AgentError,
+    AgentSchemaError,
+    AgentTimeoutError,
+    AgentUnavailableError,
+)
 from app.config.logging import get_logger
 from app.config.settings import get_settings
 from app.infrastructure.ai.prompts import Prompt
@@ -305,7 +314,12 @@ class AIGateway:
                         agent_type=agent.value,
                         attempts=transient_failures,
                     )
-                    raise AgentError() from exc
+                    # Specifically unavailable, not generically failed. The caller
+                    # tells the user "the service is busy, try again shortly" on
+                    # this and "something went wrong" on everything else, and a
+                    # bare AgentError here erased that distinction - which is how a
+                    # quota refusal came to be reported as bad photographs.
+                    raise AgentUnavailableError() from exc
                 log.info(
                     "agent.unavailable_retrying",
                     agent_type=agent.value,

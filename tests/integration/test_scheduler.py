@@ -24,7 +24,11 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from fastapi.testclient import TestClient
 
+from app.agents.care.agent import CareAgent
+from app.api.routers.care import get_care_agent
 from app.common.enums import CareRuleActionType
+from app.infrastructure.ai.gateway import AIGateway
+from app.infrastructure.ai.mock_provider import MockProvider
 from tests.integration.conftest import delete_accounts, unique_species_name
 
 pytestmark = pytest.mark.integration
@@ -63,9 +67,25 @@ def admin_sdk(live_env):
 
 @pytest.fixture
 def api(live_env) -> Iterator[TestClient]:
+    """The app, with the one agent a tick can start replaced by a scripted double.
+
+    The tick reconciles missing care plans (A3), and until the agent became a
+    parameter of `run_tick` it built its own gateway - so this suite made real,
+    billable CARE calls on whatever `CARE_MODEL` happened to be, and no override
+    could reach them. Seventeen such calls in one afternoon cost $1.11 and
+    exhausted a quota that a real user's identification then needed.
+
+    Nothing here asserts on plan *content*; the double exists so the tick's
+    deterministic work - materialisation, the overdue sweep, reminders - can be
+    tested without a vendor.
+    """
     from app.api.main import create_app
 
-    with TestClient(create_app(), raise_server_exceptions=False) as client:
+    app = create_app()
+    app.dependency_overrides[get_care_agent] = lambda: CareAgent(
+        AIGateway(MockProvider(), record_executions=False)
+    )
+    with TestClient(app, raise_server_exceptions=False) as client:
         yield client
 
 

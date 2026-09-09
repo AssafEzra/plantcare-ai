@@ -22,10 +22,12 @@ from datetime import UTC, datetime
 from typing import Annotated, Any
 from uuid import UUID
 
-from fastapi import APIRouter, Body, Header, Query, Request
+from fastapi import APIRouter, Body, Depends, Header, Query, Request
 from pydantic import BaseModel, Field
 
+from app.agents.care.agent import CareAgent
 from app.api.dependencies import CurrentUserDep
+from app.api.routers.care import get_care_agent
 from app.api.schemas.common import DataEnvelope
 from app.common.enums import CareTaskStatus, PlantStatus
 from app.common.errors import ForbiddenError
@@ -239,9 +241,18 @@ def _due(task: dict[str, Any]) -> datetime:
     return parsed or datetime.now(UTC)
 
 
+# The one agent the tick can start. Imported rather than redefined, so a test
+# overrides `get_care_agent` once and every route that can reach a CARE call is
+# covered - which this one could not be at all until now: `_reconcile_plans` built
+# its own gateway, and running the scheduler suite made seventeen real, billable
+# calls that no override touched.
+CareAgentDep = Annotated[CareAgent, Depends(get_care_agent)]
+
+
 @router.post("/internal/tick", response_model=DataEnvelope[TickResponse])
 async def internal_tick(
     request: Request,
+    care_agent: CareAgentDep,
     secret: Annotated[str | None, Header(alias="X-Internal-Secret")] = None,
 ) -> DataEnvelope[TickResponse]:
     """Materialise near-term tasks and sweep overdue ones.
@@ -264,7 +275,7 @@ async def internal_tick(
     # The work itself lives in `orchestration.services.tick`, because the
     # in-process timer in `api.main` runs the same sweep and two copies of this
     # ordering would drift.
-    outcome = tick.run_tick(now_utc=datetime.now(UTC))
+    outcome = tick.run_tick(now_utc=datetime.now(UTC), care_agent=care_agent)
 
     return DataEnvelope(
         data=TickResponse(**asdict(outcome)),

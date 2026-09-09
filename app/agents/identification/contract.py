@@ -153,6 +153,13 @@ class IdentificationResult:
     image_quality: str | None = None
     request_more_photos: bool = False
     insufficient_reason: str | None = None
+    #: Why a FAILED run failed, as an `AgentError.code`. Absent on every status the
+    #: model actually produced - the model does not report on its own vendor - and
+    #: set only where the agent caught the failure. Orchestration copies it onto the
+    #: agent request so the screen can distinguish "the service is busy" from
+    #: "something went wrong"; the two need different words and one of them told
+    #: users their photographs were bad when the call was refused on quota.
+    error_code: str | None = None
 
     @property
     def primary(self) -> Candidate | None:
