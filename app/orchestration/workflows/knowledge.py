@@ -137,6 +137,45 @@ def start_research(
     )
 
 
+#: The statuses that mean "research is already under way, or its result is still
+#: waiting to be read". A draft in any of them is the one `_open_or_reuse_draft`
+#: would take over, so they are also the statuses that must block a second run
+#: being started from somewhere else.
+OPEN_DRAFT_STATUSES = (
+    KnowledgeDraftStatus.DRAFT,
+    KnowledgeDraftStatus.RESEARCHING,
+    KnowledgeDraftStatus.READY_FOR_REVIEW,
+)
+
+
+def open_draft(client: Client, *, species_id: UUID, language: str) -> Row | None:
+    """The species' draft that is still in play, if it has one.
+
+    Exists so a caller can find out *before* acting that research would take over
+    an existing draft rather than open a new one. `_open_or_reuse_draft` reuses
+    such a draft by design - that is what the retry control in the drafts tab
+    needs - but a caller starting research from the published catalogue is making
+    a different request, and reusing a `READY_FOR_REVIEW` draft there would
+    overwrite content nobody has read yet.
+
+    Matches the partial unique index in migration 0006, which is defined over
+    these same three statuses: at most one row can satisfy this query.
+
+    Deliberately not `DRAFT_COLUMNS`: the answer is "which draft, and in what
+    state", and selecting the whole row would fetch a fourteen-section article to
+    decide whether to refuse a request.
+    """
+    return first_row(
+        client.table("knowledge_drafts")
+        .select("id, status")
+        .eq("species_id", str(species_id))
+        .eq("language", language)
+        .in_("status", [s.value for s in OPEN_DRAFT_STATUSES])
+        .limit(1)
+        .execute()
+    )
+
+
 def _open_or_reuse_draft(admin: Client, species_id: UUID, language: str, initiated_by: UUID) -> Row:
     """The draft to research into.
 
@@ -622,6 +661,23 @@ def published_catalogue(client: Client, *, query: str | None = None) -> list[Row
         key = str(plant["species_id"])
         counts[key] = counts.get(key, 0) + 1
 
+    # Which of these species already have research in play, keyed by species and
+    # language because a draft in Hebrew says nothing about an English article.
+    # The published screen offers a "research again" control per card, and without
+    # this it would offer it for a species whose draft is already open - which
+    # `_open_or_reuse_draft` would take over rather than duplicate, overwriting a
+    # draft awaiting review. See `open_draft`.
+    open_drafts = {
+        (str(draft["species_id"]), str(draft["language"])): str(draft["status"])
+        for draft in rows(
+            client.table("knowledge_drafts")
+            .select("species_id, language, status")
+            .in_("species_id", species_ids)
+            .in_("status", [s.value for s in OPEN_DRAFT_STATUSES])
+            .execute()
+        )
+    }
+
     catalogue = []
     for version in current:
         found = species.get(str(version["species_id"])) or {}
@@ -631,6 +687,9 @@ def published_catalogue(client: Client, *, query: str | None = None) -> list[Row
                 "scientific_name": found.get("scientific_name") or "",
                 "common_name": found.get("common_name"),
                 "plant_count": counts.get(str(version["species_id"]), 0),
+                "open_draft_status": open_drafts.get(
+                    (str(version["species_id"]), str(version["language"]))
+                ),
             }
         )
 

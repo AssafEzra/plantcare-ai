@@ -351,6 +351,65 @@ def render_version(version_id: str) -> None:
     render_sources(detail.get("sources") or [])
 
 
+def render_research_control(entry: dict[str, Any]) -> None:
+    """Start a fresh research run for a species whose article is already published.
+
+    Published knowledge had no route back into research: the retry control lives
+    on a draft, and an approved species has no open draft to press it on. This is
+    the screen where that judgement is formed - it shows the text, the version and
+    how many plants are reading it - so it is where the control belongs.
+
+    Folded into an expander rather than sitting beside "פתיחת הידע" because this
+    is a browsing screen where every article listed is working. Opening the
+    expander is the first half of the confirmation and typing a reason is the
+    second, which is the shape the rejection control already uses. The reason is
+    not a formality either: it reaches the agent, so a second attempt can address
+    the objection instead of reproducing the article that prompted it.
+    """
+    open_status = entry.get("open_draft_status")
+
+    with st.expander("מחקר חדש", icon=":material/refresh:"):
+        if open_status:
+            # The route refuses this with a 409. Saying so here means the
+            # administrator does not have to meet it, and names where the draft is.
+            label, _ = DRAFT_STATUS_LABELS.get(open_status, (open_status, "gray"))
+            st.info(
+                f"כבר קיימת טיוטה פתוחה למין הזה ({label}). אפשר לטפל בה בלשונית טיוטות ידע.",
+                icon=":material/hourglass_top:",
+            )
+            return
+
+        st.caption(
+            "מחקר חדש פותח טיוטה לבדיקה. הידע המפורסם נשאר פעיל עד שהטיוטה תאושר, "
+            "ואם היא תידחה לא ישתנה דבר. הרצה אחת אורכת כחמש דקות והיא היקרה ביותר "
+            "במערכת (כ־0.3$ על Opus)."
+        )
+        reason = st.text_input(
+            "סיבת המחקר (מועברת לסוכן)",
+            key=f"admin_research_reason_{entry['id']}",
+            placeholder="למשל: הפרק על השקיה שגוי",
+        )
+        if st.button(
+            "התחלת מחקר",
+            key=f"admin_research_{entry['id']}",
+            icon=":material/science:",
+            disabled=not reason.strip(),
+        ):
+            try:
+                post(
+                    f"/v1/admin/species/{entry['species_id']}/knowledge/research",
+                    json={"reason": reason.strip(), "language": entry["language"]},
+                )
+                flash(
+                    "המחקר יצא לדרך. הטיוטה תופיע בלשונית טיוטות ידע כשיסתיים.",
+                    kind="info",
+                    icon=":material/hourglass_top:",
+                )
+                st.rerun()
+            except ApiError as exc:
+                show_error(exc)
+
+
 with published_tab:
     if st.session_state.get(OPEN_VERSION):
         render_version(st.session_state[OPEN_VERSION])
@@ -391,6 +450,7 @@ with published_tab:
                         f"פורסם {str(entry.get('published_at') or '')[:10]} · "
                         f"{entry.get('plant_count', 0)} צמחים"
                     )
+                    render_research_control(entry)
 
             with st.expander("היסטוריית גרסאות לפי מזהה מין", icon=":material/history:"):
                 species_id = st.text_input(

@@ -25,7 +25,10 @@ class Table:
     def __init__(self, store: dict[str, list[dict]], name: str):
         self.store, self.name = store, name
         self._eq: dict[str, Any] = {}
-        self._in: tuple[str, list] | None = None
+        # A list, not one pair: the open-draft read filters on species *and* on
+        # status, and a stub that kept only the last `in_` would silently drop the
+        # species filter and answer with every open draft in the store.
+        self._in: list[tuple[str, list[str]]] = []
 
     def select(self, *_a: Any, **_k: Any) -> Table:
         return self
@@ -35,7 +38,7 @@ class Table:
         return self
 
     def in_(self, column: str, values: list) -> Table:
-        self._in = (column, [str(v) for v in values])
+        self._in.append((column, [str(v) for v in values]))
         return self
 
     def order(self, *_a: Any, **_k: Any) -> Table:
@@ -47,8 +50,7 @@ class Table:
             for row in self.store.get(self.name, [])
             if all(str(row.get(k)) == str(v) for k, v in self._eq.items())
         ]
-        if self._in:
-            column, values = self._in
+        for column, values in self._in:
             found = [row for row in found if str(row.get(column)) in values]
         return type("R", (), {"data": found})()
 
@@ -103,6 +105,18 @@ def client(env):
                 {"species_id": SPECIES_A},
                 {"species_id": SPECIES_A},
                 {"species_id": SPECIES_B},
+            ],
+            "knowledge_drafts": [
+                # A draft nobody has reviewed yet. Research started from the
+                # published card would take this row over and overwrite it.
+                {
+                    "id": "d-a",
+                    "species_id": SPECIES_A,
+                    "language": "he",
+                    "status": "READY_FOR_REVIEW",
+                },
+                # The draft that produced B's published article. Finished, not open.
+                {"id": "d-b", "species_id": SPECIES_B, "language": "he", "status": "APPROVED"},
             ],
         }
     )
@@ -159,3 +173,33 @@ def test_an_empty_catalogue_is_not_an_error(env):
     from app.orchestration.workflows import knowledge
 
     assert knowledge.published_catalogue(Client({"knowledge_versions": []})) == []
+
+
+def test_a_species_with_an_open_draft_is_marked_as_such(client):
+    """So the published card can refuse research instead of destroying a draft.
+
+    `_open_or_reuse_draft` takes an open draft over rather than duplicating it,
+    and `execute_research` overwrites `content` in place with no history behind
+    it. The route refuses that with a 409; this field is what lets the screen say
+    so before an administrator presses anything.
+    """
+    from app.orchestration.workflows import knowledge
+
+    by_species = {e["species_id"]: e for e in knowledge.published_catalogue(client)}
+
+    assert by_species[SPECIES_A]["open_draft_status"] == "READY_FOR_REVIEW"
+
+
+def test_an_approved_draft_does_not_count_as_open(client):
+    """Otherwise nothing published could ever be researched again.
+
+    Every published species has an approved draft behind it - that is what
+    publication produces - so treating APPROVED as "in play" would disable the
+    control on precisely the species it exists for. It matches the partial unique
+    index in migration 0006, which excludes APPROVED for the same reason.
+    """
+    from app.orchestration.workflows import knowledge
+
+    by_species = {e["species_id"]: e for e in knowledge.published_catalogue(client)}
+
+    assert by_species[SPECIES_B]["open_draft_status"] is None

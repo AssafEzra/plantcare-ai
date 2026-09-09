@@ -86,13 +86,17 @@ def page(monkeypatch: pytest.MonkeyPatch):
     settings_module.get_settings.cache_clear()
 
     def _build(
-        drafts: list[dict[str, Any]], sources: list[dict[str, Any]] | None = None
+        drafts: list[dict[str, Any]],
+        sources: list[dict[str, Any]] | None = None,
+        catalogue: list[dict[str, Any]] | None = None,
     ) -> AppTest:
         from app.ui.state import api_client
 
         def fake_get(path: str, **kwargs: Any) -> Any:
             if "knowledge-drafts" in path:
                 return drafts
+            if "knowledge-versions" in path:
+                return catalogue or []
             if "approved-sources" in path:
                 return sources or []
             if "agent-executions" in path:
@@ -330,3 +334,78 @@ def test_an_execution_with_no_recorded_cost_renders_instead_of_crashing(page) ->
     rendered = texts(app)
     assert "לא תועד" in rendered
     assert "$0.0000" not in rendered
+
+
+# --- published knowledge: starting a fresh research run ------------------------
+
+PUBLISHED: dict[str, Any] = {
+    "id": "33333333-3333-3333-3333-333333333333",
+    "species_id": "22222222-2222-2222-2222-222222222222",
+    "scientific_name": "Chlorophytum comosum",
+    "common_name": "כלורופיטום",
+    "language": "he",
+    "version_number": 1,
+    "published_at": "2026-09-05T10:00:00Z",
+    "plant_count": 4,
+    "open_draft_status": None,
+}
+
+
+def published(**overrides: Any) -> list[dict[str, Any]]:
+    return [{**PUBLISHED, **overrides}]
+
+
+def test_a_published_article_can_be_researched_again(page) -> None:
+    """The gap this screen had.
+
+    The only research control lived on a draft, and an approved species has no
+    open draft to press it on - so published knowledge, the thing every plant of
+    that species is reading, could not be improved from anywhere in the interface.
+    """
+    app = page([], catalogue=published())
+    app.run()
+
+    assert not app.exception
+    assert "מחקר חדש" in texts(app)
+
+
+def test_research_is_blocked_until_a_reason_is_given(page) -> None:
+    """The reason is the confirmation, and it is also cargo.
+
+    A run costs about $0.31 and five minutes, and this is a browsing screen where
+    every article listed is working - so a single click is the wrong shape. The
+    reason also reaches the agent, which is how a second attempt addresses the
+    objection rather than reproducing the article that prompted it.
+    """
+    app = page([], catalogue=published())
+    app.run()
+
+    start = [button for button in app.button if button.label == "התחלת מחקר"]
+    assert start, "the research button should be rendered"
+    assert start[0].disabled
+
+    app.text_input(key="admin_research_reason_" + PUBLISHED["id"]).set_value(
+        "הפרק על השקיה שגוי"
+    ).run()
+
+    start = [button for button in app.button if button.label == "התחלת מחקר"]
+    assert not start[0].disabled
+
+
+def test_a_species_with_an_open_draft_cannot_be_researched_again(page) -> None:
+    """Otherwise the click would overwrite a draft awaiting review.
+
+    `_open_or_reuse_draft` takes over an open draft rather than duplicating it,
+    and `execute_research` writes `content` in place with no history to recover
+    from - so a run started here against a READY_FOR_REVIEW draft would destroy
+    text nobody had read. The route refuses it with a 409; this is what stops an
+    administrator meeting one.
+    """
+    app = page([], catalogue=published(open_draft_status="READY_FOR_REVIEW"))
+    app.run()
+
+    assert not app.exception
+    rendered = texts(app)
+    assert "ממתין לבדיקה" in rendered
+    assert "טיוטות ידע" in rendered
+    assert not [button for button in app.button if button.label == "התחלת מחקר"]

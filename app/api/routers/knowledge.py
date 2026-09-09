@@ -28,7 +28,8 @@ from app.api.dependencies import AdminDep, CurrentUserDep
 from app.api.routers.care import CareAgentDep
 from app.api.schemas.common import DataEnvelope
 from app.common.enums import KnowledgeDraftStatus, KnowledgeSourceClass
-from app.common.errors import NotFoundError, ValidationFailedError
+from app.common.errors import ConflictError, NotFoundError, ValidationFailedError
+from app.config.settings import get_settings
 from app.domain.services import knowledge_content
 from app.infrastructure.ai.gateway import AIGateway
 from app.orchestration.services.agent_requests import BackgroundTasksExecutor
@@ -126,6 +127,11 @@ class CatalogueEntry(BaseModel):
     version_number: int
     published_at: datetime
     plant_count: int = 0
+    #: The species' draft that is still in play, if it has one. Present so the
+    #: published screen can refuse to start research that would take that draft
+    #: over; the 409 from the research route is the enforcement, this is what
+    #: stops an administrator meeting one.
+    open_draft_status: KnowledgeDraftStatus | None = None
 
 
 class VersionDetail(VersionSummary):
@@ -164,6 +170,22 @@ class RetryRequest(BaseModel):
     model_config = {"extra": "forbid"}
 
     reason: str | None = Field(default=None, max_length=1000)
+
+
+class ResearchRequest(BaseModel):
+    """Research a published species again.
+
+    The reason is required here, unlike on a draft retry. A retry follows a
+    rejection that already carries its own reason, whereas this starts from an
+    article nobody has objected to yet - so the reason is the only record of why
+    the run was worth $0.31, and it reaches the agent, which is how the second
+    attempt addresses the complaint instead of reproducing the first.
+    """
+
+    model_config = {"extra": "forbid"}
+
+    reason: str = Field(min_length=3, max_length=1000)
+    language: str | None = Field(default=None, max_length=8)
 
 
 class ReportRequest(BaseModel):
@@ -446,6 +468,73 @@ async def retry_knowledge_research(
         initiated_by=admin.id,
         reason=payload.reason,
         language=draft["language"],
+    )
+
+    BackgroundTasksExecutor(background).submit(
+        workflow.execute_research,
+        request_id=run.request_id,
+        draft_id=run.draft_id,
+        species_id=run.species_id,
+        language=run.language,
+        reason=payload.reason,
+        agent=agent,
+    )
+
+    return DataEnvelope(
+        data={"draft_id": str(run.draft_id), "agent_request_id": str(run.request_id)},
+        request_id=request.state.request_id,
+    )
+
+
+@router.post(
+    "/admin/species/{species_id}/knowledge/research",
+    response_model=DataEnvelope[dict],
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def research_published_species(
+    request: Request,
+    species_id: UUID,
+    payload: ResearchRequest,
+    admin: AdminDep,
+    background: BackgroundTasks,
+    agent: KnowledgeAgentDep,
+) -> DataEnvelope[dict]:
+    """Research a species again from the published catalogue.
+
+    Published knowledge had no way back into research. The retry control lives on
+    a draft, and a species whose article is approved has no open draft to press it
+    on - so the one screen showing what is actually live, and how many plants each
+    article serves, could not act on what it showed. Nothing in the domain
+    forbade it: `start_research` opens a fresh draft when the newest is approved,
+    and the partial unique index in migration 0006 excludes `APPROVED` precisely
+    so a new draft may coexist with a published version.
+
+    Keyed on the species rather than on a draft because `start_research` is
+    itself species-keyed. The draft-keyed retry route is the adapter; routing this
+    through a draft id would mean looking one up only to satisfy a URL.
+
+    The published version stays current throughout. This produces a draft, and
+    FINAL §11 leaves publication to an administrator.
+    """
+    language = payload.language or get_settings().default_content_language
+
+    # Refused rather than joined. `_open_or_reuse_draft` would take the open draft
+    # over, which is right for the drafts tab - a failed or rejected draft is
+    # exactly what a retry should reuse - but here it would overwrite a
+    # `READY_FOR_REVIEW` draft in place, and `knowledge_drafts.content` has no
+    # history to recover it from. The caller is told where that draft is instead.
+    existing = workflow.open_draft(admin.client, species_id=species_id, language=language)
+    if existing is not None:
+        raise ConflictError(
+            "כבר קיימת טיוטת מחקר פתוחה למין הזה. אפשר לטפל בה בלשונית טיוטות ידע.",
+            details={"draft_id": str(existing["id"]), "draft_status": str(existing["status"])},
+        )
+
+    run = workflow.start_research(
+        species_id=species_id,
+        initiated_by=admin.id,
+        reason=payload.reason,
+        language=language,
     )
 
     BackgroundTasksExecutor(background).submit(

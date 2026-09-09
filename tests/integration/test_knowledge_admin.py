@@ -584,3 +584,119 @@ def test_publication_writes_an_audit_entry(api, account, admin_sdk, species):
     assert entry["action"] == "knowledge.publish"
     assert entry["admin_user_id"] == admin_id
     assert entry["payload"]["version_number"] == 1
+
+
+# --- researching a species that is already published ----------------------------
+
+
+def test_a_published_species_can_be_researched_again(api, account, admin_sdk, species, scripted):
+    """The gap this route closes.
+
+    Re-researching an approved species was possible in the domain and unreachable
+    from the interface: `start_research` opens a fresh draft when the newest is
+    approved, and the partial unique index excludes APPROVED precisely so the two
+    may coexist - but the only control was bound to a draft id an approved species
+    does not usefully have.
+
+    What must stay true is that nothing published moves. This produces a draft;
+    FINAL §11 leaves publication to a person.
+    """
+    admin_id, admin_auth = account("ADMIN")
+    first_draft = researched_draft(admin_sdk, species["id"], uuid.UUID(admin_id))
+    approved = api.post(
+        f"/v1/admin/knowledge-drafts/{first_draft}/approve", headers=admin_auth, json={}
+    )
+    assert approved.status_code == 200
+    version_id = approved.json()["data"]["version_id"]
+
+    scripted.queue(KnowledgeOutput(content=content(), sources=[]))
+
+    response = api.post(
+        f"/v1/admin/species/{species['id']}/knowledge/research",
+        headers=admin_auth,
+        json={"reason": "הפרק על השקיה שגוי"},
+    )
+
+    assert response.status_code == 202
+    second_draft = response.json()["data"]["draft_id"]
+    assert second_draft != first_draft
+
+    # The approved draft is a historical record and is not reused.
+    old = admin_sdk.table("knowledge_drafts").select("status").eq("id", first_draft).execute()
+    assert old.data[0]["status"] == KnowledgeDraftStatus.APPROVED.value
+
+    # And the article every plant of this species is reading has not changed.
+    version = (
+        admin_sdk.table("knowledge_versions").select("is_current").eq("id", version_id).execute()
+    )
+    assert version.data[0]["is_current"] is True
+
+
+def test_research_is_refused_while_a_draft_is_open(api, account, admin_sdk, species, scripted):
+    """The test that stops a pending review being destroyed.
+
+    `_open_or_reuse_draft` takes an open draft over rather than duplicating it,
+    and `execute_research` overwrites `knowledge_drafts.content` in place - there
+    is no draft history to recover from, because only published versions are
+    immutable. So starting research here against a READY_FOR_REVIEW draft would
+    silently discard text an administrator was about to approve.
+    """
+    admin_id, admin_auth = account("ADMIN")
+    draft_id = researched_draft(admin_sdk, species["id"], uuid.UUID(admin_id))
+
+    response = api.post(
+        f"/v1/admin/species/{species['id']}/knowledge/research",
+        headers=admin_auth,
+        json={"reason": "עוד ניסיון"},
+    )
+
+    assert response.status_code == 409
+    # Not merely refused after the fact: the agent was never reached.
+    assert scripted.call_count == 0
+
+    draft = (
+        admin_sdk.table("knowledge_drafts")
+        .select("status, content")
+        .eq("id", draft_id)
+        .execute()
+        .data[0]
+    )
+    assert draft["status"] == KnowledgeDraftStatus.READY_FOR_REVIEW.value
+    assert draft["content"] is not None
+
+
+def test_the_draft_retry_path_still_reuses_a_failed_draft(
+    api, account, admin_sdk, species, scripted
+):
+    """Evidence the guard went into the route and not into `start_research`.
+
+    Reusing a failed or rejected draft is exactly what the drafts tab needs - it
+    is the path out of KNOWLEDGE_PENDING (A17). Had the refusal been added to the
+    workflow instead, this would now return 409 and the retry control would be
+    dead.
+    """
+    from app.orchestration.workflows import knowledge
+
+    admin_id, admin_auth = account("ADMIN")
+    run = knowledge.start_research(
+        species_id=uuid.UUID(species["id"]), initiated_by=uuid.UUID(admin_id)
+    )
+    admin_sdk.table("knowledge_drafts").update({"status": KnowledgeDraftStatus.FAILED.value}).eq(
+        "id", str(run.draft_id)
+    ).execute()
+
+    scripted.queue(KnowledgeOutput(content=content(), sources=[]))
+
+    response = api.post(
+        f"/v1/admin/knowledge-drafts/{run.draft_id}/retry",
+        headers=admin_auth,
+        json={"reason": "ניסיון נוסף"},
+    )
+
+    assert response.status_code == 202
+    assert response.json()["data"]["draft_id"] == str(run.draft_id)
+
+    drafts = (
+        admin_sdk.table("knowledge_drafts").select("id").eq("species_id", species["id"]).execute()
+    )
+    assert len(drafts.data) == 1
