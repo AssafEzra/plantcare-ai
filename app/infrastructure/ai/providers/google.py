@@ -32,6 +32,13 @@ from app.infrastructure.ai.provider import (
 
 # Our `effort` vocabulary onto Gemini's. Both are coarse levels rather than token
 # budgets, so this is a rename and not a judgement about equivalent spend.
+# Verified live on 2026-09-09: `gemini-3.7-flash`, `gemini-3.8-flash` and the
+# `gemini-flash-latest` alias reject MINIMAL with a 400 ("Thinking level MINIMAL is
+# not supported for this model"); LOW upward are accepted. `gemini-3.6-flash` and
+# the flash-lite models accept all four. Nothing in this application asks for
+# anything but "high" (`gateway.py`), so the gap is unreachable today - recorded
+# because a future caller lowering effort to save money would meet a 400 rather
+# than a cheaper call.
 _THINKING_LEVEL: dict[str, types.ThinkingLevel] = {
     "minimal": types.ThinkingLevel.MINIMAL,
     "low": types.ThinkingLevel.LOW,
@@ -55,23 +62,49 @@ class GoogleProvider:
 
     API_KEY_SETTING = "google_api_key"
 
-    # USD per million tokens, from Google's own API pricing page on 2026-09-08.
+    # USD per million tokens, Standard tier, read off Google's own API pricing
+    # page on 2026-09-09. Batch, Flex and Priority tiers cost less or more; this
+    # application makes ordinary synchronous calls, so Standard is the rate.
     #
-    # Two things to know before editing this table:
+    # Four things to know before editing this table:
     #
-    # 1. `gemini-3.8-flash` is $0.75/$3.75 only **through 31 Dec 2026**, then
-    #    $1.50/$7.50. It is left out rather than recorded with an expiry nobody
-    #    will remember; add it with a calendar reminder if you want it.
+    # 1. `gemini-3.6-flash`, `-3.7-flash` and `-3.8-flash` share a promotional
+    #    $0.75/$3.75 that holds **only through 31 Dec 2026** and then doubles to
+    #    $1.50/$7.50. Nothing here enforces that date, so on 1 Jan 2027 every
+    #    figure recorded for these three understates the bill by half until this
+    #    table is edited. That is the whole maintenance burden of this file.
     # 2. The Pro models are tiered - the rate below applies up to 200k input
     #    tokens and roughly doubles above it. The largest call this application
     #    has ever made is about 10k tokens (a three-image identification), so the
     #    low tier always applies. Recorded flat deliberately rather than building
     #    tier logic that nothing would exercise.
+    # 3. Several models list a separate, higher audio input rate. This
+    #    application sends text and images only, so the text/image/video rate is
+    #    the one recorded.
+    # 4. The moving aliases - `gemini-flash-latest`, `gemini-flash-lite-latest`,
+    #    `gemini-pro-latest` - are deliberately absent. They resolve to whichever
+    #    model Google currently points them at, so any price written here would
+    #    silently become wrong the next time Google moves one. They still work as
+    #    model strings; their calls record an unknown cost, which is the honest
+    #    answer for a model whose identity is not fixed.
+    #
+    # The 2.5 family is closed to API keys created after roughly mid-2026, which
+    # answer a generation request with "no longer available to new users". The
+    # prices stay because this table is a price lookup and not an availability
+    # check, and keys predating the cutoff still use them.
     PRICES: ClassVar[dict[str, ModelSpec]] = {
+        # 3.x - promotional through 31 Dec 2026, see note 1
+        "gemini-3.8-flash": ModelSpec(input=0.75, output=3.75),
+        "gemini-3.7-flash": ModelSpec(input=0.75, output=3.75),
+        "gemini-3.6-flash": ModelSpec(input=0.75, output=3.75),
+        # 3.x - standing prices
+        "gemini-3.5-flash": ModelSpec(input=1.50, output=9.00),
+        "gemini-3.5-flash-lite": ModelSpec(input=0.30, output=2.50),
+        "gemini-3.1-flash-lite": ModelSpec(input=0.25, output=1.50),
         "gemini-3.1-pro-preview": ModelSpec(input=2.00, output=12.00),
+        # 2.5 - see the closing note above
         "gemini-2.5-pro": ModelSpec(input=1.25, output=10.00),
         "gemini-2.5-flash": ModelSpec(input=0.30, output=2.50),
-        "gemini-3.5-flash-lite": ModelSpec(input=0.30, output=2.50),
         "gemini-2.5-flash-lite": ModelSpec(input=0.10, output=0.40),
     }
 

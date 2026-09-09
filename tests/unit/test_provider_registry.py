@@ -66,33 +66,32 @@ def test_an_unknown_provider_names_itself_in_the_error() -> None:
     assert "anthropic" in message
 
 
-def test_a_provider_is_constructible_when_its_key_is_present(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_a_provider_is_constructible_when_its_key_is_present(env) -> None:
+    env.setenv("ANTHROPIC_API_KEY", "sk-test-not-a-real-key")
     from app.config import settings as settings_module
 
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test-not-a-real-key")
     settings_module.get_settings.cache_clear()
-    try:
-        assert isinstance(provider_for("anthropic"), AnthropicProvider)
-    finally:
-        settings_module.get_settings.cache_clear()
+
+    assert isinstance(provider_for("anthropic"), AnthropicProvider)
 
 
-def test_a_missing_key_fails_at_construction_naming_the_variable(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Not mid-request. A configuration mistake should not cost a user a wait."""
+def test_a_missing_key_fails_at_construction_naming_the_variable(env) -> None:
+    """Not mid-request. A configuration mistake should not cost a user a wait.
+
+    Uses the `env` fixture rather than a bare `monkeypatch` for the reason its own
+    docstring gives: `delenv` alone does not stop pydantic-settings reading `.env`,
+    so on a machine that has a real `GOOGLE_API_KEY` this test passed while
+    asserting nothing. It did exactly that until a key was added to a developer's
+    `.env` on 2026-09-09.
+    """
+    env.delenv("GOOGLE_API_KEY", raising=False)
     from app.config import settings as settings_module
 
-    monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
     settings_module.get_settings.cache_clear()
-    try:
-        with pytest.raises(ConfigurationError) as raised:
-            provider_for("google")
-        assert "GOOGLE_API_KEY" in str(raised.value)
-    finally:
-        settings_module.get_settings.cache_clear()
+
+    with pytest.raises(ConfigurationError) as raised:
+        provider_for("google")
+    assert "GOOGLE_API_KEY" in str(raised.value)
 
 
 def test_only_the_providers_package_imports_a_vendor_sdk() -> None:
