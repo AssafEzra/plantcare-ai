@@ -616,7 +616,14 @@ with monitoring_tab:
     if only_failures:
         execution_params["status"] = "FAILED"
 
-    executions = guarded(lambda: cached_get("/v1/admin/agent-executions", params=execution_params))
+    # `get`, not `cached_get`. Everything else on this page may be five minutes
+    # stale without harm - it changes when an administrator changes it, and a write
+    # clears the cache on the way out. This screen is the exception: it reports on
+    # work happening elsewhere, on its own schedule, which no local write
+    # invalidates. Served from the cache it showed an administrator the state from
+    # before the research they had just started, and the reasonable conclusion was
+    # that the request had never been made.
+    executions = guarded(lambda: get("/v1/admin/agent-executions", params=execution_params))
     if executions is not None:
         if not executions:
             st.caption("אין הרצות להצגה.")
@@ -658,7 +665,8 @@ with monitoring_tab:
     if st.toggle("רק כשלים", key="admin_only_failed_requests"):
         request_params["status"] = "FAILED"
 
-    requests = guarded(lambda: cached_get("/v1/admin/agent-requests", params=request_params))
+    # Live, for the same reason as the executions above.
+    requests = guarded(lambda: get("/v1/admin/agent-requests", params=request_params))
     if requests is not None:
         if not requests:
             st.caption("אין בקשות להצגה.")

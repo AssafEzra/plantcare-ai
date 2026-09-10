@@ -409,3 +409,81 @@ def test_a_species_with_an_open_draft_cannot_be_researched_again(page) -> None:
     assert "ממתין לבדיקה" in rendered
     assert "טיוטות ידע" in rendered
     assert not [button for button in app.button if button.label == "התחלת מחקר"]
+
+
+def test_the_monitoring_tab_reads_live_rather_than_from_a_cache(monkeypatch) -> None:
+    """Agent monitoring must show the present, not a five-minute-old snapshot.
+
+    Reported: an administrator started a research run, switched to ניטור סוכנים and
+    could not find it, and reasonably concluded the request had never been made. It
+    had - it was already recorded, and had already failed on a vendor 503. The screen
+    was serving a cached read taken before the run existed.
+
+    Everything else on this page is fine cached: it changes when an administrator
+    changes it, and a write clears the cache on the way out. This screen is the one
+    exception, because it reports on work happening elsewhere on its own schedule,
+    which no local write invalidates.
+
+    Asserted as behaviour rather than by inspecting which function is called: render,
+    change what the server would say, render again, and require the second answer.
+    """
+    for key, value in REQUIRED_ENV.items():
+        monkeypatch.setenv(key, value)
+    monkeypatch.setenv("APP_ENV", "test")
+
+    from app.config import settings as settings_module
+
+    monkeypatch.setitem(settings_module.Settings.model_config, "env_file", None)
+    settings_module.get_settings.cache_clear()
+
+    from app.ui.state import api_client
+
+    def agent_request(agent_type: str) -> dict[str, Any]:
+        return {
+            "id": "00000000-0000-0000-0000-000000000003",
+            "user_id": "00000000-0000-0000-0000-000000000004",
+            "plant_id": None,
+            "agent_type": agent_type,
+            "status": "PROCESSING",
+            "stage": "ANALYZING",
+            "error_code": None,
+            "created_at": "2026-09-10T06:42:21+00:00",
+        }
+
+    # What the server would return, changed between the two renders.
+    live: list[dict[str, Any]] = []
+
+    def fake_get(path: str, **kwargs: Any) -> Any:
+        if "agent-requests" in path:
+            return list(live)
+        if "agent-executions" in path:
+            return []
+        if path.endswith("/overview"):
+            return {
+                "window_days": 7,
+                "drafts_awaiting_review": 0,
+                "open_knowledge_reports": 0,
+                "failed_agent_requests": 0,
+                "failed_notifications": 0,
+                "agent_stats": [],
+                "total_estimated_cost": 0.0,
+            }
+        return []
+
+    monkeypatch.setattr(api_client, "get", fake_get)
+
+    first = AppTest.from_file(PAGE, default_timeout=30).run()
+    assert not first.exception, [str(e) for e in first.exception]
+    assert "KNOWLEDGE" not in texts(first)
+
+    # The administrator starts a research run somewhere else - or, as here, the
+    # server simply learns something new between two visits to the screen.
+    live.append(agent_request("KNOWLEDGE"))
+
+    second = AppTest.from_file(PAGE, default_timeout=30).run()
+
+    assert not second.exception, [str(e) for e in second.exception]
+    assert "KNOWLEDGE" in texts(second), (
+        "the monitoring tab served a stale read: a request the server already had "
+        "was invisible to the administrator looking for it"
+    )
