@@ -168,3 +168,138 @@ def test_signing_out_clears_the_browser_copy(session):
     assert not session.module.is_signed_in()
     assert {"op": "clear"} in session.calls
     assert session.cookie["value"] is None
+
+
+# --- a stored token the refresh rejects ----------------------------------------
+#
+# Reported from the deployed app: returning to it after it had been idle raised
+# `StreamlitDuplicateElementKey` instead of showing the sign-in form, and Rerun was
+# the only way past - after which the next visit did it again.
+#
+# `restore()` reads the token and then clears it in the same script pass, and every
+# operation mounted under one element key. Idle was the trigger because that is
+# exactly when a stored token has expired. The fixture above cannot reach it: it
+# replaces `read`/`write`/`clear`, so nothing ever mounts.
+#
+# This drives the real store against a double for the browser, which is the only
+# arrangement in which the crash can happen at all.
+
+
+@pytest.fixture
+def real_store(monkeypatch: pytest.MonkeyPatch):
+    for key, value in REQUIRED_ENV.items():
+        monkeypatch.setenv(key, value)
+    monkeypatch.setenv("APP_ENV", "test")
+
+    from app.config import settings as settings_module
+
+    monkeypatch.setitem(settings_module.Settings.model_config, "env_file", None)
+    settings_module.get_settings.cache_clear()
+
+    import streamlit as st
+
+    from app.ui.components import session_store
+    from app.ui.state import session as session_module
+
+    state: dict = {}
+    for module in (st, session_module.st, session_store.st):
+        monkeypatch.setattr(module, "session_state", state, raising=False)
+    # Empty, as on Community Cloud - which is what sends `read()` to the component.
+    monkeypatch.setattr(session_store.st, "context", SimpleNamespace(cookies={}), raising=False)
+
+    jar: dict[str, str | None] = {"cookie": None}
+    keys: list[str] = []
+
+    def mount(*, data, key, height, on_token_change):
+        if key in keys:
+            raise RuntimeError(f"StreamlitDuplicateElementKey: {key}")
+        keys.append(key)
+        op = data["op"]
+        if op == "save" and data["token"]:
+            jar["cookie"] = data["token"]
+        elif op == "clear":
+            jar["cookie"] = None
+        return SimpleNamespace(token=jar["cookie"] if jar["cookie"] is not None else "")
+
+    monkeypatch.setattr(session_store, "_renderer", lambda: mount)
+    return SimpleNamespace(
+        module=session_module, jar=jar, keys=keys, state=state, monkeypatch=monkeypatch
+    )
+
+
+def test_an_expired_token_signs_the_user_out_instead_of_crashing(real_store):
+    """The whole reported bug, at the level the user met it."""
+    from app.ui.state import session as session_module
+
+    real_store.jar["cookie"] = "expired-refresh-token"
+    real_store.monkeypatch.setattr(
+        session_module,
+        "_client",
+        lambda: SimpleNamespace(
+            auth=SimpleNamespace(
+                refresh_session=lambda _t: (_ for _ in ()).throw(RuntimeError("token expired"))
+            )
+        ),
+    )
+
+    assert real_store.module.restore() is None
+    assert not real_store.module.is_signed_in()
+
+
+def test_and_the_rejected_token_is_gone_afterwards(real_store):
+    """Why it recurred rather than happening once: the crash came before the clear
+    ran, so the token survived and every later visit repeated it."""
+    from app.ui.state import session as session_module
+
+    real_store.jar["cookie"] = "expired-refresh-token"
+    real_store.monkeypatch.setattr(
+        session_module,
+        "_client",
+        lambda: SimpleNamespace(
+            auth=SimpleNamespace(
+                refresh_session=lambda _t: (_ for _ in ()).throw(RuntimeError("token expired"))
+            )
+        ),
+    )
+
+    real_store.module.restore()
+
+    assert real_store.jar["cookie"] is None
+
+
+def test_a_refresh_that_returns_nothing_is_handled_the_same_way(real_store):
+    """The other rejection branch, which had the identical collision."""
+    from app.ui.state import session as session_module
+
+    real_store.jar["cookie"] = "stale-refresh-token"
+    real_store.monkeypatch.setattr(
+        session_module,
+        "_client",
+        lambda: SimpleNamespace(
+            auth=SimpleNamespace(refresh_session=lambda _t: SimpleNamespace(session=None))
+        ),
+    )
+
+    assert real_store.module.restore() is None
+    assert real_store.jar["cookie"] is None
+
+
+def test_a_valid_stored_token_still_restores(real_store):
+    """The fix must not cost the component the thing it exists for."""
+    from app.ui.state import session as session_module
+
+    real_store.jar["cookie"] = "good-refresh-token"
+    real_store.monkeypatch.setattr(
+        session_module,
+        "_client",
+        lambda: SimpleNamespace(
+            auth=SimpleNamespace(
+                refresh_session=lambda _t: SimpleNamespace(session=supabase_session())
+            )
+        ),
+    )
+
+    restored = real_store.module.restore()
+
+    assert restored is not None
+    assert restored.user_id == "user-1"

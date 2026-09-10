@@ -58,6 +58,20 @@ COOKIE_NAME = "pc_refresh_token"
 # the project's plan does not allow that setting, this constant is the whole of it.
 MAX_AGE_SECONDS = 60 * 60 * 12
 
+# Per *operation*, not one key for all three. Two operations can run in a single
+# script pass - `restore()` reads the stored token and then clears it when the
+# refresh is rejected - and a shared key made that pair a
+# `StreamlitDuplicateElementKey` rather than a sign-out.
+#
+# It broke exactly when it mattered least visibly and most often: an idle app is
+# precisely when the stored token has expired, so returning to one raised on every
+# visit. Worse, the exception came *before* the clear's JavaScript ran, so the token
+# it was trying to remove survived and the next visit did the same thing. The
+# failure preserved its own cause; only pressing Rerun got past it, because the
+# "already tried" flag is set before the crash.
+#
+# `restore()` also writes a pending token and then reads, on a rarer path. Keying on
+# the operation fixes that one too, rather than only the reported pair.
 _MOUNT_KEY = "pc_session_store"
 
 # How many reruns to wait for the browser to report its cookie before giving up
@@ -116,10 +130,13 @@ def _mount(op: str, token: str | None):
 
     `on_token_change` is passed so `result.token` always exists; without a
     callback the attribute is absent until the value changes.
+
+    The key carries the operation, so a pass that both reads and clears mounts two
+    distinct elements instead of the same one twice. See `_MOUNT_KEY`.
     """
     return _renderer()(
         data={"op": op, "token": token},
-        key=_MOUNT_KEY,
+        key=f"{_MOUNT_KEY}_{op}",
         height=0,
         on_token_change=lambda: None,
     )

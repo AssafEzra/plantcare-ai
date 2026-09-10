@@ -101,3 +101,95 @@ def test_the_cookie_lives_twelve_hours_and_the_js_carries_it():
 
     assert session_store.MAX_AGE_SECONDS == 60 * 60 * 12
     assert f"max-age={session_store.MAX_AGE_SECONDS}" in session_store._JS
+
+
+# --- two operations in one script pass -----------------------------------------
+#
+# Reported from the deployed app: `StreamlitDuplicateElementKey` on every visit
+# after it had been idle, clearable only with Rerun, and then back again.
+#
+# `restore()` reads the stored token and, when the refresh rejects it, clears it -
+# both in one script pass. Every operation mounted under one key, so the pair was a
+# duplicate element rather than a sign-out. Idle was the trigger because that is
+# exactly when a stored token has expired.
+#
+# The tests above cannot see any of this: they replace `_mount` outright. These
+# drive the real one, against a double that emulates the two things Streamlit and
+# the browser actually do - refuse a repeated key within a pass, and run the
+# component's cookie script.
+
+
+class DuplicateKeyError(RuntimeError):
+    """Stands in for `StreamlitDuplicateElementKey`."""
+
+
+@pytest.fixture
+def browser(monkeypatch: pytest.MonkeyPatch):
+    import streamlit as st
+
+    from app.ui.components import session_store
+
+    state: dict = {}
+    monkeypatch.setattr(st, "session_state", state, raising=False)
+    monkeypatch.setattr(session_store.st, "session_state", state, raising=False)
+    monkeypatch.setattr(session_store.st, "context", SimpleNamespace(cookies={}), raising=False)
+
+    jar: dict[str, str | None] = {"cookie": None}
+    keys: list[str] = []
+
+    def mount(*, data, key, height, on_token_change):
+        if key in keys:
+            raise DuplicateKeyError(key)
+        keys.append(key)
+
+        # What `_JS` does: act on the operation, then report whatever the browser
+        # holds afterwards - including "" for "asked, nothing there".
+        op = data["op"]
+        if op == "save" and data["token"]:
+            jar["cookie"] = data["token"]
+        elif op == "clear":
+            jar["cookie"] = None
+        return SimpleNamespace(token=jar["cookie"] if jar["cookie"] is not None else "")
+
+    monkeypatch.setattr(session_store, "_renderer", lambda: mount)
+    return SimpleNamespace(module=session_store, jar=jar, keys=keys, state=state)
+
+
+def test_each_operation_mounts_a_distinct_element(browser):
+    browser.module.write("refresh-1")
+    browser.module.read()
+    browser.module.clear()
+
+    assert len(set(browser.keys)) == 3, f"operations shared an element: {browser.keys}"
+
+
+def test_reading_then_clearing_in_one_pass_does_not_collide(browser):
+    """The reported crash, at its smallest. A rejected token is read and then
+    removed, and both happen before the script ends."""
+    browser.jar["cookie"] = "expired-token"
+
+    assert browser.module.read() == "expired-token"
+    browser.module.clear()  # raised a duplicate-key error before the fix
+
+    assert browser.jar["cookie"] is None
+
+
+def test_the_clear_actually_removes_the_token(browser):
+    """Why the failure repeated forever rather than once: the exception came before
+    the clear's script ran, so the token it was removing survived and the next visit
+    did the same thing."""
+    browser.jar["cookie"] = "expired-token"
+
+    browser.module.read()
+    browser.module.clear()
+
+    assert browser.jar["cookie"] is None, "the token that caused the failure survived it"
+
+
+def test_a_pending_write_followed_by_a_read_does_not_collide(browser):
+    """The same defect on a rarer path - `restore()` flushes a pending write before
+    reading. Fixed by the same change, and worth pinning so it is not re-introduced
+    by keying on anything narrower than the operation."""
+    browser.module.write("refresh-1")
+
+    assert browser.module.read() == "refresh-1"
