@@ -54,3 +54,62 @@ def test_the_guard_names_the_way_out(env):
     message = str(raised.value)
     assert "dependency_overrides" in message
     assert "'live'" in message
+
+
+# --- which vendor a live test may reach ------------------------------------------
+#
+# A standing instruction: real model calls in testing go through Google, and
+# specifically gemini-3.5-flash-lite, with no exceptions.
+#
+# The first version of this guard returned early for anything marked `live`, which
+# turned the marker into a way out of the rule rather than a declaration of intent.
+# `tests/agents/test_live_provider.py` - the one file that exists to spend money on a
+# real API - was still calling `claude-opus-5` a day after the rule was set, and the
+# enforcement everywhere else was decoration.
+#
+# These tests are marked `live` and make no call: they assert on what the guard does
+# with the vendor name, which is decided before any request is built.
+
+
+@pytest.mark.live
+def test_a_live_test_may_reach_google(env):
+    """The permitted path. A credential is needed only because `GoogleProvider`
+    checks for one at construction - no request is made here."""
+    env.setenv("GOOGLE_API_KEY", "google-key-for-tests")
+
+    from app.config import settings as settings_module
+
+    settings_module.get_settings.cache_clear()
+
+    from app.infrastructure.ai import gateway
+
+    provider = gateway.provider_for("google")
+
+    assert provider.__class__.__name__ == "GoogleProvider"
+
+
+@pytest.mark.live
+@pytest.mark.parametrize("vendor", ["anthropic", "openai"])
+def test_a_live_test_may_reach_nothing_else(env, vendor):
+    """Named vendors rather than "not google", because the rule names one vendor.
+    An openai call is exactly as much a mistake as an anthropic one."""
+    from app.infrastructure.ai import gateway
+
+    with pytest.raises(AssertionError) as raised:
+        gateway.provider_for(vendor)
+
+    message = str(raised.value)
+    assert vendor in message
+    assert "no exceptions" in message
+
+
+@pytest.mark.live
+def test_the_refusal_explains_the_rule_rather_than_only_refusing(env):
+    """A guard that says only "no" costs the next person an hour working out whether
+    they have hit a bug or a policy."""
+    from app.infrastructure.ai import gateway
+
+    with pytest.raises(AssertionError) as raised:
+        gateway.provider_for("anthropic")
+
+    assert "google" in str(raised.value)
