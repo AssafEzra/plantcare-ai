@@ -365,6 +365,24 @@ def _deliver(
         log.warning("notification.send_failed", delivery_id=delivery_id)
         return DispatchResult(failed=1)
 
+    if provider.suppresses:
+        # Nothing was delivered, so nothing is recorded as delivered. Writing
+        # SENT here - which is what this did - left the delivery log asserting
+        # four days of successful digests in an environment that had never been
+        # given a from-address, with `provider_message_id` NULL on every one of
+        # them. The log is read by the admin page and is the only evidence a user
+        # was told anything, so it has to distinguish "we sent this" from "we
+        # chose not to".
+        #
+        # The reservation row stays. Its dedupe key is what makes the suppression
+        # visible rather than silent, and re-sending on a later tick would be a
+        # different promise than the one §14 makes.
+        client.table("notification_deliveries").update(
+            {"status": NotificationDeliveryStatus.SKIPPED.value}
+        ).eq("id", delivery_id).execute()
+        log.info("notification.suppressed", delivery_id=delivery_id, provider=provider.name)
+        return DispatchResult(skipped=1)
+
     client.table("notification_deliveries").update(
         {
             "status": NotificationDeliveryStatus.SENT.value,

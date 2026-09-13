@@ -45,6 +45,14 @@ class EmailProvider(Protocol):
 
     name: str
 
+    #: Does `send()` deliberately not deliver?
+    #:
+    #: Declared rather than inferred from the return value, because a real
+    #: provider may also return None from a successful send - Resend does, when
+    #: its response carries no id - and a delivery row that says SENT for a
+    #: message nobody received is worse than no row at all.
+    suppresses: bool
+
     def send(self, message: EmailMessage) -> str | None:
         """Send, returning the provider's message id when it gives one.
 
@@ -64,6 +72,7 @@ class NullProvider:
     """
 
     name = "null"
+    suppresses = True
 
     def __init__(self) -> None:
         self.sent: list[EmailMessage] = []

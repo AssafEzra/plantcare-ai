@@ -25,6 +25,7 @@ _TIMEOUT = httpx.Timeout(15.0, connect=5.0)
 
 class ResendProvider:
     name = "resend"
+    suppresses = False
 
     def __init__(self, api_key: str | None = None, from_email: str | None = None) -> None:
         settings = get_settings()

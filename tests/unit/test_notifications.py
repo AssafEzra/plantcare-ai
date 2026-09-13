@@ -209,3 +209,72 @@ def test_a_send_failure_is_reported_not_raised():
     assert result.failed == 1
     assert recorder.updates[0]["status"] == "FAILED"
     assert "provider is down" in recorder.updates[0]["error_message"]
+
+
+class _UpdateRecorder:
+    """Captures the update a delivery row is given, without a database."""
+
+    def __init__(self) -> None:
+        self.updates: list[dict] = []
+
+    def table(self, _name):
+        return self
+
+    def update(self, changes):
+        self.updates.append(changes)
+        return self
+
+    def eq(self, *_args):
+        return self
+
+    def execute(self):
+        return type("R", (), {"data": []})()
+
+
+def test_a_suppressed_send_is_recorded_as_skipped_not_sent():
+    """The null provider delivers nothing, so nothing may claim it did.
+
+    Recording SENT here made the delivery log assert successful digests in every
+    environment without a from-address — the admin page and the user's own
+    history both read this table, and `provider_message_id` was NULL on all of
+    them.
+    """
+    recorder = _UpdateRecorder()
+    result = service._deliver(
+        recorder,
+        NullProvider(),
+        delivery_id="d1",
+        message=EmailMessage(to="a@example.com", subject="s", text_body="b"),
+        now_utc=datetime.now(UTC),
+    )
+
+    assert result.skipped == 1
+    assert result.sent == 0
+    assert recorder.updates[0]["status"] == "SKIPPED"
+    # No send happened, so there is no time at which one did.
+    assert "sent_at" not in recorder.updates[0]
+
+
+def test_a_real_send_is_still_recorded_as_sent():
+    """The guard keys off `suppresses`, not off a None return — Resend answers
+    None when its response carries no id, and that is a delivery."""
+
+    class Quiet:
+        name = "quiet"
+        suppresses = False
+
+        def send(self, message: EmailMessage) -> str | None:
+            return None
+
+    recorder = _UpdateRecorder()
+    result = service._deliver(
+        recorder,
+        Quiet(),
+        delivery_id="d1",
+        message=EmailMessage(to="a@example.com", subject="s", text_body="b"),
+        now_utc=datetime.now(UTC),
+    )
+
+    assert result.sent == 1
+    assert recorder.updates[0]["status"] == "SENT"
+    assert recorder.updates[0]["sent_at"] is not None

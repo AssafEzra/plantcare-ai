@@ -35,6 +35,7 @@ class Recorder:
     """A provider that records instead of sending."""
 
     name = "recorder"
+    suppresses = False
 
     def __init__(self, fail: bool = False) -> None:
         self.sent: list[EmailMessage] = []
