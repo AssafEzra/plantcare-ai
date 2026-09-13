@@ -18,6 +18,16 @@ REQUIRED_ENV = {
     "INTERNAL_TICK_INTERVAL_SECONDS": "0",
 }
 
+#: Optional integrations, removed rather than set.
+#:
+#: The tests that matter here assert the *absence* of configuration - that email
+#: degrades to `NullProvider` when Resend is unset - so a developer who has
+#: credentials in `.env` must not see them. Disabling `env_file` is not enough on
+#: its own: `tests/browser/conftest.py` copies a real `.env` into `os.environ`
+#: with `setdefault`, and the environment is read before any env file, so the
+#: values survive into every test that runs after it in the same process.
+OPTIONAL_ENV = ("RESEND_API_KEY", "RESEND_FROM_EMAIL")
+
 
 @pytest.fixture
 def env(monkeypatch: pytest.MonkeyPatch):
@@ -31,6 +41,8 @@ def env(monkeypatch: pytest.MonkeyPatch):
     """
     for key, value in REQUIRED_ENV.items():
         monkeypatch.setenv(key, value)
+    for key in OPTIONAL_ENV:
+        monkeypatch.delenv(key, raising=False)
     monkeypatch.setenv("APP_ENV", "test")
 
     from app.config import settings as settings_module
