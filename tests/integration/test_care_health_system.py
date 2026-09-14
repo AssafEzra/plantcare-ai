@@ -243,9 +243,19 @@ def test_only_one_pending_task_per_rule(db: psycopg.Connection, make_user):
         _task(db, user_id, plant_id, rule_id)
 
 
-def test_an_overdue_task_does_not_block_the_next_recurrence(db: psycopg.Connection, make_user):
-    """FINAL §13: a missed task becomes overdue, and the next recurrence remains
-    scheduled."""
+def test_an_overdue_task_blocks_the_next_recurrence_until_it_is_cancelled(
+    db: psycopg.Connection, make_user
+):
+    """FINAL §13: do not create an infinite backlog.
+
+    This asserted the opposite until migration 0016. The reasoning it encoded —
+    "a task that has gone OVERDUE is no longer PENDING, so the next recurrence
+    can still be scheduled" — is quoted in that migration as the thing being
+    fixed: a rule with no care events recomputes the same due date, so each tick
+    materialised a *copy* of the overdue task rather than a following
+    occurrence. The rule is freed by the overdue task becoming MISSED and
+    CANCELLED (A9), not by time passing.
+    """
     user_id = make_user()
     plant_id = _plant(db, user_id)
     rule_id = _rule(db, _version(db, _plan(db, user_id, plant_id), 1))
@@ -255,6 +265,14 @@ def test_an_overdue_task_does_not_block_the_next_recurrence(db: psycopg.Connecti
         "update public.care_tasks set status = 'OVERDUE', overdue_since = now() where id = %s",
         (first,),
     )
+
+    # A savepoint, or the violation aborts the transaction and the rest of this
+    # test cannot run.
+    with pytest.raises(psycopg.errors.UniqueViolation), db.transaction():
+        _task(db, user_id, plant_id, rule_id)
+
+    # Cancelling it is what re-opens the rule.
+    db.execute("update public.care_tasks set status = 'CANCELLED' where id = %s", (first,))
     second = _task(db, user_id, plant_id, rule_id)
 
     assert second != first

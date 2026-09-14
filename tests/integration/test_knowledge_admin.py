@@ -397,11 +397,19 @@ def test_a_plant_of_a_different_species_is_untouched(api, account, admin_sdk, sp
 # --- rejection (A17) -----------------------------------------------------------
 
 
-def test_rejecting_leaves_plants_pending_and_the_species_retriable(
+def test_rejecting_keeps_the_plants_active_and_the_species_retriable(
     api, account, admin_sdk, species, scripted
 ):
     """The failure the audit caught in the plan's first draft: A4 covered only
-    success, so a rejected draft stranded every plant waiting on it."""
+    success, so a rejected draft stranded every plant waiting on it.
+
+    Since PR 33 the plants no longer wait for review — research completing
+    releases them on provisional knowledge, so they are already ACTIVE by the
+    time an administrator rejects. Rejection is a verdict on the draft, not on
+    the plants: `knowledge.reject` deliberately leaves their care plans in place,
+    because a plant with no schedule at all is worse than one built on advice an
+    administrator disliked. What A17 still requires is that the species stays
+    retriable, which is what this asserts now."""
     from app.domain.rules.knowledge_lifecycle import is_retriable
 
     admin_id, admin_auth = account("ADMIN")
@@ -417,7 +425,7 @@ def test_rejecting_leaves_plants_pending_and_the_species_retriable(
 
     assert response.status_code == 200
     assert response.json()["data"]["status"] == KnowledgeDraftStatus.REJECTED.value
-    assert plant_status(admin_sdk, plant) == PlantStatus.KNOWLEDGE_PENDING.value
+    assert plant_status(admin_sdk, plant) == PlantStatus.ACTIVE.value
     assert is_retriable(KnowledgeDraftStatus.REJECTED)
 
     # And the path out actually works: retry re-opens research on the same draft.

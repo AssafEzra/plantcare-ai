@@ -48,6 +48,17 @@ def configure_logging(*, environment: str, debug: bool = False) -> None:
 
     logging.basicConfig(format="%(message)s", stream=sys.stdout, level=level, force=True)
 
+    # §9 forbids logging API keys. These libraries dump every HTTP/2 header frame
+    # at DEBUG, and `apikey` is not one of the names they treat as sensitive - so
+    # with `debug=True` the Supabase **service-role** key, which bypasses RLS
+    # entirely, is written out in full. Found in captured pytest output on
+    # 2026-09-14. `authorization` was redacted; `apikey` was not.
+    #
+    # Pinned rather than left to the root level, because the level is the very
+    # thing that turns the leak on.
+    for noisy in ("httpcore", "httpx", "hpack", "h2"):
+        logging.getLogger(noisy).setLevel(logging.WARNING)
+
     shared: list[Any] = [
         structlog.contextvars.merge_contextvars,
         structlog.stdlib.add_log_level,

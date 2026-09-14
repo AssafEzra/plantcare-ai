@@ -59,11 +59,25 @@ jobs:
       # A key is required for the app to boot; no test spends it, because every
       # agent is driven by a scripted provider and `-m "not live"` excludes the
       # one test that is not.
-      AI_API_KEY: ${{ secrets.AI_API_KEY }}
-      IDENTIFICATION_MODEL: claude-sonnet-5
-      KNOWLEDGE_MODEL: claude-sonnet-5
-      CARE_MODEL: claude-sonnet-5
-      HEALTH_MODEL: claude-sonnet-5
+      #
+      # Google, not Anthropic. Every real model call made while testing this
+      # project goes through google/gemini-3.5-flash-lite — no exceptions. These
+      # values were `claude-sonnet-5`, which was harmless only because this job
+      # has never run: the moment the DEV secrets below are configured, CI would
+      # have started booting against Anthropic. Safe-by-side-effect is not safe,
+      # and this is the same mistake `tests/agents/test_live_provider.py` made.
+      GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+      # The provider defaults are `anthropic` (app/config/settings.py:66-69), so
+      # naming Gemini models without these would boot the Anthropic provider
+      # holding a Gemini model name.
+      IDENTIFICATION_PROVIDER: google
+      KNOWLEDGE_PROVIDER: google
+      CARE_PROVIDER: google
+      HEALTH_PROVIDER: google
+      IDENTIFICATION_MODEL: gemini-3.5-flash-lite
+      KNOWLEDGE_MODEL: gemini-3.5-flash-lite
+      CARE_MODEL: gemini-3.5-flash-lite
+      HEALTH_MODEL: gemini-3.5-flash-lite
     steps:
       - uses: actions/checkout@v5
 
@@ -92,8 +106,17 @@ jobs:
       # comment above is right about. This stops short of honest - the overall tick
       # is still green - and the intended end state is that DEV credentials exist
       # and a skip here becomes a real failure. See FINAL §21 on PR 24.
+      #
+      # 2026-09-14: the cost of the half-measure came due. Running this suite by
+      # hand for the first time found three tests asserting behaviour that later
+      # migrations had deliberately reversed - they had been failing since the day
+      # those migrations landed, under a green tick. `REQUIRE_INTEGRATION_TESTS`
+      # is the switch to the intended end state: set it to "true" as a repository
+      # *variable* once the secrets exist, and a skip becomes a failure.
       - name: Check for DEV credentials
         id: creds
+        env:
+          REQUIRE_INTEGRATION_TESTS: ${{ vars.REQUIRE_INTEGRATION_TESTS }}
         run: |
           if [ -n "$SUPABASE_URL" ] && [ -n "$SUPABASE_DB_PASSWORD" ]; then
             echo "available=true" >> "$GITHUB_OUTPUT"
@@ -110,6 +133,10 @@ jobs:
               echo "These tests exist and pass; they are run by hand against DEV."
             } >> "$GITHUB_STEP_SUMMARY"
             echo "available=false" >> "$GITHUB_OUTPUT"
+            if [ "${REQUIRE_INTEGRATION_TESTS}" = "true" ]; then
+              echo "::error title=Integration tests are required::REQUIRE_INTEGRATION_TESTS is set but the DEV credentials are missing, so nothing was verified."
+              exit 1
+            fi
           fi
 
       - name: Integration, journeys and the RLS matrix

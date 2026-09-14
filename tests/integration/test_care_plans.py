@@ -334,17 +334,14 @@ def test_approving_cancels_the_old_versions_pending_tasks(api, planted, scripted
 
     rule_id = first["rules"][0]["id"]
     now = datetime.now(UTC)
+    # Activation already materialised the open task for this rule, and
+    # `care_tasks_one_open_per_rule` (migration 0016) permits exactly one. This
+    # inserted a second PENDING row until that index covered OVERDUE as well.
     pending = (
         admin_sdk.table("care_tasks")
-        .insert(
-            {
-                "user_id": planted["user_id"],
-                "plant_id": planted["plant_id"],
-                "care_rule_id": rule_id,
-                "due_at_utc": (now + timedelta(days=1)).isoformat(),
-                "status": "PENDING",
-            }
-        )
+        .select("id, status")
+        .eq("care_rule_id", rule_id)
+        .in_("status", ["PENDING", "OVERDUE"])
         .execute()
         .data[0]
     )
