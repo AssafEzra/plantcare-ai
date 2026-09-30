@@ -1,0 +1,98 @@
+/* Logical properties only. */
+
+.pc-plantcard {
+  display: flex;
+  gap: var(--pc-space-3);
+  padding: var(--pc-space-3);
+  background: var(--pc-surface);
+  border: 1px solid var(--pc-border);
+  border-radius: var(--pc-radius-card);
+  box-shadow: var(--pc-shadow-card);
+  color: var(--pc-text);
+  transition: border-color var(--pc-transition), box-shadow var(--pc-transition);
+}
+
+.pc-plantcard:hover {
+  text-decoration: none;
+  border-color: var(--pc-primary);
+  box-shadow: var(--pc-shadow-raised);
+}
+
+.pc-plantthumb {
+  flex: 0 0 auto;
+  inline-size: 72px;
+  block-size: 72px;
+  border-radius: var(--pc-radius-control);
+  overflow: hidden;
+  background: var(--pc-surface-alt);
+  display: grid;
+  place-items: center;
+}
+
+.pc-plantthumb img {
+  inline-size: 100%;
+  block-size: 100%;
+  object-fit: cover;
+}
+
+.pc-plantthumb-empty {
+  color: var(--pc-text-muted);
+  opacity: 0.55;
+}
+
+.pc-plantthumb-empty svg {
+  inline-size: 32px;
+  block-size: 32px;
+}
+
+.pc-plantbody {
+  min-inline-size: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--pc-space-1);
+}
+
+.pc-plantname {
+  margin: 0;
+  font-size: var(--pc-h4);
+  font-weight: var(--pc-h4-weight);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pc-plantspecies {
+  margin: 0;
+  color: var(--pc-text-muted);
+  font-size: var(--pc-h6);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pc-plantmeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--pc-space-1);
+  margin-block-start: 2px;
+}
+
+.pc-plantnext {
+  margin: 0;
+  color: var(--pc-text-muted);
+  font-size: var(--pc-h6);
+}
+
+/* --- grid ---------------------------------------------------------------- */
+
+.pc-plantgrid {
+  display: grid;
+  gap: var(--pc-space-3);
+  grid-template-columns: 1fr;
+}
+
+@media (min-width: 640px) {
+  .pc-plantgrid {
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  }
+}

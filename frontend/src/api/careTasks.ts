@@ -5,7 +5,7 @@
  * dashboard.
  */
 
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../lib/api'
 import { scoped } from '../lib/queryKeys'
 import { useAuth } from '../auth/context'
@@ -72,3 +72,33 @@ export function useDashboard() {
     enabled: Boolean(userId),
   })
 }
+
+/* --- actions -------------------------------------------------------------- */
+
+/* Streamlit re-ran the whole script after every interaction, so a completed task
+ * simply reappeared with its new status. React has to say so. Every mutation here
+ * invalidates the reads that the write can change — the dashboard (counts, today's
+ * list) and the plant list (each card shows its next task).
+ *
+ * The audit named this as a migration gap; forgetting it produces a screen that
+ * looks broken in a specific way: the press works, the row does not move.
+ *
+ * The body is `{}` rather than omitted. ActionRequest carries an optional note, and
+ * the Streamlit build hit a 422 on every press by sending nothing at all.
+ */
+function useTaskAction(action: 'done' | 'skip') {
+  const queryClient = useQueryClient()
+  const { userId } = useAuth()
+
+  return useMutation({
+    mutationFn: ({ taskId, note }: { taskId: string; note?: string }) =>
+      api.post(`/v1/care-tasks/${taskId}/${action}`, { json: note ? { note } : {} }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: scoped(userId, ['dashboard']) })
+      queryClient.invalidateQueries({ queryKey: scoped(userId, ['plants']) })
+    },
+  })
+}
+
+export const useCompleteTask = () => useTaskAction('done')
+export const useSkipTask = () => useTaskAction('skip')

@@ -14,6 +14,8 @@ import RequireAuth from './auth/RequireAuth'
 import Auth from './pages/Auth'
 import Placeholder from './pages/Placeholder'
 import Home from './pages/Home'
+import MyPlants from './pages/MyPlants'
+import Health from './pages/Health'
 import More from './pages/More'
 
 export default function App() {
@@ -25,11 +27,11 @@ export default function App() {
         <Route element={<AppShell />}>
           <Route index element={<Home />} />
           <Route path="plants">
-            <Route index element={<Placeholder title="הצמחים שלי" />} />
+            <Route index element={<MyPlants />} />
             <Route path="new" element={<Placeholder title="הוספת צמח" />} />
             <Route path=":plantId" element={<Placeholder title="הצמח שלי" />} />
           </Route>
-          <Route path="health" element={<Placeholder title="בריאות" />} />
+          <Route path="health" element={<Health />} />
           <Route path="more" element={<More />} />
           <Route path="settings" element={<Placeholder title="הגדרות" />} />
           <Route

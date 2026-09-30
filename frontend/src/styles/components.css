@@ -161,3 +161,72 @@
   color: var(--pc-primary);
   border-block-end-color: var(--pc-primary);
 }
+
+/* --- page furniture ------------------------------------------------------ */
+
+.pc-pagehead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--pc-space-3);
+  flex-wrap: wrap;
+  margin-block-end: var(--pc-space-4);
+}
+
+.pc-pagehead h1 {
+  margin: 0;
+}
+
+/* A link styled as a button needs the padding to apply to an inline element. */
+a.pc-btn {
+  display: inline-block;
+  text-decoration: none;
+}
+
+a.pc-btn:hover {
+  text-decoration: none;
+}
+
+.pc-filters {
+  display: grid;
+  gap: var(--pc-space-3);
+  grid-template-columns: 1fr;
+  margin-block-end: var(--pc-space-4);
+}
+
+@media (min-width: 640px) {
+  .pc-filters {
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  }
+}
+
+.pc-filter {
+  margin-block-end: 0;
+}
+
+.pc-linkbtn {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  color: var(--pc-primary);
+  font: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.pc-archivetoggle {
+  margin-block-start: var(--pc-space-5);
+  text-align: center;
+}
+
+.pc-sectionhead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--pc-space-3);
+  margin-block: var(--pc-space-5) var(--pc-space-3);
+}
+
+.pc-sectionhead h2 {
+  margin: 0;
+}

@@ -1,0 +1,37 @@
+/* Logical properties only. */
+
+.pc-async {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--pc-space-3);
+  padding: var(--pc-space-6) var(--pc-space-4);
+  color: var(--pc-text-muted);
+  text-align: center;
+}
+
+.pc-asyncempty {
+  background: var(--pc-surface);
+  border: 1px dashed var(--pc-border);
+  border-radius: var(--pc-radius-card);
+}
+
+.pc-spinner {
+  inline-size: 22px;
+  block-size: 22px;
+  border: 2px solid var(--pc-border);
+  border-block-start-color: var(--pc-primary);
+  border-radius: var(--pc-radius-pill);
+  animation: pc-spin 700ms linear infinite;
+}
+
+@keyframes pc-spin {
+  to { transform: rotate(360deg); }
+}
+
+.pc-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--pc-space-3);
+}

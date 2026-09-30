@@ -1,0 +1,22 @@
+/* Logical properties only. */
+
+.pc-statusbadge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--pc-space-1);
+  padding: 2px var(--pc-space-2);
+  border-radius: var(--pc-radius-pill);
+  font-size: var(--pc-h6);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.pc-statusglyph {
+  font-weight: 700;
+  line-height: 1;
+}
+
+.pc-tone-success { color: var(--pc-success); background: var(--pc-success-bg); }
+.pc-tone-warning { color: var(--pc-warning); background: var(--pc-warning-bg); }
+.pc-tone-danger  { color: var(--pc-danger);  background: var(--pc-danger-bg); }
+.pc-tone-neutral { color: var(--pc-neutral); background: var(--pc-neutral-bg); }
