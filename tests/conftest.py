@@ -26,7 +26,19 @@ REQUIRED_ENV = {
 #: its own: `tests/browser/conftest.py` copies a real `.env` into `os.environ`
 #: with `setdefault`, and the environment is read before any env file, so the
 #: values survive into every test that runs after it in the same process.
-OPTIONAL_ENV = ("RESEND_API_KEY", "RESEND_FROM_EMAIL")
+OPTIONAL_ENV = (
+    "RESEND_API_KEY",
+    "RESEND_FROM_EMAIL",
+    # Same reasoning, found the same way: `test_the_provider_defaults_to_anthropic_
+    # for_every_agent` asserts the *default*, and a developer whose `.env` selects a
+    # provider per agent - which the deployed app does - made it fail on their
+    # machine and nowhere else. The models are NOT listed: they are required fields,
+    # so removing them would stop `Settings` constructing at all.
+    "IDENTIFICATION_PROVIDER",
+    "KNOWLEDGE_PROVIDER",
+    "CARE_PROVIDER",
+    "HEALTH_PROVIDER",
+)
 
 
 @pytest.fixture

@@ -12,11 +12,12 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, File, Form, Request, UploadFile, status
+from pydantic import BaseModel, Field
 
 from app.api.dependencies import CurrentUserDep
 from app.api.schemas.common import DataEnvelope
 from app.api.schemas.plants import PlantImageResponse
-from app.common.enums import ImageContextType, SystemEventType
+from app.common.enums import ImageContextType, PlantStatus, SystemEventType
 from app.common.errors import (
     NotFoundError,
     PayloadTooLargeError,
@@ -187,6 +188,23 @@ async def delete_image(
 
     plant = repo.get(user.client, plant_id, owner_id=user.id)
 
+    # Section 20: an active plant keeps at least one gallery image. The database
+    # enforces this too (migration 0018, both the delete and the hide path), so this
+    # is the polite version of a rule that holds either way - it exists so the user
+    # reads a sentence rather than a constraint violation.
+    if (
+        row["context_type"] == ImageContextType.GALLERY.value
+        and row["user_visible"]
+        and plant["status"] == PlantStatus.ACTIVE.value
+    ):
+        remaining = [
+            other
+            for other in repo.list_images(user.client, plant_id, context=ImageContextType.GALLERY)
+            if other["id"] != str(image_id)
+        ]
+        if not remaining:
+            raise ValidationFailedError("לצמח פעיל חייבת להישאר לפחות תמונה אחת בגלריה.")
+
     if row.get("ai_used"):
         repo.hide_image(user.client, image_id, reason="user_requested_removal")
         outcome = "hidden"
@@ -209,3 +227,76 @@ async def delete_image(
         repo.update(user.client, plant_id, {"main_image_id": replacement})
 
     return DataEnvelope(data={"outcome": outcome}, request_id=request.state.request_id)
+
+
+# --- ordering and the main image (migration spec section 20) ---------------------
+
+
+class ReorderRequest(BaseModel):
+    """The gallery in its new order, as image ids.
+
+    The whole set rather than a single move: a drag reorders everything after the
+    thing dragged, and sending one index would make the client responsible for
+    working out which other rows shifted. Renumbering from a list is also idempotent
+    - replaying it produces the same gallery.
+    """
+
+    model_config = {"extra": "forbid"}
+
+    image_ids: list[UUID] = Field(min_length=1, max_length=MAX_IMAGES_PER_CONTEXT)
+
+
+@router.put("/order", response_model=DataEnvelope[list[PlantImageResponse]])
+async def reorder_images(
+    request: Request, plant_id: UUID, payload: ReorderRequest, user: CurrentUserDep
+) -> DataEnvelope[list[PlantImageResponse]]:
+    """Set the gallery order.
+
+    The request must name exactly the plant's visible gallery images. A partial list
+    would leave the unnamed ones at whatever number they had, which is how a reorder
+    silently interleaves two sets.
+    """
+    repo.get(user.client, plant_id, owner_id=user.id)
+
+    gallery = repo.list_images(user.client, plant_id, context=ImageContextType.GALLERY)
+    known = {row["id"] for row in gallery}
+    asked = {str(image_id) for image_id in payload.image_ids}
+
+    if len(asked) != len(payload.image_ids):
+        raise ValidationFailedError("כל תמונה יכולה להופיע פעם אחת בלבד.")
+    if asked != known:
+        raise ValidationFailedError(
+            "יש לציין את כל תמונות הגלריה של הצמח.",
+            details={"expected": len(known), "received": len(asked)},
+        )
+
+    for position, image_id in enumerate(payload.image_ids, start=1):
+        repo.set_image_order(user.client, image_id, position)
+
+    return await list_images(request, plant_id, user)
+
+
+@router.post("/{image_id}/main", response_model=DataEnvelope[PlantImageResponse])
+async def set_main_image(
+    request: Request, plant_id: UUID, image_id: UUID, user: CurrentUserDep
+) -> DataEnvelope[PlantImageResponse]:
+    """Promote an existing image to be the plant's main one.
+
+    A dedicated route rather than a field on `PATCH /plants/{id}`: that model is
+    `extra: forbid` and carries only the personal fields, deliberately, so that a
+    client cannot set `main_image_id` to an image belonging to another plant. Here
+    the image is checked against this plant before anything is written.
+    """
+    row = repo.get_image(user.client, image_id)
+    if not row or row["plant_id"] != str(plant_id):
+        raise NotFoundError("התמונה לא נמצאה.")
+
+    repo.get(user.client, plant_id, owner_id=user.id)
+
+    if row["context_type"] != ImageContextType.GALLERY.value or not row["user_visible"]:
+        raise ValidationFailedError("אפשר לבחור תמונה ראשית מתוך הגלריה בלבד.")
+
+    repo.update(user.client, plant_id, {"main_image_id": str(image_id)})
+    return DataEnvelope(
+        data=_with_urls(user.access_token, row), request_id=request.state.request_id
+    )

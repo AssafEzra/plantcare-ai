@@ -139,6 +139,8 @@ class PlantImageResponse(BaseModel):
     id: UUID
     plant_id: UUID
     context_type: ImageContextType
+    # Gallery position, ascending (migration 0018). Ties break on `created_at`.
+    display_order: int = 0
     mime_type: str
     size_bytes: int
     width: int | None = None

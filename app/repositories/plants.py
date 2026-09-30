@@ -34,7 +34,7 @@ PLANT_COLUMNS = (
 
 IMAGE_COLUMNS = (
     "id, plant_id, storage_path_original, storage_path_processed, storage_path_thumbnail, "
-    "mime_type, size_bytes, width, height, context_type, user_visible, ai_used, created_at"
+    "mime_type, size_bytes, width, height, context_type, user_visible, ai_used, display_order, created_at"
 )
 
 
@@ -236,7 +236,10 @@ def list_images(
     )
     if context:
         builder = builder.eq("context_type", context.value)
-    return rows(builder.order("created_at", desc=True).execute())
+    # Gallery order, then age. `display_order` is not unique per plant - see
+    # migration 0018 - so `created_at` is what makes a tie deterministic rather
+    # than whatever the planner happened to return.
+    return rows(builder.order("display_order").order("created_at").execute())
 
 
 def get_image(client: Client, image_id: UUID) -> Row | None:
@@ -330,4 +333,11 @@ def record_event(
             "event_type": event_type.value,
             "payload": payload or {},
         }
+    ).execute()
+
+
+def set_image_order(client: Client, image_id: UUID, position: int) -> None:
+    """Move one image to a position. The caller renumbers the whole set."""
+    client.table("plant_images").update({"display_order": position}).eq(
+        "id", str(image_id)
     ).execute()

@@ -811,3 +811,175 @@ def test_the_grid_falls_back_to_the_newest_photograph(api: TestClient, account, 
 
     assert mine["main_image_id"] is None
     assert mine["thumbnail_url"], "a plant with a photograph and no main image showed nothing"
+
+
+# --- gallery ordering and the main image (migration 0018) ------------------------
+
+
+def _gallery(api: TestClient, auth: dict, plant_id: str) -> list[dict]:
+    images = api.get(f"/v1/plants/{plant_id}/images", headers=auth).json()["data"]
+    return [row for row in images if row["context_type"] == "gallery"]
+
+
+def test_the_gallery_comes_back_in_display_order(api: TestClient, account):
+    """Uploads are numbered as they arrive, so the default order is the order taken."""
+    _, auth = account()
+    plant = create_plant(api, auth)
+
+    for name in ("a.jpg", "b.jpg", "c.jpg"):
+        api.post(
+            f"/v1/plants/{plant['id']}/images",
+            headers=auth,
+            files={"file": (name, photo(), "image/jpeg")},
+        )
+
+    gallery = _gallery(api, auth, plant["id"])
+    assert [row["display_order"] for row in gallery] == sorted(
+        row["display_order"] for row in gallery
+    )
+
+
+def test_reordering_renumbers_the_whole_gallery(api: TestClient, account):
+    _, auth = account()
+    plant = create_plant(api, auth)
+    for name in ("a.jpg", "b.jpg", "c.jpg"):
+        api.post(
+            f"/v1/plants/{plant['id']}/images",
+            headers=auth,
+            files={"file": (name, photo(), "image/jpeg")},
+        )
+
+    before = [row["id"] for row in _gallery(api, auth, plant["id"])]
+    reversed_ids = list(reversed(before))
+
+    response = api.put(
+        f"/v1/plants/{plant['id']}/images/order",
+        headers=auth,
+        json={"image_ids": reversed_ids},
+    )
+
+    assert response.status_code == 200
+    assert [row["id"] for row in _gallery(api, auth, plant["id"])] == reversed_ids
+
+
+def test_a_partial_reorder_is_refused(api: TestClient, account):
+    """Naming only some images would leave the rest at whatever number they had,
+    which is how two sets silently interleave."""
+    _, auth = account()
+    plant = create_plant(api, auth)
+    for name in ("a.jpg", "b.jpg"):
+        api.post(
+            f"/v1/plants/{plant['id']}/images",
+            headers=auth,
+            files={"file": (name, photo(), "image/jpeg")},
+        )
+
+    only_one = [_gallery(api, auth, plant["id"])[0]["id"]]
+    response = api.put(
+        f"/v1/plants/{plant['id']}/images/order", headers=auth, json={"image_ids": only_one}
+    )
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "VALIDATION_FAILED"
+
+
+def test_another_image_can_be_made_main(api: TestClient, account):
+    _, auth = account()
+    plant = create_plant(api, auth)
+    first = api.post(
+        f"/v1/plants/{plant['id']}/images",
+        headers=auth,
+        files={"file": ("a.jpg", photo(), "image/jpeg")},
+    ).json()["data"]
+    second = api.post(
+        f"/v1/plants/{plant['id']}/images",
+        headers=auth,
+        files={"file": ("b.jpg", photo(), "image/jpeg")},
+    ).json()["data"]
+
+    assert (
+        api.get(f"/v1/plants/{plant['id']}", headers=auth).json()["data"]["main_image_id"]
+        == first["id"]
+    )
+
+    response = api.post(f"/v1/plants/{plant['id']}/images/{second['id']}/main", headers=auth)
+
+    assert response.status_code == 200
+    assert (
+        api.get(f"/v1/plants/{plant['id']}", headers=auth).json()["data"]["main_image_id"]
+        == second["id"]
+    )
+
+
+def test_an_image_from_another_plant_cannot_become_main(api: TestClient, account):
+    """The reason this is its own route rather than a field on PATCH /plants."""
+    _, auth = account()
+    mine = create_plant(api, auth)
+    other = create_plant(api, auth)
+    stranger = api.post(
+        f"/v1/plants/{other['id']}/images",
+        headers=auth,
+        files={"file": ("a.jpg", photo(), "image/jpeg")},
+    ).json()["data"]
+
+    response = api.post(f"/v1/plants/{mine['id']}/images/{stranger['id']}/main", headers=auth)
+
+    assert response.status_code == 404
+
+
+def test_an_active_plant_keeps_its_last_gallery_image(api: TestClient, account, admin_sdk):
+    """Section 20. Before this the delete simply set `main_image_id` to NULL, so an
+    active plant could end up with no photograph at all."""
+    _, auth = account()
+    plant = create_plant(api, auth)
+    image = api.post(
+        f"/v1/plants/{plant['id']}/images",
+        headers=auth,
+        files={"file": ("a.jpg", photo(), "image/jpeg")},
+    ).json()["data"]
+    admin_sdk.table("plants").update({"status": "ACTIVE"}).eq("id", plant["id"]).execute()
+
+    response = api.delete(f"/v1/plants/{plant['id']}/images/{image['id']}", headers=auth)
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "VALIDATION_FAILED"
+    assert _gallery(api, auth, plant["id"])
+
+
+def test_the_last_image_can_go_once_another_exists(api: TestClient, account, admin_sdk):
+    """The rule protects the *last* one, not the first."""
+    _, auth = account()
+    plant = create_plant(api, auth)
+    first = api.post(
+        f"/v1/plants/{plant['id']}/images",
+        headers=auth,
+        files={"file": ("a.jpg", photo(), "image/jpeg")},
+    ).json()["data"]
+    api.post(
+        f"/v1/plants/{plant['id']}/images",
+        headers=auth,
+        files={"file": ("b.jpg", photo(), "image/jpeg")},
+    )
+    admin_sdk.table("plants").update({"status": "ACTIVE"}).eq("id", plant["id"]).execute()
+
+    response = api.delete(f"/v1/plants/{plant['id']}/images/{first['id']}", headers=auth)
+
+    assert response.status_code == 200
+    assert len(_gallery(api, auth, plant["id"])) == 1
+
+
+def test_a_plant_that_is_not_active_may_lose_every_image(api: TestClient, account):
+    """A plant still being identified, or archived, is not covered: the rule protects
+    a plant somebody is using."""
+    _, auth = account()
+    plant = create_plant(api, auth)
+    image = api.post(
+        f"/v1/plants/{plant['id']}/images",
+        headers=auth,
+        files={"file": ("a.jpg", photo(), "image/jpeg")},
+    ).json()["data"]
+
+    response = api.delete(f"/v1/plants/{plant['id']}/images/{image['id']}", headers=auth)
+
+    assert response.status_code == 200
+    assert _gallery(api, auth, plant["id"]) == []
