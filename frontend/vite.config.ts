@@ -53,6 +53,22 @@ export default defineConfig({
   ],
   server: {
     port: 5173,
+    // A tunnel arrives carrying its own Host header, which Vite rejects by default as
+    // a DNS-rebinding guard. The suffix is admitted so a phone can reach this server
+    // over https: `getUserMedia` and the service worker both demand a secure context,
+    // and a LAN address (http://192.168.x.x) is not one.
+    allowedHosts: ['.trycloudflare.com'],
+    proxy: {
+      '/v1': { target: API_TARGET, changeOrigin: true },
+    },
+  },
+  // `npm run preview` serves the built bundle, and it is the only way to exercise the
+  // service worker at all — `devOptions.enabled` is false above, so the dev server
+  // registers none and installability cannot be judged there. Both settings are
+  // repeated rather than shared: `preview` inherits nothing from `server`.
+  preview: {
+    port: 4173,
+    allowedHosts: ['.trycloudflare.com'],
     proxy: {
       '/v1': { target: API_TARGET, changeOrigin: true },
     },
