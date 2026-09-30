@@ -16,6 +16,7 @@ import Placeholder from './pages/Placeholder'
 import Home from './pages/Home'
 import MyPlants from './pages/MyPlants'
 import Health from './pages/Health'
+import AddPlant from './pages/AddPlant'
 import More from './pages/More'
 
 export default function App() {
@@ -28,7 +29,7 @@ export default function App() {
           <Route index element={<Home />} />
           <Route path="plants">
             <Route index element={<MyPlants />} />
-            <Route path="new" element={<Placeholder title="הוספת צמח" />} />
+            <Route path="new" element={<AddPlant />} />
             <Route path=":plantId" element={<Placeholder title="הצמח שלי" />} />
           </Route>
           <Route path="health" element={<Health />} />

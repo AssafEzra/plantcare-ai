@@ -1,0 +1,140 @@
+/* Logical properties only. */
+
+.pc-addplant {
+  max-inline-size: 560px;
+  margin-inline: auto;
+}
+
+.pc-stephead {
+  margin-block-end: var(--pc-space-4);
+}
+
+.pc-stephead h1 {
+  margin-block-end: var(--pc-space-1);
+}
+
+.pc-tips {
+  margin-block-end: var(--pc-space-4);
+  padding: var(--pc-space-3);
+  background: var(--pc-surface);
+  border: 1px solid var(--pc-border);
+  border-radius: var(--pc-radius-control);
+}
+
+.pc-tips summary {
+  cursor: pointer;
+  font-weight: 500;
+  color: var(--pc-primary);
+}
+
+.pc-tips ul {
+  margin-block: var(--pc-space-2) 0;
+  color: var(--pc-text-muted);
+}
+
+/* --- progress stages ----------------------------------------------------- */
+
+.pc-stages {
+  margin: var(--pc-space-4) 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--pc-space-2);
+}
+
+.pc-stages li {
+  display: flex;
+  align-items: center;
+  gap: var(--pc-space-2);
+  color: var(--pc-text-muted);
+}
+
+/* The marker carries the state as a shape, not only a colour. */
+.pc-stages li::before {
+  content: '○';
+  font-size: 14px;
+  line-height: 1;
+}
+
+.pc-stages li.is-done {
+  color: var(--pc-success);
+}
+
+.pc-stages li.is-done::before {
+  content: '✓';
+}
+
+.pc-stages li.is-current {
+  color: var(--pc-text);
+  font-weight: 600;
+}
+
+.pc-stages li.is-current::before {
+  content: '●';
+}
+
+/* --- candidates ---------------------------------------------------------- */
+
+.pc-confidence {
+  color: var(--pc-text-muted);
+}
+
+.pc-candidates {
+  margin: 0 0 var(--pc-space-4);
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--pc-space-2);
+}
+
+.pc-candidate {
+  display: flex;
+  align-items: center;
+  gap: var(--pc-space-3);
+  padding: var(--pc-space-3);
+  background: var(--pc-surface);
+  border: 1px solid var(--pc-border);
+  border-radius: var(--pc-radius-card);
+  cursor: pointer;
+  transition: border-color var(--pc-transition), background var(--pc-transition);
+}
+
+.pc-candidate:hover {
+  border-color: var(--pc-primary);
+}
+
+.pc-candidate.is-chosen {
+  border-color: var(--pc-primary);
+  background: var(--pc-success-bg);
+}
+
+.pc-candidatebody {
+  display: flex;
+  flex-direction: column;
+  min-inline-size: 0;
+  flex: 1 1 auto;
+}
+
+.pc-candidatename {
+  font-weight: 600;
+}
+
+.pc-candidatesci {
+  color: var(--pc-text-muted);
+  font-size: var(--pc-h6);
+  font-style: italic;
+}
+
+.pc-candidatescore {
+  color: var(--pc-text-muted);
+  font-size: var(--pc-h5);
+  unicode-bidi: isolate;
+}
+
+.pc-actionrow {
+  display: flex;
+  gap: var(--pc-space-2);
+  flex-wrap: wrap;
+}

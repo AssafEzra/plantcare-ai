@@ -1,0 +1,94 @@
+/* Logical properties only. */
+
+.pc-picker {
+  margin-block-end: var(--pc-space-4);
+}
+
+.pc-pickerhead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-block-end: var(--pc-space-2);
+}
+
+.pc-pickerlabel {
+  font-size: var(--pc-h5);
+  font-weight: 500;
+}
+
+.pc-pickercount {
+  color: var(--pc-text-muted);
+  font-size: var(--pc-h6);
+}
+
+.pc-pickergrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: var(--pc-space-2);
+  margin: 0 0 var(--pc-space-3);
+  padding: 0;
+  list-style: none;
+}
+
+.pc-pickergrid li {
+  position: relative;
+  aspect-ratio: 1;
+  border-radius: var(--pc-radius-control);
+  overflow: hidden;
+  background: var(--pc-surface-alt);
+}
+
+.pc-pickergrid img {
+  inline-size: 100%;
+  block-size: 100%;
+  object-fit: cover;
+}
+
+.pc-pickerremove {
+  position: absolute;
+  inset-block-start: 4px;
+  inset-inline-end: 4px;
+  inline-size: 28px;
+  block-size: 28px;
+  border: 0;
+  border-radius: var(--pc-radius-pill);
+  background: rgba(36, 48, 39, 0.72);
+  color: #fff;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.pc-pickerdrop {
+  display: block;
+  padding: var(--pc-space-5) var(--pc-space-4);
+  border: 1px dashed var(--pc-border);
+  border-radius: var(--pc-radius-card);
+  background: var(--pc-surface);
+  color: var(--pc-primary);
+  text-align: center;
+  font-weight: 500;
+  cursor: pointer;
+  transition: border-color var(--pc-transition), background var(--pc-transition);
+}
+
+.pc-pickerdrop:hover {
+  border-color: var(--pc-primary);
+  background: var(--pc-success-bg);
+}
+
+/* Keyboard focus lands on the hidden input, so the ring has to be drawn here. */
+.pc-picker input:focus-visible + .pc-pickerdrop {
+  outline: 2px solid var(--pc-primary);
+  outline-offset: 2px;
+}
+
+.pc-pickerdrop.is-full {
+  color: var(--pc-text-muted);
+  cursor: default;
+}
+
+.pc-pickerdrop.is-full:hover {
+  border-color: var(--pc-border);
+  background: var(--pc-surface);
+}
