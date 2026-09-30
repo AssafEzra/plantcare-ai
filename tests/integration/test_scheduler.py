@@ -11,6 +11,18 @@ database. What needs one is everything around it:
   occurrence is still scheduled;
 * `/internal/tick` refuses a wrong or missing secret;
 * one user's tasks are invisible to another.
+
+Run this file **alone**. `run_tick` is one sweep across every user under the service
+role (`orchestration/services/tick.py`), so a second integration run against the same
+DEV project ticks this file's fixtures too - materialising a task between the two
+halves of an idempotence assertion, or sweeping one to OVERDUE before the test looks.
+Measured: 23 passed in 15:46 on its own, against 22 passed and one failure in 20-45
+minutes when another suite was running beside it. The slowdown is the same contention
+as the failure, and neither is a defect in the scheduler.
+
+It is also the slowest file here by a wide margin - a quarter of an hour for 23 tests,
+because each one creates and tears down its own account - so running it concurrently
+to save time is the specific temptation this note exists to refuse.
 """
 
 from __future__ import annotations
