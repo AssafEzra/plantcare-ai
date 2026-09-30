@@ -12,7 +12,7 @@
 
 import { NavLink, Outlet } from 'react-router-dom'
 import { useEffect, useState } from 'react'
-import { PRIMARY_NAV, SECONDARY_NAV } from './nav'
+import { navFor } from './nav'
 import { useMe } from '../api/profile'
 import Header from './Header'
 import ViewAsBanner from './ViewAsBanner'
@@ -30,14 +30,11 @@ export default function AppShell() {
     localStorage.setItem(COLLAPSED_KEY, collapsed ? '1' : '0')
   }, [collapsed])
 
-  /* Hiding the admin entry is a courtesy, never the control: every admin route is
-     gated server-side and every admin table has its own RLS policy. The Streamlit
-     admin page says the same thing in its own docstring. */
-  const isAdmin = me?.role === 'ADMIN'
-  const sidebarItems = [
-    ...PRIMARY_NAV.filter((item) => item.to !== '/more'),
-    ...SECONDARY_NAV.filter((item) => !item.adminOnly || isAdmin),
-  ]
+  /* Which entries exist is a courtesy, never the control: every admin route is gated
+     server-side and every admin table has its own RLS policy. `navFor` explains why an
+     administrator is offered the admin entry alone. */
+  const { primary, secondary } = navFor(me?.role)
+  const sidebarItems = [...primary.filter((item) => item.to !== '/more'), ...secondary]
 
   return (
     <div className={`pc-shell${collapsed ? ' is-collapsed' : ''}`}>
@@ -71,7 +68,7 @@ export default function AppShell() {
 
       <nav className="pc-bottomnav" aria-label="ניווט תחתון">
         <ul>
-          {PRIMARY_NAV.map((item) => (
+          {primary.map((item) => (
             <li key={item.to}>
               <NavLink
                 to={item.to}

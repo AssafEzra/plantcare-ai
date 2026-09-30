@@ -20,6 +20,7 @@ import MyPlants from './pages/MyPlants'
 import Health from './pages/Health'
 import AddPlant from './pages/AddPlant'
 import More from './pages/More'
+import { useMe } from './api/profile'
 
 export default function App() {
   return (
@@ -28,7 +29,7 @@ export default function App() {
 
       <Route element={<RequireAuth />}>
         <Route element={<AppShell />}>
-          <Route index element={<Home />} />
+          <Route index element={<Landing />} />
           <Route path="plants">
             <Route index element={<MyPlants />} />
             <Route path="new" element={<AddPlant />} />
@@ -44,3 +45,22 @@ export default function App() {
     </Routes>
   )
 }
+
+/**
+ * Where "/" goes.
+ *
+ * An administrator has no plants of their own, so Home would be an empty list and an
+ * invitation to add one — into the wrong account. They land on the panel instead.
+ *
+ * `useMe` reports the *acted-as* account under "view as user", so an administrator
+ * looking through a user's eyes gets that user's Home, which is the whole point of
+ * the mode. While the profile is still loading neither branch is taken: redirecting on
+ * an unknown role would bounce a user to a 403 and an admin to an empty screen, and
+ * the flash is worse than the wait.
+ */
+function Landing() {
+  const { data: me, isPending } = useMe()
+  if (isPending) return null
+  return me?.role === 'ADMIN' ? <Navigate to="/admin" replace /> : <Home />
+}
+

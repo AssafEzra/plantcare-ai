@@ -7,14 +7,13 @@
  */
 
 import { NavLink } from 'react-router-dom'
-import { SECONDARY_NAV } from '../app/nav'
+import { navFor } from '../app/nav'
 import { useMe } from '../api/profile'
 import './More.css'
 
 export default function More() {
   const { data: me } = useMe()
-  const isAdmin = me?.role === 'ADMIN'
-  const items = SECONDARY_NAV.filter((item) => !item.adminOnly || isAdmin)
+  const { secondary: items } = navFor(me?.role)
 
   return (
     <section className="pc-more">

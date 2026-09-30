@@ -87,3 +87,26 @@ export const SECONDARY_NAV: NavItem[] = [
   { to: '/settings', label: 'הגדרות', icon: SettingsIcon, primary: false },
   { to: '/admin', label: 'ניהול', icon: AdminIcon, primary: false, adminOnly: true },
 ]
+
+export const ADMIN_NAV: NavItem[] = [
+  { to: '/admin', label: 'ניהול', icon: AdminIcon, primary: true },
+]
+
+/**
+ * What this identity is offered.
+ *
+ * An administrator gets the admin entry and nothing else: the account has no plants
+ * of its own, so Home, My Plants and Health are four taps to four empty screens, and
+ * an empty "you have no plants yet — add one" is an invitation to put a houseplant in
+ * the wrong account.
+ *
+ * It keys on the *acting* role, and under "view as user" `GET /v1/me` reports the
+ * viewed account — role USER — so the full navigation comes back for exactly as long
+ * as the administrator is looking through somebody else's eyes. That is the one time
+ * an admin needs Home and a plant page, and it is why this reads a role rather than
+ * asking whether the signed-in person happens to be an administrator.
+ */
+export function navFor(role: string | undefined): { primary: NavItem[]; secondary: NavItem[] } {
+  if (role === 'ADMIN') return { primary: ADMIN_NAV, secondary: [] }
+  return { primary: PRIMARY_NAV, secondary: SECONDARY_NAV.filter((item) => !item.adminOnly) }
+}

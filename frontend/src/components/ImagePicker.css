@@ -59,9 +59,22 @@
   cursor: pointer;
 }
 
-.pc-pickerdrop {
-  display: block;
-  padding: var(--pc-space-5) var(--pc-space-4);
+/* Two buttons side by side, stacking only when there is genuinely no room. Both are
+   full-height targets: this is the control a user reaches for one-handed, outdoors,
+   holding a plant. */
+.pc-pickeractions {
+  display: flex;
+  gap: var(--pc-space-3);
+}
+
+.pc-pickerbtn {
+  flex: 1 1 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--pc-space-2);
+  min-block-size: 56px;
+  padding: var(--pc-space-3) var(--pc-space-4);
   border: 1px dashed var(--pc-border);
   border-radius: var(--pc-radius-card);
   background: var(--pc-surface);
@@ -72,23 +85,28 @@
   transition: border-color var(--pc-transition), background var(--pc-transition);
 }
 
-.pc-pickerdrop:hover {
+.pc-pickerbtn:hover {
   border-color: var(--pc-primary);
   background: var(--pc-success-bg);
 }
 
+.pc-pickericon {
+  font-size: var(--pc-h3);
+  line-height: 1;
+}
+
 /* Keyboard focus lands on the hidden input, so the ring has to be drawn here. */
-.pc-picker input:focus-visible + .pc-pickerdrop {
+.pc-picker input:focus-visible + .pc-pickerbtn {
   outline: 2px solid var(--pc-primary);
   outline-offset: 2px;
 }
 
-.pc-pickerdrop.is-full {
+.pc-pickerbtn.is-full {
   color: var(--pc-text-muted);
   cursor: default;
 }
 
-.pc-pickerdrop.is-full:hover {
+.pc-pickerbtn.is-full:hover {
   border-color: var(--pc-border);
   background: var(--pc-surface);
 }
