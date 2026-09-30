@@ -17,6 +17,7 @@ on an administrator's own "My Plants" page.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Any
 from uuid import UUID
 
@@ -226,16 +227,26 @@ def upsert_environment(client: Client, plant_id: UUID, values: dict[str, Any]) -
 
 
 def list_images(
-    client: Client, plant_id: UUID, *, context: ImageContextType | None = None
+    client: Client,
+    plant_id: UUID,
+    *,
+    contexts: Sequence[ImageContextType] | None = None,
 ) -> list[Row]:
+    """The plant's visible images, in gallery order.
+
+    `contexts` is a set rather than a single value because the sets that matter are
+    plural: the images that depict the plant are `gallery` and `identification`
+    together (`PORTRAIT_CONTEXTS`), and a caller that could name only one of them
+    would silently mean "gallery", which is the context nothing ever writes.
+    """
     builder = (
         client.table("plant_images")
         .select(IMAGE_COLUMNS)
         .eq("plant_id", str(plant_id))
         .eq("user_visible", True)
     )
-    if context:
-        builder = builder.eq("context_type", context.value)
+    if contexts:
+        builder = builder.in_("context_type", [context.value for context in contexts])
     # Gallery order, then age. `display_order` is not unique per plant - see
     # migration 0018 - so `created_at` is what makes a tie deterministic rather
     # than whatever the planner happened to return.

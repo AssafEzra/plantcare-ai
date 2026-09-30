@@ -188,6 +188,26 @@ class ImageContextType(StrEnum):
     HEALTH = "health"
 
 
+#: The contexts whose images are portraits of the plant, as opposed to evidence
+#: gathered for one run.
+#:
+#: `upload_image` has drawn this line since PR 27 - the first photograph of either
+#: kind becomes the plant's main image, and a health close-up of a damaged leaf does
+#: not - but it drew it inline, so the rules added later for the gallery said
+#: `gallery` alone and applied to nothing. No code path anywhere uploads with the
+#: `gallery` context: Add Plant sends `identification`, the health check sends
+#: `health`, and `gallery` is only the endpoint's default. DEV bore that out exactly
+#: - 44 identification images, 3 health, no gallery at all - so ordering, "set as
+#: main" and the last-image rule were each written against an empty set.
+#:
+#: Naming it once means the gallery a user sees, the set they can reorder, and the
+#: set the last-image rule protects cannot drift apart again.
+PORTRAIT_CONTEXTS: tuple[ImageContextType, ...] = (
+    ImageContextType.GALLERY,
+    ImageContextType.IDENTIFICATION,
+)
+
+
 # --- Plant environment vocabularies (FINAL_SPECIFICATION §18) ----------------
 class LocationType(StrEnum):
     INDOOR = "INDOOR"

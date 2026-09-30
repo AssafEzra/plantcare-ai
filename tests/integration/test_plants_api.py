@@ -813,12 +813,28 @@ def test_the_grid_falls_back_to_the_newest_photograph(api: TestClient, account, 
     assert mine["thumbnail_url"], "a plant with a photograph and no main image showed nothing"
 
 
-# --- gallery ordering and the main image (migration 0018) ------------------------
+# --- gallery ordering and the main image (migrations 0018, 0019) -----------------
+
+# The gallery is a plant's portraits: gallery and identification images together.
+# 0018 said `gallery` alone, which is the word section 20 uses and a set nothing has
+# ever written to - Add Plant uploads `identification`, a health check uploads
+# `health`, and no code path anywhere sends `gallery`. 0019 widened the rules to the
+# set `upload_image` already used when it chooses a first main image.
+PORTRAITS = ("gallery", "identification")
 
 
 def _gallery(api: TestClient, auth: dict, plant_id: str) -> list[dict]:
     images = api.get(f"/v1/plants/{plant_id}/images", headers=auth).json()["data"]
-    return [row for row in images if row["context_type"] == "gallery"]
+    return [row for row in images if row["context_type"] in PORTRAITS]
+
+
+def _upload(api: TestClient, auth: dict, plant_id: str, name: str, context: str | None = None):
+    files: dict = {"file": (name, photo(), "image/jpeg")}
+    if context:
+        files["context_type"] = (None, context)
+    response = api.post(f"/v1/plants/{plant_id}/images", headers=auth, files=files)
+    assert response.status_code == 201, response.text
+    return response.json()["data"]
 
 
 def test_the_gallery_comes_back_in_display_order(api: TestClient, account):
@@ -983,3 +999,121 @@ def test_a_plant_that_is_not_active_may_lose_every_image(api: TestClient, accoun
 
     assert response.status_code == 200
     assert _gallery(api, auth, plant["id"]) == []
+
+
+# --- the portrait set (migration 0019) -------------------------------------------
+
+
+def test_an_identification_photograph_can_become_main(api: TestClient, account):
+    """The case the first cut of this endpoint refused.
+
+    Every photograph in DEV is an identification image - 44 of them, and not one
+    gallery image - so a set-main that accepted `gallery` alone rejected every
+    picture a user has ever taken.
+    """
+    _, auth = account()
+    plant = create_plant(api, auth)
+    first = _upload(api, auth, plant["id"], "a.jpg", "identification")
+    second = _upload(api, auth, plant["id"], "b.jpg", "identification")
+
+    assert (
+        api.get(f"/v1/plants/{plant['id']}", headers=auth).json()["data"]["main_image_id"]
+        == first["id"]
+    )
+
+    response = api.post(f"/v1/plants/{plant['id']}/images/{second['id']}/main", headers=auth)
+
+    assert response.status_code == 200, response.text
+    assert (
+        api.get(f"/v1/plants/{plant['id']}", headers=auth).json()["data"]["main_image_id"]
+        == second["id"]
+    )
+
+
+def test_a_health_photograph_cannot_become_main(api: TestClient, account):
+    """A health image is evidence for one check - usually a close-up of the damage -
+    and `upload_image` has excluded it from becoming a main image since PR 27. The
+    explicit route agrees with the automatic one."""
+    _, auth = account()
+    plant = create_plant(api, auth)
+    _upload(api, auth, plant["id"], "a.jpg", "identification")
+    evidence = _upload(api, auth, plant["id"], "leaf.jpg", "health")
+
+    response = api.post(f"/v1/plants/{plant['id']}/images/{evidence['id']}/main", headers=auth)
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "VALIDATION_FAILED"
+
+
+def test_both_contexts_are_ordered_as_one_gallery(api: TestClient, account):
+    """A user dragging a photograph does not know which context it was uploaded in,
+    and the dashboard draws them in one grid. A reorder therefore names the whole
+    set, and a request covering only one context is partial."""
+    _, auth = account()
+    plant = create_plant(api, auth)
+    _upload(api, auth, plant["id"], "ident.jpg", "identification")
+    _upload(api, auth, plant["id"], "gallery.jpg", "gallery")
+
+    before = [row["id"] for row in _gallery(api, auth, plant["id"])]
+    assert len(before) == 2, "both contexts belong to the gallery"
+
+    response = api.put(
+        f"/v1/plants/{plant['id']}/images/order",
+        headers=auth,
+        json={"image_ids": list(reversed(before))},
+    )
+
+    assert response.status_code == 200, response.text
+    assert [row["id"] for row in _gallery(api, auth, plant["id"])] == list(reversed(before))
+
+
+def test_a_health_photograph_is_not_part_of_the_order(api: TestClient, account):
+    """Naming it would be naming an image that is not in the set being ordered."""
+    _, auth = account()
+    plant = create_plant(api, auth)
+    portrait = _upload(api, auth, plant["id"], "a.jpg", "identification")
+    evidence = _upload(api, auth, plant["id"], "leaf.jpg", "health")
+
+    response = api.put(
+        f"/v1/plants/{plant['id']}/images/order",
+        headers=auth,
+        json={"image_ids": [portrait["id"], evidence["id"]]},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "VALIDATION_FAILED"
+
+
+def test_an_active_plant_keeps_its_last_identification_photograph(
+    api: TestClient, account, admin_sdk
+):
+    """The shape every real plant is in: photographs, none of them `gallery`."""
+    _, auth = account()
+    plant = create_plant(api, auth)
+    image = _upload(api, auth, plant["id"], "a.jpg", "identification")
+    admin_sdk.table("plants").update({"status": "ACTIVE"}).eq("id", plant["id"]).execute()
+
+    response = api.delete(f"/v1/plants/{plant['id']}/images/{image['id']}", headers=auth)
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "VALIDATION_FAILED"
+    assert _gallery(api, auth, plant["id"])
+
+
+def test_the_database_refuses_to_hide_the_last_portrait(api: TestClient, account, admin_sdk):
+    """Straight at the trigger, past the API's own guard.
+
+    This is the path that actually matters. An identification image has been
+    consumed by the identification, so `ai_used` is true for every one of them, and
+    FINAL section 20 says an AI-used image is hidden rather than deleted - an UPDATE,
+    not a DELETE. A rule enforced only on delete would never see it.
+    """
+    _, auth = account()
+    plant = create_plant(api, auth)
+    image = _upload(api, auth, plant["id"], "a.jpg", "identification")
+    admin_sdk.table("plants").update({"status": "ACTIVE"}).eq("id", plant["id"]).execute()
+
+    with pytest.raises(Exception, match="at least one photograph"):
+        admin_sdk.table("plant_images").update({"user_visible": False}).eq(
+            "id", image["id"]
+        ).execute()

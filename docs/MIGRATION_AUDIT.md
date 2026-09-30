@@ -139,6 +139,42 @@ else React needs already exists.
    `main_image_id = None` when nothing remains, so an ACTIVE plant can end with zero
    images. Needs the rule in the delete path.
 
+#### What "gallery" had to be widened to mean
+
+Shipped first as `context_type = 'gallery'`, which is the word §20 uses and a set
+that has never had a row in it. DEV, before the fix:
+
+| context | visible |
+|---|---|
+| `identification` | 44 |
+| `health` | 3 |
+| `gallery` | **0** |
+
+No code path uploads with the `gallery` context. Add Plant sends `identification`
+(`identification.ts:95`, `add_plant.py:86`), a health check sends `health`, and
+`gallery` is only the endpoint's default, which nothing takes. So all three rules
+were written against an empty set: the triggers could not fire, `PUT /images/order`
+would have refused every plant, and `POST /images/{id}/main` would have rejected all
+44 photographs.
+
+`upload_image` had already drawn the correct line and drawn it inline — gallery
+**and** identification "depict the plant", health does not, because a close-up of a
+damaged leaf is evidence rather than a portrait. Migration 0019 and
+`PORTRAIT_CONTEXTS` in `app/common/enums.py` make that one named set, so the gallery
+a user sees, the set they can reorder, and the set the last-image rule protects
+cannot drift apart again. **Approved by the user on 2026-09-30.**
+
+Consequences worth keeping to hand:
+
+- the reorder request caps at 8 ids, not 4 — two contexts' worth of
+  `MAX_IMAGES_PER_CONTEXT`;
+- the hide path is the one that matters. An identification image has been consumed by
+  the identification, so `ai_used` is true for all 44, and FINAL §20 hides rather
+  than deletes an AI-used image. A rule enforced only on DELETE would never see a
+  real removal;
+- `display_order` is now numbered across the union rather than per context, so a
+  plant holding both kinds has one sequence.
+
 ### Spec claims that do not match the code
 
 Recorded so they are not later mistaken for regressions:

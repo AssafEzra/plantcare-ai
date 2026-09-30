@@ -17,7 +17,12 @@ from pydantic import BaseModel, Field
 from app.api.dependencies import CurrentUserDep
 from app.api.schemas.common import DataEnvelope
 from app.api.schemas.plants import PlantImageResponse
-from app.common.enums import ImageContextType, PlantStatus, SystemEventType
+from app.common.enums import (
+    PORTRAIT_CONTEXTS,
+    ImageContextType,
+    PlantStatus,
+    SystemEventType,
+)
 from app.common.errors import (
     NotFoundError,
     PayloadTooLargeError,
@@ -40,6 +45,11 @@ router = APIRouter(prefix="/plants/{plant_id}/images", tags=["images"])
 # nature); a health or identification image stops counting once the assessment or
 # identification that consumed it exists.
 MAX_IMAGES_PER_CONTEXT = 4
+
+# A plant's portraits are its gallery and identification images together, so the
+# whole set is two contexts' worth. `PORTRAIT_CONTEXTS` says why they are one set.
+MAX_PORTRAIT_IMAGES = MAX_IMAGES_PER_CONTEXT * len(PORTRAIT_CONTEXTS)
+PORTRAIT_VALUES = {context.value for context in PORTRAIT_CONTEXTS}
 
 
 def _with_urls(
@@ -154,7 +164,7 @@ async def upload_image(
     # of a damaged leaf, which is evidence, not a portrait. A plant whose only
     # photographs are health close-ups falls back on the read side instead.
     plant = repo.get(user.client, plant_id, owner_id=user.id)
-    depicts_the_plant = context_type in (ImageContextType.GALLERY, ImageContextType.IDENTIFICATION)
+    depicts_the_plant = context_type in PORTRAIT_CONTEXTS
     if depicts_the_plant and not plant.get("main_image_id"):
         repo.update(user.client, plant_id, {"main_image_id": str(image_id)})
         repo.record_event(
@@ -188,22 +198,22 @@ async def delete_image(
 
     plant = repo.get(user.client, plant_id, owner_id=user.id)
 
-    # Section 20: an active plant keeps at least one gallery image. The database
-    # enforces this too (migration 0018, both the delete and the hide path), so this
-    # is the polite version of a rule that holds either way - it exists so the user
-    # reads a sentence rather than a constraint violation.
+    # Section 20: an active plant keeps at least one photograph of itself. The
+    # database enforces this too (migrations 0018 and 0019, on both the delete and the
+    # hide path), so this is the polite version of a rule that holds either way - it
+    # exists so the user reads a sentence rather than a constraint violation.
     if (
-        row["context_type"] == ImageContextType.GALLERY.value
+        row["context_type"] in PORTRAIT_VALUES
         and row["user_visible"]
         and plant["status"] == PlantStatus.ACTIVE.value
     ):
         remaining = [
             other
-            for other in repo.list_images(user.client, plant_id, context=ImageContextType.GALLERY)
+            for other in repo.list_images(user.client, plant_id, contexts=PORTRAIT_CONTEXTS)
             if other["id"] != str(image_id)
         ]
         if not remaining:
-            raise ValidationFailedError("לצמח פעיל חייבת להישאר לפחות תמונה אחת בגלריה.")
+            raise ValidationFailedError("לצמח פעיל חייבת להישאר לפחות תמונה אחת.")
 
     if row.get("ai_used"):
         repo.hide_image(user.client, image_id, reason="user_requested_removal")
@@ -222,7 +232,7 @@ async def delete_image(
 
     # A plant must not point at an image that is gone or hidden.
     if plant.get("main_image_id") == str(image_id):
-        remaining = repo.list_images(user.client, plant_id, context=ImageContextType.GALLERY)
+        remaining = repo.list_images(user.client, plant_id, contexts=PORTRAIT_CONTEXTS)
         replacement = remaining[0]["id"] if remaining else None
         repo.update(user.client, plant_id, {"main_image_id": replacement})
 
@@ -243,7 +253,7 @@ class ReorderRequest(BaseModel):
 
     model_config = {"extra": "forbid"}
 
-    image_ids: list[UUID] = Field(min_length=1, max_length=MAX_IMAGES_PER_CONTEXT)
+    image_ids: list[UUID] = Field(min_length=1, max_length=MAX_PORTRAIT_IMAGES)
 
 
 @router.put("/order", response_model=DataEnvelope[list[PlantImageResponse]])
@@ -252,13 +262,14 @@ async def reorder_images(
 ) -> DataEnvelope[list[PlantImageResponse]]:
     """Set the gallery order.
 
-    The request must name exactly the plant's visible gallery images. A partial list
-    would leave the unnamed ones at whatever number they had, which is how a reorder
-    silently interleaves two sets.
+    The request must name exactly the plant's visible portraits - gallery and
+    identification images together, which is the set the dashboard draws as the
+    gallery. A partial list would leave the unnamed ones at whatever number they had,
+    which is how a reorder silently interleaves two sets.
     """
     repo.get(user.client, plant_id, owner_id=user.id)
 
-    gallery = repo.list_images(user.client, plant_id, context=ImageContextType.GALLERY)
+    gallery = repo.list_images(user.client, plant_id, contexts=PORTRAIT_CONTEXTS)
     known = {row["id"] for row in gallery}
     asked = {str(image_id) for image_id in payload.image_ids}
 
@@ -266,7 +277,7 @@ async def reorder_images(
         raise ValidationFailedError("כל תמונה יכולה להופיע פעם אחת בלבד.")
     if asked != known:
         raise ValidationFailedError(
-            "יש לציין את כל תמונות הגלריה של הצמח.",
+            "יש לציין את כל תמונות הצמח.",
             details={"expected": len(known), "received": len(asked)},
         )
 
@@ -293,8 +304,12 @@ async def set_main_image(
 
     repo.get(user.client, plant_id, owner_id=user.id)
 
-    if row["context_type"] != ImageContextType.GALLERY.value or not row["user_visible"]:
-        raise ValidationFailedError("אפשר לבחור תמונה ראשית מתוך הגלריה בלבד.")
+    # A health image is evidence for one check - usually a close-up of a damaged
+    # leaf - and is not a portrait. `upload_image` has drawn the same line since PR 27
+    # when it picks the first main image; `PORTRAIT_CONTEXTS` is now the one place it
+    # is drawn.
+    if row["context_type"] not in PORTRAIT_VALUES or not row["user_visible"]:
+        raise ValidationFailedError("אפשר לבחור תמונה ראשית מתוך תמונות הצמח בלבד.")
 
     repo.update(user.client, plant_id, {"main_image_id": str(image_id)})
     return DataEnvelope(
