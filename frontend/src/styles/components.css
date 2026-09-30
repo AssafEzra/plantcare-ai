@@ -9,8 +9,7 @@
 
 /* --- surface ------------------------------------------------------------- */
 
-.pc-card,
-.pc-placeholder {
+.pc-card {
   background: var(--pc-surface);
   border: 1px solid var(--pc-border);
   border-radius: var(--pc-radius-card);

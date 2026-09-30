@@ -371,3 +371,23 @@
 .pc-menudanger:hover {
   background: var(--pc-danger-bg);
 }
+
+/* --- view as ------------------------------------------------------------- */
+
+/* Loud on purpose. An administrator who forgets which account they are looking at
+   will read a support question about the wrong person's plants. */
+.pc-viewas {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--pc-space-3);
+  flex-wrap: wrap;
+  margin-block-end: var(--pc-space-4);
+  padding: var(--pc-space-3) var(--pc-space-4);
+  border: 1px solid var(--pc-warning);
+  border-radius: var(--pc-radius-card);
+  background: var(--pc-warning-bg);
+  color: var(--pc-text);
+  font-size: var(--pc-h5);
+}
+

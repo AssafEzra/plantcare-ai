@@ -14,7 +14,7 @@ import RequireAuth from './auth/RequireAuth'
 import Auth from './pages/Auth'
 import PlantDashboard from './pages/PlantDashboard'
 import Settings from './pages/Settings'
-import Placeholder from './pages/Placeholder'
+import Admin from './pages/Admin'
 import Home from './pages/Home'
 import MyPlants from './pages/MyPlants'
 import Health from './pages/Health'
@@ -37,10 +37,7 @@ export default function App() {
           <Route path="health" element={<Health />} />
           <Route path="more" element={<More />} />
           <Route path="settings" element={<Settings />} />
-          <Route
-            path="admin"
-            element={<Placeholder title="ניהול" note="פאנל הניהול יועבר בשלב 6." />}
-          />
+          <Route path="admin" element={<Admin />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       </Route>

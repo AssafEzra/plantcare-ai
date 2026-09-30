@@ -15,6 +15,7 @@ import { useEffect, useState } from 'react'
 import { PRIMARY_NAV, SECONDARY_NAV } from './nav'
 import { useMe } from '../api/profile'
 import Header from './Header'
+import ViewAsBanner from './ViewAsBanner'
 import './AppShell.css'
 
 const COLLAPSED_KEY = 'pc.sidebar.collapsed'
@@ -63,6 +64,7 @@ export default function AppShell() {
 
       <main className="pc-main">
         <div className="pc-content">
+          <ViewAsBanner />
           <Outlet />
         </div>
       </main>

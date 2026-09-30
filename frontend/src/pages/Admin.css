@@ -1,0 +1,119 @@
+/* Logical properties only — see styles/base.css. */
+
+/* Nine tabs do not fit a phone. They scroll on the inline axis rather than wrapping
+   into three rows that push the content off-screen. */
+.pc-admintabs {
+  overflow-x: auto;
+  flex-wrap: nowrap;
+  scrollbar-width: thin;
+}
+
+.pc-admintabs .pc-tabbtn {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  padding-inline: var(--pc-space-4);
+}
+
+/* --- overview ------------------------------------------------------------ */
+
+.pc-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--pc-space-3);
+  margin-block-end: var(--pc-space-4);
+}
+
+@media (min-width: 640px) {
+  .pc-metrics {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+.pc-metric {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pc-space-1);
+  padding: var(--pc-space-4);
+  background: var(--pc-surface);
+  border: 1px solid var(--pc-border);
+  border-radius: var(--pc-radius-card);
+}
+
+/* A non-zero failure count is the thing an administrator opened this screen for. */
+.pc-metric.is-alert {
+  border-color: var(--pc-danger);
+  background: var(--pc-danger-bg);
+}
+
+.pc-metricvalue {
+  font-size: var(--pc-h1);
+  font-weight: var(--pc-h1-weight);
+  line-height: 1.1;
+}
+
+.pc-metriclabel {
+  color: var(--pc-text-muted);
+  font-size: var(--pc-h5);
+}
+
+.pc-fail {
+  color: var(--pc-danger);
+}
+
+/* --- lists --------------------------------------------------------------- */
+
+.pc-adminlist {
+  margin: 0 0 var(--pc-space-4);
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--pc-space-3);
+}
+
+.pc-adminrowhead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--pc-space-3);
+  flex-wrap: wrap;
+}
+
+.pc-adminrowhead h2,
+.pc-adminrowhead h3 {
+  margin: 0;
+  font-size: var(--pc-h4);
+  min-inline-size: 0;
+  overflow-wrap: anywhere;
+}
+
+.pc-sci {
+  color: var(--pc-text-muted);
+  font-style: italic;
+  font-weight: 400;
+  font-size: var(--pc-h5);
+}
+
+/* Agent output and user reports: preserve the paragraph breaks the writer used. */
+.pc-prose {
+  white-space: pre-line;
+}
+
+.pc-admin pre {
+  overflow-x: auto;
+  padding: var(--pc-space-3);
+  background: var(--pc-surface-alt);
+  border-radius: var(--pc-radius-sm);
+  font-size: var(--pc-h6);
+}
+
+.pc-admin code {
+  padding: 2px var(--pc-space-1);
+  background: var(--pc-surface-alt);
+  border-radius: var(--pc-radius-sm);
+  font-size: var(--pc-h6);
+}
+
+.pc-admin h2 {
+  margin-block: var(--pc-space-5) var(--pc-space-3);
+}

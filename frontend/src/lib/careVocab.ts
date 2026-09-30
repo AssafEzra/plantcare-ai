@@ -166,3 +166,27 @@ export const LOGGABLE_EVENTS: [string, string][] = [
   ['PRUNED', 'גיזמתי'],
   ['CUSTOM_NOTE', 'הערה חופשית'],
 ]
+
+/* --- administration ------------------------------------------------------- */
+
+export const DRAFT_STATUS_LABELS: Record<string, { label: string; tone: string }> = {
+  DRAFT: { label: 'טיוטה', tone: 'neutral' },
+  RESEARCHING: { label: 'במחקר', tone: 'neutral' },
+  READY_FOR_REVIEW: { label: 'ממתין לבדיקה', tone: 'warning' },
+  APPROVED: { label: 'אושר', tone: 'success' },
+  REJECTED: { label: 'נדחה', tone: 'danger' },
+  FAILED: { label: 'נכשל', tone: 'danger' },
+}
+
+/* Below this a section is surfaced to the reviewer rather than left to be found.
+   Matches `KnowledgeContent.weakest_sections` server-side. A reviewer with limited
+   time who reads top to bottom will approve the fourteenth section least carefully,
+   so the screen says where to start. */
+export const WEAK_SECTION = 0.5
+
+export const REPORT_DECISIONS: [string, string][] = [
+  ['ACTIONED', 'טופל'],
+  ['REVIEWING', 'בבדיקה'],
+  ['DISMISSED', 'נדחה'],
+]
+
