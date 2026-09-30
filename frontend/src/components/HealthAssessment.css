@@ -1,0 +1,65 @@
+/* Logical properties only — see styles/base.css. */
+
+.pc-assessment h4 {
+  margin-block: var(--pc-space-4) var(--pc-space-2);
+}
+
+.pc-assessmenthead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--pc-space-3);
+  flex-wrap: wrap;
+}
+
+.pc-assessmenthead h3 {
+  margin: 0;
+}
+
+.pc-assessmentbadges {
+  display: flex;
+  gap: var(--pc-space-2);
+  flex-wrap: wrap;
+}
+
+.pc-issues {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--pc-space-2);
+}
+
+.pc-issue {
+  padding: var(--pc-space-3);
+  border: 1px solid var(--pc-border);
+  border-radius: var(--pc-radius-control);
+}
+
+.pc-issue p {
+  margin: 0;
+}
+
+.pc-issuename {
+  font-weight: 600;
+}
+
+.pc-healthhistory {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--pc-space-2);
+}
+
+.pc-healthhistory li {
+  display: flex;
+  align-items: center;
+  gap: var(--pc-space-2);
+  flex-wrap: wrap;
+  padding: var(--pc-space-2) var(--pc-space-3);
+  border: 1px solid var(--pc-border);
+  border-radius: var(--pc-radius-control);
+}

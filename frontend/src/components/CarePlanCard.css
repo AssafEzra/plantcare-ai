@@ -1,0 +1,88 @@
+/* Logical properties only — see styles/base.css. */
+
+.pc-planCard h4 {
+  margin-block: var(--pc-space-5) var(--pc-space-2);
+}
+
+.pc-planhead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--pc-space-3);
+  flex-wrap: wrap;
+}
+
+.pc-planhead h3 {
+  margin: 0;
+}
+
+.pc-recommendations p {
+  margin-block-end: var(--pc-space-2);
+}
+
+.pc-reco,
+.pc-adjust {
+  border: 1px solid var(--pc-border);
+  border-radius: var(--pc-radius-control);
+  padding: var(--pc-space-2) var(--pc-space-3);
+  margin-block-end: var(--pc-space-2);
+}
+
+.pc-reco > summary,
+.pc-adjust > summary {
+  cursor: pointer;
+  font-weight: 600;
+  font-size: var(--pc-h5);
+}
+
+.pc-adjust {
+  margin-block-start: var(--pc-space-5);
+}
+
+.pc-adjust > summary {
+  font-size: var(--pc-h4);
+}
+
+.pc-adjust .pc-field {
+  margin-block-start: var(--pc-space-3);
+}
+
+/* Meaning is never carried by colour alone: the word "שימו לב" is not available in a
+   warning the agent wrote, so the border and the wash are supporting an explicit
+   role="note" rather than standing in for one. */
+.pc-warning {
+  padding: var(--pc-space-3);
+  border-inline-start: 3px solid var(--pc-warning);
+  border-radius: var(--pc-radius-sm);
+  background: var(--pc-warning-bg);
+  color: var(--pc-text);
+  font-size: var(--pc-h5);
+}
+
+.pc-rulelist {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--pc-space-2);
+}
+
+.pc-rule {
+  padding: var(--pc-space-3);
+  border: 1px solid var(--pc-border);
+  border-radius: var(--pc-radius-control);
+}
+
+.pc-rule p {
+  margin: 0;
+}
+
+.pc-ruleaction {
+  font-weight: 600;
+}
+
+.pc-ruledetail {
+  color: var(--pc-text-muted);
+  font-size: var(--pc-h5);
+}

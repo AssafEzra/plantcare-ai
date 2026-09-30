@@ -7,6 +7,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../lib/api'
+import { dayOffset, formatTaskDue } from '../lib/dates'
 import { scoped } from '../lib/queryKeys'
 import { useAuth } from '../auth/context'
 
@@ -64,6 +65,25 @@ export function actionLabel(actionType: string | null): string {
   return ACTION_LABELS[actionType] ?? actionType
 }
 
+/**
+ * Is this task actionable now, or still in the future?
+ *
+ * An overdue task always is. A pending one becomes actionable on the day it is due:
+ * "water it today" should not be refused at nine in the morning because the rule says
+ * eight in the evening. The plant dashboard uses this to decide whether to offer Done
+ * and Skip at all — a task three days out drawn with the same buttons invites
+ * completing it early, which anchors the whole recurrence to today and quietly shifts
+ * the plan.
+ */
+export function isDue(task: CareTask, now = new Date()): boolean {
+  if (task.status === 'OVERDUE') return true
+  return dayOffset(task.due_at_utc, now) <= 0
+}
+
+export function dueText(task: CareTask, now = new Date()): string {
+  return formatTaskDue(task.due_at_utc, task.status === 'OVERDUE', now)
+}
+
 export function useDashboard() {
   const { userId } = useAuth()
   return useQuery({
@@ -86,7 +106,7 @@ export function useDashboard() {
  * The body is `{}` rather than omitted. ActionRequest carries an optional note, and
  * the Streamlit build hit a 422 on every press by sending nothing at all.
  */
-function useTaskAction(action: 'done' | 'skip') {
+function useTaskAction(action: 'done' | 'skip', plantId?: string) {
   const queryClient = useQueryClient()
   const { userId } = useAuth()
 
@@ -96,9 +116,13 @@ function useTaskAction(action: 'done' | 'skip') {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: scoped(userId, ['dashboard']) })
       queryClient.invalidateQueries({ queryKey: scoped(userId, ['plants']) })
+      // The plant dashboard carries its own copy of the upcoming tasks, and the
+      // scheduler creates the next occurrence immediately — so the list is stale in
+      // two ways at once, not one.
+      if (plantId) queryClient.invalidateQueries({ queryKey: scoped(userId, ['plant', plantId]) })
     },
   })
 }
 
-export const useCompleteTask = () => useTaskAction('done')
-export const useSkipTask = () => useTaskAction('skip')
+export const useCompleteTask = (plantId?: string) => useTaskAction('done', plantId)
+export const useSkipTask = (plantId?: string) => useTaskAction('skip', plantId)

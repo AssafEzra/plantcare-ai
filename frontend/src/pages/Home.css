@@ -1,75 +1,10 @@
-/* Logical properties only. */
+/* Home only. Anything used by a second screen belongs in styles/components.css:
+   a route's stylesheet is loaded by that route's module, so sharing from here is
+   a rule that happens to work until the routes are split. */
 
-.pc-tasklist {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: var(--pc-space-2);
-}
-
-.pc-taskrow {
-  display: flex;
-  align-items: center;
-  gap: var(--pc-space-3);
-  flex-wrap: wrap;
-  padding: var(--pc-space-3);
-  background: var(--pc-surface);
-  border: 1px solid var(--pc-border);
-  border-radius: var(--pc-radius-card);
-  box-shadow: var(--pc-shadow-card);
-}
-
-.pc-taskinfo {
-  display: flex;
-  align-items: baseline;
-  gap: var(--pc-space-2);
-  flex-wrap: wrap;
-  min-inline-size: 0;
-  flex: 1 1 auto;
-}
-
-.pc-taskaction {
-  font-weight: 600;
-}
-
-.pc-taskplant {
-  color: var(--pc-text);
-}
-
-.pc-taskdue,
 .pc-overdue-detail {
   color: var(--pc-text-muted);
   font-size: var(--pc-h6);
-}
-
-.pc-taskerror {
-  inline-size: 100%;
-  color: var(--pc-danger);
-  font-size: var(--pc-h6);
-}
-
-.pc-taskactions {
-  display: flex;
-  gap: var(--pc-space-2);
-  flex: 0 0 auto;
-}
-
-/* Comfortably above the 44px touch minimum even at the small size. */
-.pc-btn-sm {
-  padding: var(--pc-space-2) var(--pc-space-4);
-  min-block-size: 44px;
-  font-size: var(--pc-h5);
-}
-
-.pc-btn-quiet {
-  background: var(--pc-surface-alt);
-  color: var(--pc-text);
-}
-
-.pc-btn-quiet:hover:not(:disabled) {
-  background: var(--pc-neutral-bg);
 }
 
 .pc-overdue {

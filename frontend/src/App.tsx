@@ -12,6 +12,7 @@ import { Routes, Route, Navigate } from 'react-router-dom'
 import AppShell from './app/AppShell'
 import RequireAuth from './auth/RequireAuth'
 import Auth from './pages/Auth'
+import PlantDashboard from './pages/PlantDashboard'
 import Placeholder from './pages/Placeholder'
 import Home from './pages/Home'
 import MyPlants from './pages/MyPlants'
@@ -30,7 +31,7 @@ export default function App() {
           <Route path="plants">
             <Route index element={<MyPlants />} />
             <Route path="new" element={<AddPlant />} />
-            <Route path=":plantId" element={<Placeholder title="הצמח שלי" />} />
+            <Route path=":plantId" element={<PlantDashboard />} />
           </Route>
           <Route path="health" element={<Health />} />
           <Route path="more" element={<More />} />

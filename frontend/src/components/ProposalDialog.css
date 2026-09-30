@@ -1,0 +1,24 @@
+/* Logical properties only — see styles/base.css. */
+
+.pc-changesummary {
+  padding: var(--pc-space-3);
+  border-inline-start: 3px solid var(--pc-primary);
+  border-radius: var(--pc-radius-sm);
+  background: var(--pc-success-bg);
+}
+
+.pc-changes {
+  margin-block: var(--pc-space-4);
+}
+
+.pc-changes h4 {
+  margin-block-end: var(--pc-space-2);
+}
+
+.pc-changes ul {
+  margin-block-end: var(--pc-space-2);
+}
+
+.pc-changes li {
+  margin-block-end: var(--pc-space-1);
+}

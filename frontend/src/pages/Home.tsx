@@ -11,13 +11,12 @@
  */
 
 import { Link } from 'react-router-dom'
-import { useDashboard, useCompleteTask, useSkipTask, actionLabel } from '../api/careTasks'
-import type { CareTask } from '../api/careTasks'
+import { useDashboard, actionLabel } from '../api/careTasks'
 import { useMe } from '../api/profile'
 import { usePlants } from '../api/plants'
 import PlantCard from '../components/PlantCard'
+import CareTaskCard from '../components/CareTaskCard'
 import Async from '../components/Async'
-import { formatDueDate } from '../lib/dates'
 import '../components/PlantCard.css'
 import './Home.css'
 
@@ -49,7 +48,7 @@ export default function Home() {
       >
         <ul className="pc-tasklist">
           {data?.today_care.map((task) => (
-            <TaskRow key={task.id} task={task} />
+            <CareTaskCard key={task.id} task={task} />
           ))}
         </ul>
       </Async>
@@ -95,48 +94,5 @@ export default function Home() {
         </div>
       </Async>
     </section>
-  )
-}
-
-function TaskRow({ task }: { task: CareTask }) {
-  const complete = useCompleteTask()
-  const skip = useSkipTask()
-  const busy = complete.isPending || skip.isPending
-  const failed = complete.error || skip.error
-
-  return (
-    <li className="pc-taskrow">
-      <div className="pc-taskinfo">
-        <span className="pc-taskaction">{actionLabel(task.action_type)}</span>
-        <Link to={`/plants/${task.plant_id}`} className="pc-taskplant">
-          {task.plant_name ?? 'צמח'}
-        </Link>
-        <span className="pc-taskdue">{formatDueDate(task.due_at_utc)}</span>
-        {failed && (
-          <span className="pc-taskerror" role="alert">
-            הפעולה לא נרשמה. אפשר לנסות שוב.
-          </span>
-        )}
-      </div>
-
-      <div className="pc-taskactions">
-        <button
-          type="button"
-          className="pc-btn pc-btn-sm"
-          disabled={busy}
-          onClick={() => complete.mutate({ taskId: task.id })}
-        >
-          בוצע
-        </button>
-        <button
-          type="button"
-          className="pc-btn pc-btn-sm pc-btn-quiet"
-          disabled={busy}
-          onClick={() => skip.mutate({ taskId: task.id })}
-        >
-          דילוג
-        </button>
-      </div>
-    </li>
   )
 }

@@ -1,0 +1,102 @@
+/* Logical properties only — see styles/base.css. */
+
+.pc-gallerygrid {
+  margin: 0 0 var(--pc-space-3);
+  padding: 0;
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: var(--pc-space-3);
+}
+
+.pc-galleryitem {
+  position: relative;
+  border-radius: var(--pc-radius-control);
+  overflow: hidden;
+  border: 2px solid transparent;
+  background: var(--pc-surface-alt);
+  aspect-ratio: 1;
+}
+
+.pc-galleryitem[draggable='true'] {
+  cursor: grab;
+}
+
+.pc-galleryitem.is-main {
+  border-color: var(--pc-primary);
+}
+
+.pc-galleryitem.is-dragging {
+  opacity: 0.5;
+}
+
+.pc-galleryitem img {
+  inline-size: 100%;
+  block-size: 100%;
+  object-fit: cover;
+}
+
+/* The start edge, whichever way the document runs. */
+.pc-gallerymain {
+  position: absolute;
+  inset-block-start: var(--pc-space-2);
+  inset-inline-start: var(--pc-space-2);
+  padding: 2px var(--pc-space-2);
+  border-radius: var(--pc-radius-pill);
+  background: var(--pc-primary);
+  color: #fff;
+  font-size: var(--pc-h6);
+  font-weight: 600;
+}
+
+.pc-galleryactions {
+  position: absolute;
+  inset-block-end: 0;
+  inset-inline: 0;
+  display: flex;
+  justify-content: center;
+  gap: var(--pc-space-1);
+  padding: var(--pc-space-1);
+  background: rgba(36, 48, 39, 0.62);
+}
+
+.pc-galleryicon {
+  inline-size: 30px;
+  block-size: 30px;
+  border: 0;
+  border-radius: var(--pc-radius-sm);
+  background: rgba(255, 255, 255, 0.9);
+  color: var(--pc-text);
+  font-size: var(--pc-h5);
+  line-height: 1;
+  cursor: pointer;
+}
+
+.pc-galleryicon:hover:not(:disabled) {
+  background: #fff;
+}
+
+.pc-galleryicon:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.pc-galleryicon.is-danger {
+  color: var(--pc-danger);
+}
+
+.pc-galleryadd {
+  display: inline-block;
+  padding: var(--pc-space-2) var(--pc-space-4);
+  border: 1px dashed var(--pc-border);
+  border-radius: var(--pc-radius-control);
+  color: var(--pc-primary);
+  font-size: var(--pc-h5);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.pc-galleryadd:hover {
+  border-color: var(--pc-primary);
+  background: var(--pc-success-bg);
+}

@@ -161,7 +161,16 @@ export function useIdentification(identificationId: string | null) {
   })
 }
 
-export function useConfirmIdentification(identificationId: string | null) {
+/**
+ * Accept a candidate as the plant's species.
+ *
+ * `plantId` is optional because the Add Plant wizard has not got one in hand at the
+ * point it confirms — it is confirming the identification it just started. The plant
+ * dashboard does, and passes it, because the screen the user is looking at is that
+ * plant's own and would otherwise still be showing "waiting to be identified" after
+ * the answer was given.
+ */
+export function useConfirmIdentification(identificationId: string | null, plantId?: string) {
   const queryClient = useQueryClient()
   const { userId } = useAuth()
 
@@ -173,6 +182,32 @@ export function useConfirmIdentification(identificationId: string | null) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: scoped(userId, ['plants']) })
       queryClient.invalidateQueries({ queryKey: scoped(userId, ['dashboard']) })
+      if (plantId) queryClient.invalidateQueries({ queryKey: scoped(userId, ['plant', plantId]) })
+    },
+  })
+}
+
+/**
+ * Tell us the identification is wrong (A13).
+ *
+ * It records history and changes nothing: FINAL section 8 keeps confirmation as the
+ * only thing that moves a plant, so this is a report rather than a correction that
+ * takes effect. The copy around it has to be honest about that, and the plant's
+ * timeline is invalidated because the report appears there.
+ */
+export function useReportWrongIdentification(identificationId: string | null, plantId?: string) {
+  const queryClient = useQueryClient()
+  const { userId } = useAuth()
+
+  return useMutation<unknown, unknown, { scientificName: string | null; note: string | null }>({
+    mutationFn: ({ scientificName, note }) =>
+      api.post(`/v1/identifications/${identificationId}/correct`, {
+        json: { scientific_name: scientificName, note },
+      }),
+    onSuccess: () => {
+      if (plantId) {
+        queryClient.invalidateQueries({ queryKey: scoped(userId, ['plant', plantId, 'history']) })
+      }
     },
   })
 }

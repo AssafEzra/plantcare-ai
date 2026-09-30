@@ -1,0 +1,50 @@
+/* Logical properties only — see styles/base.css. */
+
+.pc-timeline {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--pc-space-2);
+}
+
+.pc-timelineitem {
+  display: flex;
+  gap: var(--pc-space-3);
+  padding: var(--pc-space-3);
+  background: var(--pc-surface);
+  border: 1px solid var(--pc-border);
+  border-radius: var(--pc-radius-control);
+}
+
+.pc-timelinemarker {
+  flex: none;
+  inline-size: 28px;
+  block-size: 28px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--pc-radius-pill);
+  background: var(--pc-surface-alt);
+  font-size: var(--pc-h5);
+  line-height: 1;
+}
+
+.pc-timelinebody {
+  min-inline-size: 0;
+}
+
+.pc-timelinebody p {
+  margin: 0;
+}
+
+.pc-timelinesummary {
+  font-weight: 500;
+}
+
+.pc-timelinenote {
+  margin-block-start: var(--pc-space-1);
+  color: var(--pc-text-muted);
+  font-size: var(--pc-h5);
+  font-style: italic;
+}

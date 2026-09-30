@@ -1,0 +1,59 @@
+/* Logical properties only — see styles/base.css. */
+
+.pc-modal {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  max-inline-size: min(640px, 100vw - var(--pc-space-5));
+  inline-size: 100%;
+  max-block-size: calc(100vh - var(--pc-space-6));
+}
+
+.pc-modal::backdrop {
+  background: rgba(36, 48, 39, 0.45);
+}
+
+.pc-modalbody {
+  display: flex;
+  flex-direction: column;
+  max-block-size: calc(100vh - var(--pc-space-6));
+  background: var(--pc-surface);
+  color: var(--pc-text);
+  border-radius: var(--pc-radius-card);
+  box-shadow: var(--pc-shadow-raised);
+}
+
+.pc-modalhead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--pc-space-3);
+  padding: var(--pc-space-4) var(--pc-space-5);
+  border-block-end: 1px solid var(--pc-border);
+}
+
+.pc-modalhead h2 {
+  margin: 0;
+  font-size: var(--pc-h3);
+}
+
+.pc-modalclose {
+  flex: none;
+  inline-size: 32px;
+  block-size: 32px;
+  border: 0;
+  border-radius: var(--pc-radius-pill);
+  background: var(--pc-surface-alt);
+  color: var(--pc-text-muted);
+  cursor: pointer;
+  line-height: 1;
+}
+
+.pc-modalclose:hover {
+  color: var(--pc-text);
+}
+
+.pc-modalcontent {
+  overflow-y: auto;
+  padding: var(--pc-space-5);
+}
