@@ -1,0 +1,70 @@
+/* Logical properties only — no physical left/right in this file. */
+
+.pc-morelist {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  background: var(--pc-surface);
+  border: 1px solid var(--pc-border);
+  border-radius: var(--pc-radius-card);
+  overflow: hidden;
+  box-shadow: var(--pc-shadow-card);
+}
+
+.pc-morelist li + li {
+  border-block-start: 1px solid var(--pc-border);
+}
+
+.pc-morelink {
+  display: flex;
+  align-items: center;
+  gap: var(--pc-space-3);
+  /* Comfortably above the 44px touch minimum. */
+  min-block-size: 56px;
+  padding-inline: var(--pc-space-4);
+  color: var(--pc-text);
+  transition: background var(--pc-transition);
+}
+
+.pc-morelink:hover {
+  background: var(--pc-surface-alt);
+  text-decoration: none;
+}
+
+.pc-moreicon {
+  display: grid;
+  place-items: center;
+  color: var(--pc-text-muted);
+}
+
+.pc-moreicon svg {
+  inline-size: 22px;
+  block-size: 22px;
+}
+
+.pc-morechevron {
+  margin-inline-start: auto;
+  display: grid;
+  place-items: center;
+  color: var(--pc-text-muted);
+}
+
+.pc-morechevron svg {
+  inline-size: 20px;
+  block-size: 20px;
+}
+
+/* --- placeholder --------------------------------------------------------- */
+
+.pc-placeholder {
+  background: var(--pc-surface);
+  border: 1px solid var(--pc-border);
+  border-radius: var(--pc-radius-card);
+  padding: var(--pc-space-6) var(--pc-space-5);
+  box-shadow: var(--pc-shadow-card);
+}
+
+.pc-placeholder-note {
+  margin: 0;
+  color: var(--pc-text-muted);
+}

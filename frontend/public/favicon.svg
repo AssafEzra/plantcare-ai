@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="PlantCare">
+  <rect width="64" height="64" rx="14" fill="#2F6B4F"/>
+  <!-- Vesica: two equal arcs between the same two points, bulging opposite ways. -->
+  <path d="M14 50 A 44 44 0 0 1 50 14 A 44 44 0 0 1 14 50 Z" fill="#F7F5EF"/>
+  <path d="M20 44 L44 20" stroke="#2F6B4F" stroke-width="3" stroke-linecap="round"/>
+</svg>

@@ -1,0 +1,156 @@
+/* Base layer: reset, typography, and the RTL architecture.
+ *
+ * Section 10 asks that RTL be "part of the CSS/UI architecture" rather than forced
+ * per-component. Two rules make that true here:
+ *
+ *   1. `dir="rtl"` is set once, on <html> in index.html. Nothing else sets direction.
+ *   2. Every component uses LOGICAL properties — margin-inline-start, padding-inline,
+ *      inset-inline-start, border-start-*, text-align: start/end. Physical left/right
+ *      appears only in the LTR-island rules below, where "left" is the actual fact.
+ *
+ * A reviewer can therefore check RTL correctness by grepping for `left:` / `right:` /
+ * `margin-left` / `padding-right` in the component CSS. Hits are bugs, not style.
+ */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  font-size: var(--pc-size-base);
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--pc-font);
+  font-weight: var(--pc-weight-base);
+  line-height: 1.55;
+  color: var(--pc-text);
+  background: var(--pc-bg);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* --- headings: the approved scale ---------------------------------------- */
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  margin: 0 0 var(--pc-space-3);
+  line-height: 1.3;
+  text-align: start;
+}
+
+h1 { font-size: var(--pc-h1); font-weight: var(--pc-h1-weight); }
+h2 { font-size: var(--pc-h2); font-weight: var(--pc-h2-weight); }
+h3 { font-size: var(--pc-h3); font-weight: var(--pc-h3-weight); }
+h4 { font-size: var(--pc-h4); font-weight: var(--pc-h4-weight); }
+h5 { font-size: var(--pc-h5); font-weight: var(--pc-h5-weight); }
+h6 { font-size: var(--pc-h6); font-weight: var(--pc-h6-weight); }
+
+p {
+  margin: 0 0 var(--pc-space-3);
+}
+
+/* Lists indent on the start edge. The Streamlit build needed an explicit override
+   here because Streamlit's own stylesheet set `margin-left`; in plain CSS the
+   logical property is simply correct from the outset. */
+ul,
+ol {
+  margin: 0 0 var(--pc-space-3);
+  padding-inline-start: 1.45em;
+  text-align: start;
+}
+
+a {
+  color: var(--pc-primary);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+}
+
+/* --- LTR islands (section 10) -------------------------------------------- */
+
+/* Code, identifiers, paths and URLs read as nonsense when the browser reorders
+   them bidirectionally — a UUID especially. `unicode-bidi: isolate` stops the
+   surrounding Hebrew from pulling them apart. */
+code,
+pre,
+kbd,
+samp,
+.pc-ltr {
+  direction: ltr;
+  text-align: left;
+  unicode-bidi: isolate;
+}
+
+/* Digits and any minus sign keep their order, but the field still reads from the
+   start edge like every other control on the page. */
+input[type="number"],
+input[type="tel"] {
+  direction: ltr;
+  text-align: right;
+}
+
+/* Email and URL fields are LTR content in an RTL form. */
+input[type="email"],
+input[type="url"] {
+  direction: ltr;
+  text-align: left;
+}
+
+/* Numbers, times and dates inside Hebrew prose. Use <span class="pc-num"> so the
+   value is isolated without changing the paragraph's direction. */
+.pc-num,
+time {
+  unicode-bidi: isolate;
+}
+
+/* --- accessibility ------------------------------------------------------- */
+
+/* The default outline is easy to lose against the warm background. */
+:focus-visible {
+  outline: 2px solid var(--pc-primary);
+  outline-offset: 2px;
+}
+
+/* Visible only to screen readers — used for nav landmarks and icon-only buttons
+   in the collapsed sidebar. */
+.pc-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}

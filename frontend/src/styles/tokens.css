@@ -1,0 +1,92 @@
+/* PlantCare AI design tokens.
+ *
+ * Ported verbatim from `.streamlit/config.toml`, which is where this project's
+ * approved visual direction actually lives — the `UI_DESIGN_TOKENS_AND_WIREFRAMES.md`
+ * that the migration spec's section 48 names is not in the repository. The token
+ * names below (`--pc-primary`, `--pc-success`, …) are the ones that file's own
+ * comments already used, so the two stay legible against each other during the
+ * migration.
+ *
+ * Deliberately NO dark mode. The Streamlit config records the reason: "The approved
+ * visual direction is a single warm, light palette; offering a dark mode Streamlit
+ * would derive automatically would introduce a second look nobody designed." That is
+ * a product decision, not a Streamlit limitation, so section 9's "no need to preserve
+ * limitations created by Streamlit" does not license adding one. If a dark palette is
+ * wanted it needs designing and approving on its own.
+ */
+
+:root {
+  /* --- surface and text ------------------------------------------------- */
+  --pc-primary: #2f6b4f;
+  --pc-primary-hover: #275a43;
+  --pc-bg: #f7f5ef;
+  --pc-surface: #ffffff;
+  --pc-surface-alt: #f0efe8;
+  --pc-text: #243027;
+  --pc-text-muted: #66706a;
+  --pc-border: #e1e3dc;
+
+  /* --- status palette --------------------------------------------------- */
+  /* Drives plant health everywhere. Each has a foreground and a wash. */
+  --pc-success: #3f7d55;
+  --pc-success-bg: #e8f3eb;
+  --pc-warning: #a96f24;
+  --pc-warning-bg: #f8eedc;
+  --pc-danger: #a94a43;
+  --pc-danger-bg: #f7e8e6;
+  --pc-neutral: #66706a;
+  --pc-neutral-bg: #eceeea;
+
+  /* --- type ------------------------------------------------------------- */
+  /* Noto Sans Hebrew is the specified family, for full Hebrew coverage.
+     Assistant is the specified fallback. */
+  --pc-font: "Noto Sans Hebrew", "Assistant", system-ui, -apple-system, sans-serif;
+  --pc-size-base: 16px;
+  --pc-weight-base: 400;
+
+  --pc-h1: 28px;
+  --pc-h2: 22px;
+  --pc-h3: 18px;
+  --pc-h4: 16px;
+  --pc-h5: 14px;
+  --pc-h6: 12px;
+  --pc-h1-weight: 700;
+  --pc-h2-weight: 700;
+  --pc-h3-weight: 700;
+  --pc-h4-weight: 600;
+  --pc-h5-weight: 500;
+  --pc-h6-weight: 500;
+
+  /* --- radius ----------------------------------------------------------- */
+  /* Scale is 8/12/16/24. Cards 16, controls a little tighter at 12. */
+  --pc-radius-sm: 8px;
+  --pc-radius-control: 12px;
+  --pc-radius-card: 16px;
+  --pc-radius-lg: 24px;
+  --pc-radius-pill: 999px;
+
+  /* --- spacing ---------------------------------------------------------- */
+  --pc-space-1: 4px;
+  --pc-space-2: 8px;
+  --pc-space-3: 12px;
+  --pc-space-4: 16px;
+  --pc-space-5: 24px;
+  --pc-space-6: 32px;
+  --pc-space-7: 48px;
+
+  /* --- layout ----------------------------------------------------------- */
+  --pc-content-max: 1280px;
+  --pc-header-h: 56px;
+  --pc-bottomnav-h: 64px;
+  --pc-sidebar-w: 240px;
+  --pc-sidebar-w-collapsed: 64px;
+
+  /* --- elevation -------------------------------------------------------- */
+  /* Restrained: this is a light, flat palette. Borders do most of the work. */
+  --pc-shadow-card: 0 1px 2px rgba(36, 48, 39, 0.04);
+  --pc-shadow-raised: 0 2px 8px rgba(36, 48, 39, 0.08);
+  --pc-shadow-nav: 0 -1px 4px rgba(36, 48, 39, 0.06);
+
+  /* --- motion ----------------------------------------------------------- */
+  --pc-transition: 150ms ease;
+}

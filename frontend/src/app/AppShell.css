@@ -1,0 +1,247 @@
+/* Shell layout.
+ *
+ * Every offset here is LOGICAL (inset-inline-start, padding-inline, border-inline).
+ * Physical `left`/`right` must not appear in this file — see src/styles/base.css.
+ * Mobile-first: the bottom bar is the default, the sidebar appears at >= 900px.
+ */
+
+.pc-shell {
+  min-height: 100dvh;
+}
+
+/* --- header -------------------------------------------------------------- */
+
+.pc-header {
+  position: sticky;
+  inset-block-start: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: var(--pc-space-2);
+  block-size: var(--pc-header-h);
+  padding-inline: var(--pc-space-4);
+  background: var(--pc-surface);
+  border-block-end: 1px solid var(--pc-border);
+}
+
+.pc-brand {
+  display: flex;
+  align-items: center;
+  gap: var(--pc-space-2);
+  font-size: var(--pc-h3);
+  font-weight: var(--pc-h3-weight);
+  color: var(--pc-text);
+}
+
+.pc-brand:hover {
+  text-decoration: none;
+}
+
+.pc-header-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--pc-space-1);
+  margin-inline-start: auto;
+}
+
+.pc-iconbtn {
+  display: grid;
+  place-items: center;
+  inline-size: 40px;
+  block-size: 40px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--pc-radius-pill);
+  background: transparent;
+  color: var(--pc-text-muted);
+  cursor: pointer;
+  transition: background var(--pc-transition), color var(--pc-transition);
+}
+
+.pc-iconbtn:hover {
+  background: var(--pc-surface-alt);
+  color: var(--pc-text);
+}
+
+.pc-iconbtn svg {
+  inline-size: 22px;
+  block-size: 22px;
+}
+
+/* The sidebar toggle is meaningless without a sidebar. */
+.pc-sidebar-toggle {
+  display: none;
+}
+
+/* --- sidebar (desktop) --------------------------------------------------- */
+
+.pc-sidebar {
+  display: none;
+}
+
+/* --- main ---------------------------------------------------------------- */
+
+.pc-main {
+  /* Clear the fixed bottom bar, plus the home indicator on iOS. */
+  padding-block-end: calc(var(--pc-bottomnav-h) + env(safe-area-inset-bottom));
+}
+
+.pc-content {
+  max-inline-size: var(--pc-content-max);
+  margin-inline: auto;
+  padding: var(--pc-space-4);
+}
+
+/* --- bottom navigation (mobile) ------------------------------------------ */
+
+.pc-bottomnav {
+  position: fixed;
+  inset-block-end: 0;
+  inset-inline: 0;
+  z-index: 20;
+  background: var(--pc-surface);
+  border-block-start: 1px solid var(--pc-border);
+  box-shadow: var(--pc-shadow-nav);
+  padding-block-end: env(safe-area-inset-bottom);
+}
+
+.pc-bottomnav ul {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pc-tab {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  /* Touch target: the whole cell, never just the glyph. */
+  min-block-size: var(--pc-bottomnav-h);
+  color: var(--pc-text-muted);
+  font-size: var(--pc-h6);
+  font-weight: var(--pc-h6-weight);
+}
+
+.pc-tab:hover {
+  text-decoration: none;
+}
+
+.pc-tab svg {
+  inline-size: 24px;
+  block-size: 24px;
+}
+
+.pc-tab.active {
+  color: var(--pc-primary);
+}
+
+.pc-tablabel {
+  line-height: 1.2;
+}
+
+/* --- desktop ------------------------------------------------------------- */
+
+@media (min-width: 900px) {
+  .pc-bottomnav {
+    display: none;
+  }
+
+  .pc-sidebar-toggle {
+    display: grid;
+  }
+
+  .pc-sidebar {
+    display: block;
+    position: fixed;
+    inset-block: var(--pc-header-h) 0;
+    inset-inline-start: 0;
+    inline-size: var(--pc-sidebar-w);
+    padding: var(--pc-space-3);
+    background: var(--pc-surface);
+    border-inline-end: 1px solid var(--pc-border);
+    overflow-y: auto;
+    transition: inline-size var(--pc-transition);
+  }
+
+  .pc-navlist {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: var(--pc-space-1);
+  }
+
+  .pc-navlink {
+    display: flex;
+    align-items: center;
+    gap: var(--pc-space-3);
+    padding: var(--pc-space-3);
+    border-radius: var(--pc-radius-control);
+    color: var(--pc-text-muted);
+    white-space: nowrap;
+    transition: background var(--pc-transition), color var(--pc-transition);
+  }
+
+  .pc-navlink:hover {
+    background: var(--pc-surface-alt);
+    color: var(--pc-text);
+    text-decoration: none;
+  }
+
+  .pc-navlink.active {
+    background: var(--pc-success-bg);
+    color: var(--pc-primary);
+    font-weight: 600;
+  }
+
+  .pc-navicon {
+    display: grid;
+    place-items: center;
+    flex: 0 0 auto;
+  }
+
+  .pc-navicon svg {
+    inline-size: 22px;
+    block-size: 22px;
+  }
+
+  .pc-main {
+    padding-block-end: 0;
+    margin-inline-start: var(--pc-sidebar-w);
+    transition: margin-inline-start var(--pc-transition);
+  }
+
+  .pc-content {
+    padding: var(--pc-space-5);
+  }
+
+  /* Icon-only mode. The label is removed from view but kept for screen readers,
+     so a collapsed sidebar is still navigable without sight. */
+  .pc-shell.is-collapsed .pc-sidebar {
+    inline-size: var(--pc-sidebar-w-collapsed);
+  }
+
+  .pc-shell.is-collapsed .pc-main {
+    margin-inline-start: var(--pc-sidebar-w-collapsed);
+  }
+
+  .pc-shell.is-collapsed .pc-navlabel {
+    position: absolute;
+    inline-size: 1px;
+    block-size: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .pc-shell.is-collapsed .pc-navlink {
+    justify-content: center;
+  }
+}
