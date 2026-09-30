@@ -8,14 +8,19 @@
 
 import { NavLink } from 'react-router-dom'
 import { SECONDARY_NAV } from '../app/nav'
+import { useMe } from '../api/profile'
 import './More.css'
 
 export default function More() {
+  const { data: me } = useMe()
+  const isAdmin = me?.role === 'ADMIN'
+  const items = SECONDARY_NAV.filter((item) => !item.adminOnly || isAdmin)
+
   return (
     <section className="pc-more">
       <h1>עוד</h1>
       <ul className="pc-morelist">
-        {SECONDARY_NAV.map((item) => (
+        {items.map((item) => (
           <li key={item.to}>
             <NavLink to={item.to} className="pc-morelink">
               <span className="pc-moreicon">{item.icon}</span>

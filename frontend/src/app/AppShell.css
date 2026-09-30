@@ -245,3 +245,129 @@
     justify-content: center;
   }
 }
+
+/* --- header menus -------------------------------------------------------- */
+
+.pc-menu {
+  position: relative;
+}
+
+/* The trigger anchors the badge. */
+.pc-menu .pc-iconbtn {
+  position: relative;
+}
+
+.pc-badge {
+  position: absolute;
+  inset-block-start: 2px;
+  inset-inline-end: 2px;
+  min-inline-size: 17px;
+  block-size: 17px;
+  padding-inline: 4px;
+  border-radius: var(--pc-radius-pill);
+  background: var(--pc-danger);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 17px;
+  text-align: center;
+  /* Digits keep their order inside an RTL page. */
+  unicode-bidi: isolate;
+}
+
+.pc-menupanel {
+  position: absolute;
+  inset-block-start: calc(100% + var(--pc-space-1));
+  /* Anchored to the inline end, so the panel opens inward from the header edge
+     in either direction without a physical left/right. */
+  inset-inline-end: 0;
+  z-index: 30;
+  inline-size: 264px;
+  padding: var(--pc-space-3);
+  background: var(--pc-surface);
+  border: 1px solid var(--pc-border);
+  border-radius: var(--pc-radius-card);
+  box-shadow: var(--pc-shadow-raised);
+}
+
+.pc-menuhead {
+  margin: 0 0 2px;
+  font-size: var(--pc-h5);
+  font-weight: 600;
+}
+
+.pc-menusub {
+  margin: 0 0 var(--pc-space-3);
+  color: var(--pc-text-muted);
+  font-size: var(--pc-h6);
+  overflow-wrap: anywhere;
+}
+
+.pc-menuempty,
+.pc-menufoot {
+  margin: var(--pc-space-2) 0 0;
+  color: var(--pc-text-muted);
+  font-size: var(--pc-h5);
+}
+
+.pc-menulist {
+  margin: var(--pc-space-2) 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pc-menulist a {
+  display: flex;
+  align-items: baseline;
+  gap: var(--pc-space-2);
+  padding: var(--pc-space-2);
+  border-radius: var(--pc-radius-sm);
+  color: var(--pc-text);
+}
+
+.pc-menulist a:hover {
+  background: var(--pc-surface-alt);
+  text-decoration: none;
+}
+
+.pc-menuaction {
+  font-weight: 600;
+  font-size: var(--pc-h5);
+}
+
+.pc-menuplant {
+  color: var(--pc-text-muted);
+  font-size: var(--pc-h6);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Used for both links and buttons, so the button is reset to match. */
+.pc-menulink {
+  display: block;
+  inline-size: 100%;
+  margin-block-start: var(--pc-space-1);
+  padding: var(--pc-space-2);
+  border: 0;
+  border-radius: var(--pc-radius-sm);
+  background: transparent;
+  color: var(--pc-text);
+  font: inherit;
+  font-size: var(--pc-h5);
+  text-align: start;
+  cursor: pointer;
+}
+
+.pc-menulink:hover {
+  background: var(--pc-surface-alt);
+  text-decoration: none;
+}
+
+.pc-menudanger {
+  color: var(--pc-danger);
+}
+
+.pc-menudanger:hover {
+  background: var(--pc-danger-bg);
+}
