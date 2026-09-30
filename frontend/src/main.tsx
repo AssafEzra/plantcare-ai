@@ -5,7 +5,9 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
 import './styles/tokens.css'
 import './styles/base.css'
+import './styles/components.css'
 import App from './App'
+import { AuthProvider } from './auth/AuthProvider'
 
 /* The query cache is created here, once.
  *
@@ -29,7 +31,9 @@ createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
-        <App />
+        <AuthProvider>
+          <App />
+        </AuthProvider>
       </BrowserRouter>
     </QueryClientProvider>
   </StrictMode>,

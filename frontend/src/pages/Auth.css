@@ -1,0 +1,38 @@
+/* Auth page shell only — fields, buttons, tabs and feedback are shared primitives
+   in src/styles/components.css. Logical properties only. */
+
+.pc-authpage {
+  min-block-size: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: var(--pc-space-4);
+}
+
+.pc-authcard {
+  inline-size: 100%;
+  max-inline-size: 420px;
+  background: var(--pc-surface);
+  border: 1px solid var(--pc-border);
+  border-radius: var(--pc-radius-card);
+  box-shadow: var(--pc-shadow-raised);
+  padding: var(--pc-space-5);
+}
+
+.pc-authbrand {
+  display: flex;
+  align-items: center;
+  gap: var(--pc-space-3);
+  margin-block-end: var(--pc-space-5);
+}
+
+.pc-authbrand h1 {
+  margin: 0;
+  font-size: var(--pc-h2);
+}
+
+/* Shown while the first session lookup resolves. Deliberately blank rather than a
+   spinner: it is normally a few milliseconds, and a flash of "loading" on every page
+   load reads as slower than nothing. */
+.pc-authgate {
+  min-block-size: 100dvh;
+}

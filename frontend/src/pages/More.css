@@ -53,18 +53,3 @@
   inline-size: 20px;
   block-size: 20px;
 }
-
-/* --- placeholder --------------------------------------------------------- */
-
-.pc-placeholder {
-  background: var(--pc-surface);
-  border: 1px solid var(--pc-border);
-  border-radius: var(--pc-radius-card);
-  padding: var(--pc-space-6) var(--pc-space-5);
-  box-shadow: var(--pc-shadow-card);
-}
-
-.pc-placeholder-note {
-  margin: 0;
-  color: var(--pc-text-muted);
-}
