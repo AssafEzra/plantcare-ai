@@ -56,6 +56,11 @@
   font-size: var(--pc-h5);
 }
 
+.pc-statline {
+  margin: 0 0 var(--pc-space-1);
+  font-weight: 600;
+}
+
 .pc-fail {
   color: var(--pc-danger);
 }

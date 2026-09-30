@@ -13,6 +13,7 @@
  */
 
 import { Link } from 'react-router-dom'
+import { useIsReadOnly } from '../lib/viewAs'
 import {
   actionLabel,
   dueText,
@@ -35,6 +36,7 @@ export default function CareTaskCard({
   /** Present on the plant dashboard, so its own view model is refetched too. */
   plantId?: string
 }) {
+  const readOnly = useIsReadOnly()
   const complete = useCompleteTask(plantId)
   const skip = useSkipTask(plantId)
   const busy = complete.isPending || skip.isPending
@@ -59,7 +61,7 @@ export default function CareTaskCard({
         )}
       </div>
 
-      {actionable && (
+      {actionable && !readOnly && (
         <div className="pc-taskactions">
           <button
             type="button"

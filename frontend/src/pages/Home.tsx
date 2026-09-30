@@ -17,6 +17,7 @@ import { usePlants } from '../api/plants'
 import PlantCard from '../components/PlantCard'
 import CareTaskCard from '../components/CareTaskCard'
 import Async from '../components/Async'
+import { useIsReadOnly } from '../lib/viewAs'
 import '../components/PlantCard.css'
 import './Home.css'
 
@@ -27,14 +28,17 @@ export default function Home() {
   const data = query.data
 
   const plants = (plantsQuery.data ?? []).filter((p) => p.status !== 'ARCHIVED')
+  const readOnly = useIsReadOnly()
 
   return (
     <section>
       <header className="pc-pagehead">
         <h1>{me?.display_name ? `שלום ${me.display_name}` : 'בית'}</h1>
-        <Link to="/plants/new" className="pc-btn">
-          הוספת צמח
-        </Link>
+        {!readOnly && (
+          <Link to="/plants/new" className="pc-btn">
+            הוספת צמח
+          </Link>
+        )}
       </header>
 
       <div className="pc-sectionhead">
@@ -81,9 +85,11 @@ export default function Home() {
         emptyState={
           <div className="pc-empty">
             <p>עוד לא הוספתם צמחים.</p>
-            <Link to="/plants/new" className="pc-btn">
-              הוספת הצמח הראשון
-            </Link>
+            {!readOnly && (
+              <Link to="/plants/new" className="pc-btn">
+                הוספת הצמח הראשון
+              </Link>
+            )}
           </div>
         }
       >

@@ -42,6 +42,7 @@ import {
 import { useAssessment, useHealthHistory, useStartHealthCheck } from '../api/health'
 import { useAgentRequest } from '../api/identification'
 import { isDue } from '../api/careTasks'
+import { useIsReadOnly } from '../lib/viewAs'
 import { statusStyle, trendStyle, PLANT_STATUS_LABELS } from '../lib/status'
 import { LOGGABLE_EVENTS } from '../lib/careVocab'
 import { assessedAt, formatDate } from '../lib/dates'
@@ -78,9 +79,13 @@ export default function PlantDashboardPage() {
 
 function Loaded({ plantId, plant }: { plantId: string; plant: Dashboard }) {
   const archived = plant.status === 'ARCHIVED'
-  /* An archived plant is a record. Its history stays readable and it can be restored,
-     but nothing about it is edited in place. */
-  const canEdit = !archived
+  /* Two reasons this page can be read-only, and they are not the same reason. An
+     archived plant is a record: its history stays readable and it can be restored, but
+     nothing about it is edited in place. View-as is somebody else's account, where the
+     API refuses every write regardless — offering the controls would invite an
+     administrator to press something that answers 403. */
+  const readOnly = useIsReadOnly()
+  const canEdit = !archived && !readOnly
 
   const status = statusStyle(plant.health.current_status)
   const trend = plant.health.trend ? trendStyle(plant.health.trend) : null
@@ -138,7 +143,11 @@ function Loaded({ plantId, plant }: { plantId: string; plant: Dashboard }) {
           )}
           <p className="pc-placeholder-note">נוסף {formatDate(plant.created_at)}</p>
 
-          <Lifecycle plantId={plantId} archived={archived} />
+          {/* Archive and restore are writes like any other, so they follow the same
+              gate. Under view-as the API refuses them; on an archived plant restore
+              is the one write that still makes sense, which is why `canEdit` is not
+              the condition here. */}
+          {!readOnly && <Lifecycle plantId={plantId} archived={archived} />}
         </div>
       </div>
 

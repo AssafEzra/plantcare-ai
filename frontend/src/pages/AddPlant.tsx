@@ -24,11 +24,13 @@ import {
 } from '../api/identification'
 import ImagePicker, { type PickedImage } from '../components/ImagePicker'
 import { ApiError } from '../lib/errors'
+import { useIsReadOnly } from '../lib/viewAs'
 import './AddPlant.css'
 
 type Step = 'upload' | 'identifying' | 'confirm' | 'done'
 
 export default function AddPlant() {
+  const readOnly = useIsReadOnly()
   const [step, setStep] = useState<Step>('upload')
   const [images, setImages] = useState<PickedImage[]>([])
   const [note, setNote] = useState('')
@@ -45,6 +47,23 @@ export default function AddPlant() {
     setRequestId(null)
     setIdentificationId(null)
     setKnowledgePending(false)
+  }
+
+  /* Every step of this flow writes, starting with creating the plant. Under view-as
+     the API refuses all of it, so the honest thing is to say why rather than let an
+     administrator photograph a plant and meet a 403 at the end. */
+  if (readOnly) {
+    return (
+      <section className="pc-addplant">
+        <StepHeader title="הוספת צמח" />
+        <p className="pc-formnotice" role="status">
+          צפייה כמשתמש אחר היא לקריאה בלבד. אי אפשר להוסיף צמח לחשבון של מישהו אחר.
+        </p>
+        <Link to="/plants" className="pc-btn">
+          לרשימת הצמחים
+        </Link>
+      </section>
+    )
   }
 
   return (

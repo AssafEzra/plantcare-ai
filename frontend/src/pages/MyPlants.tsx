@@ -17,6 +17,7 @@ import { usePlants, plantName, type Plant } from '../api/plants'
 import { STATUS_SEVERITY, type HealthStatus } from '../lib/status'
 import PlantCard from '../components/PlantCard'
 import Async from '../components/Async'
+import { useIsReadOnly } from '../lib/viewAs'
 import '../components/PlantCard.css'
 
 type Sort = 'name' | 'created' | 'health'
@@ -27,6 +28,7 @@ export default function MyPlants() {
   const [health, setHealth] = useState<HealthStatus | ''>('')
   const [species, setSpecies] = useState('')
   const [sort, setSort] = useState<Sort>('name')
+  const readOnly = useIsReadOnly()
 
   const query = usePlants({
     status: archived ? 'ARCHIVED' : undefined,
@@ -60,9 +62,11 @@ export default function MyPlants() {
     <section>
       <header className="pc-pagehead">
         <h1>{archived ? 'צמחים בארכיון' : 'הצמחים שלי'}</h1>
-        <Link to="/plants/new" className="pc-btn">
-          הוספת צמח
-        </Link>
+        {!readOnly && (
+          <Link to="/plants/new" className="pc-btn">
+            הוספת צמח
+          </Link>
+        )}
       </header>
 
       <div className="pc-filters">
@@ -120,9 +124,11 @@ export default function MyPlants() {
           ) : (
             <div className="pc-empty">
               <p>עוד לא הוספתם צמחים.</p>
-              <Link to="/plants/new" className="pc-btn">
-                הוספת הצמח הראשון
-              </Link>
+              {!readOnly && (
+                <Link to="/plants/new" className="pc-btn">
+                  הוספת הצמח הראשון
+                </Link>
+              )}
             </div>
           )
         }

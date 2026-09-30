@@ -70,3 +70,16 @@ export function useViewAs(): State {
     () => ({ userId: null, email: null }),
   )
 }
+
+/**
+ * Is the current session looking at somebody else's account?
+ *
+ * The API is the enforcement — every non-GET carrying the act-as header is refused —
+ * but a screen that still offers the controls invites an administrator to press
+ * something that will fail, and a 403 is a worse explanation than not being asked. So
+ * writes are hidden rather than merely doomed.
+ */
+export function useIsReadOnly(): boolean {
+  return useViewAs().userId !== null
+}
+

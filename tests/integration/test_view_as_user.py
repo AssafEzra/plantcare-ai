@@ -19,6 +19,7 @@ from __future__ import annotations
 import os
 import uuid
 from collections.abc import Iterator
+from datetime import UTC, datetime
 
 import pytest
 from fastapi.testclient import TestClient
@@ -190,6 +191,94 @@ def test_the_viewed_users_plant_page_opens(api, cast):
     response = api.get(f"/v1/plants/{plant_id}", headers=acting(cast))
 
     assert response.status_code == 200
+
+
+def test_the_dashboard_shows_the_care_plan_that_exists(api, cast, admin_sdk):
+    """The assertion this file was missing, and the reason migration 0020 exists.
+
+    `GET /v1/plants/{id}` answering 200 is true whatever the care policies say, so
+    the test above passed while the mode was quietly broken: `care_rules` and
+    `care_plan_versions` had no `_select_admin` policy, so an administrator viewing a
+    user saw "this plant has no care plan" - with an invitation to create one - for a
+    plant holding an active version, and every task in the list read "טיפול" because
+    `decorate_tasks` could not read the rule to name its action.
+
+    Confidently wrong is worse than blank, which is why this asserts on the *content*
+    rather than on the status code.
+    """
+    plant_id = cast["owner_plant"]["id"]
+
+    plan = (
+        admin_sdk.table("care_plans")
+        .insert({"user_id": cast["owner_id"], "plant_id": plant_id})
+        .execute()
+        .data[0]
+    )
+    version = (
+        admin_sdk.table("care_plan_versions")
+        .insert(
+            {
+                "care_plan_id": plan["id"],
+                "version_number": 1,
+                "status": "ACTIVE",
+                "professional_recommendations": {"summary": "מים בינוניים"},
+                "source_type": "INITIAL_PLAN",
+            }
+        )
+        .execute()
+        .data[0]
+    )
+    admin_sdk.table("care_plans").update({"active_version_id": version["id"]}).eq(
+        "id", plan["id"]
+    ).execute()
+    rule = (
+        admin_sdk.table("care_rules")
+        .insert(
+            {
+                "care_plan_version_id": version["id"],
+                "action_type": "WATERING",
+                "interval_days": 7,
+                "preferred_time_local": "08:00",
+            }
+        )
+        .execute()
+        .data[0]
+    )
+    task = (
+        admin_sdk.table("care_tasks")
+        .insert(
+            {
+                "user_id": cast["owner_id"],
+                "plant_id": plant_id,
+                "care_rule_id": rule["id"],
+                "due_at_utc": datetime.now(UTC).isoformat(),
+                "status": "PENDING",
+            }
+        )
+        .execute()
+        .data[0]
+    )
+
+    try:
+        response = api.get(f"/v1/plants/{plant_id}/dashboard", headers=acting(cast))
+
+        assert response.status_code == 200
+        data = response.json()["data"]
+
+        assert data["care_plan"] is not None, "an admin viewing a user saw no care plan"
+        assert data["care_plan"]["version_number"] == 1
+        assert [r["action_type"] for r in data["care_plan"]["rules"]] == ["WATERING"]
+
+        actions = [t.get("action_type") for t in data["upcoming_tasks"]]
+        assert "WATERING" in actions, f"tasks came back unnamed: {actions}"
+    finally:
+        admin_sdk.table("care_tasks").delete().eq("id", task["id"]).execute()
+        admin_sdk.table("care_rules").delete().eq("id", rule["id"]).execute()
+        admin_sdk.table("care_plans").update({"active_version_id": None}).eq(
+            "id", plan["id"]
+        ).execute()
+        admin_sdk.table("care_plan_versions").delete().eq("id", version["id"]).execute()
+        admin_sdk.table("care_plans").delete().eq("id", plan["id"]).execute()
 
 
 # --- refusals -------------------------------------------------------------------

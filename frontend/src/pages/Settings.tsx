@@ -20,6 +20,7 @@ import {
   type NotificationDelivery,
 } from '../api/notifications'
 import { formatStamp } from '../lib/dates'
+import { useIsReadOnly } from '../lib/viewAs'
 import { ApiError } from '../lib/errors'
 import Async from '../components/Async'
 import './Settings.css'
@@ -27,6 +28,7 @@ import './Settings.css'
 export default function Settings() {
   const profile = useMe()
   const preferences = usePreferences()
+  const readOnly = useIsReadOnly()
 
   return (
     <section className="pc-settings">
@@ -34,8 +36,14 @@ export default function Settings() {
         <h1>הגדרות</h1>
       </header>
 
+      {readOnly && (
+        <p className="pc-placeholder-note">
+          צפייה בהגדרות של משתמש אחר. אי אפשר לשנות אותן מכאן.
+        </p>
+      )}
+
       <Async query={profile} loadingLabel="טוען את הפרופיל…">
-        {profile.data && <ProfileForm profile={profile.data} />}
+        {profile.data && <ProfileForm profile={profile.data} readOnly={readOnly} />}
       </Async>
 
       <div className="pc-sectionhead">
@@ -43,7 +51,9 @@ export default function Settings() {
       </div>
 
       <Async query={preferences} loadingLabel="טוען העדפות…">
-        {preferences.data && <RemindersForm preferences={preferences.data} />}
+        {preferences.data && (
+          <RemindersForm preferences={preferences.data} readOnly={readOnly} />
+        )}
       </Async>
 
       <Deliveries />
@@ -84,7 +94,13 @@ function timezones(current: string): string[] {
   return options.includes(current) ? options : [current, ...options]
 }
 
-function ProfileForm({ profile }: { profile: NonNullable<ReturnType<typeof useMe>['data']> }) {
+function ProfileForm({
+  profile,
+  readOnly,
+}: {
+  profile: NonNullable<ReturnType<typeof useMe>['data']>
+  readOnly: boolean
+}) {
   const [name, setName] = useState(profile.display_name ?? '')
   const [timezone, setTimezone] = useState(profile.timezone)
   const [nothing, setNothing] = useState(false)
@@ -155,9 +171,11 @@ function ProfileForm({ profile }: { profile: NonNullable<ReturnType<typeof useMe
       )}
       {nothing && <p className="pc-placeholder-note">אין שינויים לשמור.</p>}
 
-      <button type="submit" className="pc-btn" disabled={update.isPending}>
-        {update.isPending ? 'שומרים…' : 'שמירה'}
-      </button>
+      {!readOnly && (
+        <button type="submit" className="pc-btn" disabled={update.isPending}>
+          {update.isPending ? 'שומרים…' : 'שמירה'}
+        </button>
+      )}
     </form>
   )
 }
@@ -171,8 +189,10 @@ function clock(value: string): string {
 
 function RemindersForm({
   preferences,
+  readOnly,
 }: {
   preferences: NonNullable<ReturnType<typeof usePreferences>['data']>
+  readOnly: boolean
 }) {
   const [emailEnabled, setEmailEnabled] = useState(preferences.email_enabled)
   const [time, setTime] = useState(clock(preferences.preferred_time_local))
@@ -247,9 +267,11 @@ function RemindersForm({
       )}
       {nothing && <p className="pc-placeholder-note">אין שינויים לשמור.</p>}
 
-      <button type="submit" className="pc-btn" disabled={update.isPending}>
-        {update.isPending ? 'שומרים…' : 'שמירת התזכורות'}
-      </button>
+      {!readOnly && (
+        <button type="submit" className="pc-btn" disabled={update.isPending}>
+          {update.isPending ? 'שומרים…' : 'שמירת התזכורות'}
+        </button>
+      )}
 
       {!emailEnabled && (
         /* Said plainly rather than left to be inferred from a switch: a user who turned

@@ -159,7 +159,10 @@ function OverviewTab() {
               <ul className="pc-adminlist">
                 {data.agent_stats.map((stat) => (
                   <li key={stat.agent_type} className="pc-card">
-                    <p className="pc-adminrowhead">
+                    {/* Not `pc-adminrowhead`: that is a flex row with
+                        space-between, for a title and a button. On a sentence it
+                        pushes the words to opposite edges. */}
+                    <p className="pc-statline">
                       {stat.agent_type} · <span className="pc-num">{stat.total}</span> הרצות
                       {stat.failed > 0 && (
                         <>
