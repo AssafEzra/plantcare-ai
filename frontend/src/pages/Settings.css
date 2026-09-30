@@ -1,0 +1,90 @@
+/* Logical properties only — see styles/base.css. */
+
+.pc-settings {
+  max-inline-size: 560px;
+  margin-inline: auto;
+}
+
+.pc-settings .pc-card {
+  margin-block-end: var(--pc-space-4);
+}
+
+.pc-settings .pc-card h2 {
+  margin-block-end: var(--pc-space-4);
+}
+
+/* A checkbox and its label on one line, with the whole row a hit target. The native
+   control is kept rather than restyled into a switch: it is already announced
+   correctly, and a switch that only looks like one is worse than a checkbox. */
+.pc-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--pc-space-3);
+  margin-block-end: var(--pc-space-3);
+  min-block-size: 44px;
+  cursor: pointer;
+}
+
+.pc-toggle input {
+  inline-size: 20px;
+  block-size: 20px;
+  accent-color: var(--pc-primary);
+  flex: none;
+}
+
+/* The time field is digits: they keep their order, and the control still reads from
+   the start edge like every other input on the page. */
+.pc-settings input[type='time'] {
+  direction: ltr;
+  text-align: right;
+  inline-size: auto;
+  min-inline-size: 140px;
+}
+
+.pc-deliveries {
+  background: var(--pc-surface);
+}
+
+.pc-deliverylist {
+  margin: var(--pc-space-3) 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--pc-space-2);
+}
+
+.pc-deliverylist li {
+  display: flex;
+  align-items: center;
+  gap: var(--pc-space-3);
+  flex-wrap: wrap;
+  padding: var(--pc-space-2) var(--pc-space-3);
+  border: 1px solid var(--pc-border);
+  border-radius: var(--pc-radius-control);
+  font-size: var(--pc-h5);
+}
+
+/* The word carries the meaning; the colour only reinforces it. */
+.pc-deliverystatus {
+  font-weight: 600;
+}
+
+.pc-deliverystatus.is-sent {
+  color: var(--pc-success);
+}
+
+.pc-deliverystatus.is-failed {
+  color: var(--pc-danger);
+}
+
+.pc-deliverystatus.is-queued,
+.pc-deliverystatus.is-skipped {
+  color: var(--pc-text-muted);
+}
+
+.pc-deliveryerror {
+  inline-size: 100%;
+  color: var(--pc-text-muted);
+  font-size: var(--pc-h6);
+}
