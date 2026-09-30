@@ -3,14 +3,16 @@
  * Two controls, not one. A single input carrying `capture="environment"` is the
  * standard trick and it is wrong in both directions: on a phone the attribute makes
  * the control open the camera and *only* the camera, so there was no way to reach the
- * gallery; on a desktop, where there is no capture device to hand to, browsers ignore
- * the attribute and some refuse the picker outright. Reported from real use — "the
- * camera is not working" — and the honest fix is to stop asking one button to mean two
- * things.
+ * gallery; on a desktop, where there is no capture device to hand the request to,
+ * every browser ignores the attribute and opens the ordinary file picker.
  *
- * So: one input with `capture`, one without, each with its own label. The camera input
- * is deliberately not `multiple` — a capture session hands back one photograph, and
- * asking for many from a camera is a request no platform honours.
+ * That second half is why "the camera is not working" was still true after the buttons
+ * were split — the camera button was opening the upload dialog under a different name.
+ * The camera is `getUserMedia` with a live preview (see CameraCapture), which is what
+ * the Streamlit build used before this one and works on a desktop and a phone alike.
+ * The `capture` input survives as the fallback for the one case `getUserMedia` cannot
+ * serve: a page loaded over plain http, where the browser withholds `mediaDevices`
+ * entirely and the operating system's own camera is the only way to a photograph.
  *
  * Validation mirrors the database's own constraints (mime in jpeg/png/webp, at most
  * 10 MB) so a file that would be rejected server-side is refused before it is
@@ -19,6 +21,7 @@
 
 import { useEffect, useId, useRef, useState } from 'react'
 import { ACCEPTED_MIME, MAX_BYTES, MAX_IMAGES } from '../api/identification'
+import CameraCapture from './CameraCapture'
 import './ImagePicker.css'
 
 export type PickedImage = { file: File; url: string }
@@ -37,6 +40,7 @@ export default function ImagePicker({
   const fileRef = useRef<HTMLInputElement>(null)
   const cameraRef = useRef<HTMLInputElement>(null)
   const [problem, setProblem] = useState<string | null>(null)
+  const [cameraOpen, setCameraOpen] = useState(false)
 
   /* Generated, not hardcoded. A label reaches its input by id, so two pickers on one
      screen sharing a literal would point both labels at whichever input rendered
@@ -44,6 +48,11 @@ export default function ImagePicker({
      one. */
   const cameraId = useId()
   const fileId = useId()
+
+  /* Undefined outside a secure context, which is exactly the case the native input
+     is kept for. Read at render rather than at module load so it is not baked into
+     a service-worker-cached bundle. */
+  const liveCamera = typeof navigator.mediaDevices?.getUserMedia === 'function'
 
   /* Object URLs are a manual allocation; without this every retake leaks one for as
      long as the tab lives. */
@@ -56,14 +65,14 @@ export default function ImagePicker({
 
   const full = images.length >= max
 
-  function add(files: FileList | null) {
-    if (!files?.length) return
+  function add(files: readonly File[]) {
+    if (!files.length) return
     setProblem(null)
 
     const accepted: PickedImage[] = []
     const rejected: string[] = []
 
-    for (const file of Array.from(files)) {
+    for (const file of files) {
       /* A camera capture can arrive with an empty `type` on some Android builds, so
          the extension is the fallback rather than an outright rejection of a
          photograph the user just took. */
@@ -121,6 +130,8 @@ export default function ImagePicker({
       )}
 
       <div className="pc-pickeractions">
+        {/* Present only as the fallback route; the button below reaches it directly
+            when there is no live camera to open. */}
         <input
           ref={cameraRef}
           type="file"
@@ -128,18 +139,21 @@ export default function ImagePicker({
           capture="environment"
           className="pc-sr-only"
           id={cameraId}
-          onChange={(e) => add(e.target.files)}
+          onChange={(e) => add(Array.from(e.target.files ?? []))}
           disabled={full}
+          tabIndex={-1}
         />
-        <label
-          htmlFor={cameraId}
-          className={`pc-pickerbtn${full ? ' is-full' : ''}`}
+        <button
+          type="button"
+          className="pc-pickerbtn"
+          onClick={() => (liveCamera ? setCameraOpen(true) : cameraRef.current?.click())}
+          disabled={full}
         >
           <span className="pc-pickericon" aria-hidden="true">
             ◉
           </span>
           צילום
-        </label>
+        </button>
 
         <input
           ref={fileRef}
@@ -148,7 +162,7 @@ export default function ImagePicker({
           multiple
           className="pc-sr-only"
           id={fileId}
-          onChange={(e) => add(e.target.files)}
+          onChange={(e) => add(Array.from(e.target.files ?? []))}
           disabled={full}
         />
         <label htmlFor={fileId} className={`pc-pickerbtn${full ? ' is-full' : ''}`}>
@@ -165,6 +179,10 @@ export default function ImagePicker({
         <p className="pc-formerror" role="alert">
           {problem}
         </p>
+      )}
+
+      {cameraOpen && (
+        <CameraCapture onCapture={(file) => add([file])} onClose={() => setCameraOpen(false)} />
       )}
     </div>
   )

@@ -1,0 +1,44 @@
+/* Logical properties only. */
+
+.pc-camera {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pc-space-3);
+}
+
+/* A fixed 4:3 box, so the dialog does not resize when the stream arrives and again
+   when the still replaces it. Dark, because a camera preview that has not started
+   yet should read as a viewfinder rather than as a broken image. */
+.pc-camerastage {
+  position: relative;
+  aspect-ratio: 4 / 3;
+  inline-size: 100%;
+  border-radius: var(--pc-radius-card);
+  overflow: hidden;
+  background: #1b231d;
+}
+
+.pc-camerafeed,
+.pc-camerashot {
+  position: absolute;
+  inset: 0;
+  inline-size: 100%;
+  block-size: 100%;
+  object-fit: cover;
+}
+
+/* Hidden, not unmounted: unmounting would tear down the stream and a retake would
+   have to ask the camera for permission all over again. */
+.pc-camerafeed.is-hidden {
+  visibility: hidden;
+}
+
+.pc-cameraactions {
+  display: flex;
+  gap: var(--pc-space-3);
+}
+
+.pc-cameraactions .pc-btn {
+  flex: 1 1 0;
+  min-block-size: 48px;
+}

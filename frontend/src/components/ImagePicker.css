@@ -67,8 +67,11 @@
   gap: var(--pc-space-3);
 }
 
+/* The camera is a button and the upload is a label; the shared rule has to undo a
+   button's inherited font and default box so the two are indistinguishable. */
 .pc-pickerbtn {
   flex: 1 1 0;
+  font: inherit;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -95,18 +98,22 @@
   line-height: 1;
 }
 
-/* Keyboard focus lands on the hidden input, so the ring has to be drawn here. */
-.pc-picker input:focus-visible + .pc-pickerbtn {
+/* One is a <button> and one is a <label> over a hidden input, so focus lands in two
+   different places and both rings are drawn here. */
+.pc-picker input:focus-visible + .pc-pickerbtn,
+button.pc-pickerbtn:focus-visible {
   outline: 2px solid var(--pc-primary);
   outline-offset: 2px;
 }
 
-.pc-pickerbtn.is-full {
+.pc-pickerbtn.is-full,
+.pc-pickerbtn:disabled {
   color: var(--pc-text-muted);
   cursor: default;
 }
 
-.pc-pickerbtn.is-full:hover {
+.pc-pickerbtn.is-full:hover,
+.pc-pickerbtn:disabled:hover {
   border-color: var(--pc-border);
   background: var(--pc-surface);
 }
