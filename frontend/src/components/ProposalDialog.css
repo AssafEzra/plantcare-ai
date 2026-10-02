@@ -4,7 +4,7 @@
   padding: var(--pc-space-3);
   border-inline-start: 3px solid var(--pc-primary);
   border-radius: var(--pc-radius-sm);
-  background: var(--pc-success-bg);
+  background: var(--pc-primary-soft);
 }
 
 .pc-changes {

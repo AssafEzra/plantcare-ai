@@ -1,11 +1,12 @@
 /* PlantCare AI design tokens.
  *
- * Ported verbatim from `.streamlit/config.toml`, which is where this project's
- * approved visual direction actually lives — the `UI_DESIGN_TOKENS_AND_WIREFRAMES.md`
- * that the migration spec's section 48 names is not in the repository. The token
- * names below (`--pc-primary`, `--pc-success`, …) are the ones that file's own
- * comments already used, so the two stay legible against each other during the
- * migration.
+ * The values started life in `.streamlit/config.toml` and were ported verbatim during
+ * the migration. They have since been redesigned against a written brief — modern,
+ * clean, sleek; generous whitespace; a palette running from soft white to green — so
+ * this file, not the Streamlit config, is now the source of truth. The spec's own
+ * document, `PlantCare_AI_Spec/UI_DESIGN_TOKENS_AND_WIREFRAMES_V1.md`, remains useful
+ * for the per-screen wireframes and intent lines; where its numbers and these disagree,
+ * these win, and the differences are listed at the bottom of this comment.
  *
  * Deliberately NO dark mode. The Streamlit config records the reason: "The approved
  * visual direction is a single warm, light palette; offering a dark mode Streamlit
@@ -13,28 +14,43 @@
  * a product decision, not a Streamlit limitation, so section 9's "no need to preserve
  * limitations created by Streamlit" does not license adding one. If a dark palette is
  * wanted it needs designing and approving on its own.
+ *
+ * Every foreground/background pair below clears 4.5:1. Three of them did not before
+ * this pass: muted text on the soft surface (4.37), the success badge (4.32) and the
+ * warning badge (3.66) all failed at the 12px the badges actually use, so those three
+ * foregrounds were darkened until they cleared it.
+ *
+ * Knowing deviations from V1: it lists spacing steps 20/40/64 — only 64 is adopted,
+ * because a seven-step scale constrains a layout and a ten-step one does not; and it
+ * names `--pc-surface-soft` and `--pc-primary-dark`, which exist here under the names
+ * the components already used, `--pc-surface-alt` and `--pc-primary-hover`.
  */
 
 :root {
   /* --- surface and text ------------------------------------------------- */
+  /* The page is a soft near-white carrying a faint green cast, so white cards lift
+     off it without a shadow doing the work. Text is a deep green-black rather than
+     a neutral one — at 13.8:1 it reads as ink, not as grey. */
   --pc-primary: #2f6b4f;
-  --pc-primary-hover: #275a43;
-  --pc-bg: #f7f5ef;
+  --pc-primary-hover: #25573f;
+  --pc-primary-soft: #e6f0e9;
+  --pc-bg: #f6f8f3;
   --pc-surface: #ffffff;
-  --pc-surface-alt: #f0efe8;
-  --pc-text: #243027;
-  --pc-text-muted: #66706a;
-  --pc-border: #e1e3dc;
+  --pc-surface-alt: #edf1ea;
+  --pc-text: #1e2b23;
+  --pc-text-muted: #5f6e65;
+  --pc-border: #e2e7dd;
 
   /* --- status palette --------------------------------------------------- */
-  /* Drives plant health everywhere. Each has a foreground and a wash. */
-  --pc-success: #3f7d55;
+  /* Drives plant health everywhere. Each has a foreground and a wash. The washes are
+     unchanged; the foregrounds were darkened to clear 4.5:1 at badge size. */
+  --pc-success: #3a7550;
   --pc-success-bg: #e8f3eb;
-  --pc-warning: #a96f24;
+  --pc-warning: #8f5c1c;
   --pc-warning-bg: #f8eedc;
   --pc-danger: #a94a43;
   --pc-danger-bg: #f7e8e6;
-  --pc-neutral: #66706a;
+  --pc-neutral: #5f6e65;
   --pc-neutral-bg: #eceeea;
 
   /* --- type ------------------------------------------------------------- */
@@ -43,6 +59,11 @@
   --pc-font: "Noto Sans Hebrew", "Assistant", system-ui, -apple-system, sans-serif;
   --pc-size-base: 16px;
   --pc-weight-base: 400;
+
+  /* Display is for page titles on wide screens only; below 900px the h1 size is
+     already the largest thing on screen and a second step just costs lines. */
+  --pc-display: 32px;
+  --pc-display-weight: 700;
 
   --pc-h1: 28px;
   --pc-h2: 22px;
@@ -58,10 +79,11 @@
   --pc-h6-weight: 500;
 
   /* --- radius ----------------------------------------------------------- */
-  /* Scale is 8/12/16/24. Cards 16, controls a little tighter at 12. */
+  /* Scale is 8/12/20/24. Cards sit at 20 — enough to read as soft without the
+     cartoonish look a full pill gives a large rectangle. Controls stay tighter. */
   --pc-radius-sm: 8px;
   --pc-radius-control: 12px;
-  --pc-radius-card: 16px;
+  --pc-radius-card: 20px;
   --pc-radius-lg: 24px;
   --pc-radius-pill: 999px;
 
@@ -73,6 +95,7 @@
   --pc-space-5: 24px;
   --pc-space-6: 32px;
   --pc-space-7: 48px;
+  --pc-space-8: 64px;
 
   /* --- layout ----------------------------------------------------------- */
   --pc-content-max: 1280px;
@@ -82,10 +105,11 @@
   --pc-sidebar-w-collapsed: 64px;
 
   /* --- elevation -------------------------------------------------------- */
-  /* Restrained: this is a light, flat palette. Borders do most of the work. */
-  --pc-shadow-card: 0 1px 2px rgba(36, 48, 39, 0.04);
-  --pc-shadow-raised: 0 2px 8px rgba(36, 48, 39, 0.08);
-  --pc-shadow-nav: 0 -1px 4px rgba(36, 48, 39, 0.06);
+  /* Wide and faint rather than tight and dark. Borders still carry the hierarchy;
+     these only separate a layer that genuinely floats. */
+  --pc-shadow-card: 0 1px 3px rgba(30, 43, 35, 0.05);
+  --pc-shadow-raised: 0 8px 24px rgba(30, 43, 35, 0.08);
+  --pc-shadow-nav: 0 -1px 4px rgba(30, 43, 35, 0.06);
 
   /* --- motion ----------------------------------------------------------- */
   --pc-transition: 150ms ease;

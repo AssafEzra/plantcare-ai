@@ -194,7 +194,7 @@
   }
 
   .pc-navlink.active {
-    background: var(--pc-success-bg);
+    background: var(--pc-primary-soft);
     color: var(--pc-primary);
     font-weight: 600;
   }

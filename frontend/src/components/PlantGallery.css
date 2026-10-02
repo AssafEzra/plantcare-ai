@@ -98,5 +98,5 @@
 
 .pc-galleryadd:hover {
   border-color: var(--pc-primary);
-  background: var(--pc-success-bg);
+  background: var(--pc-primary-soft);
 }

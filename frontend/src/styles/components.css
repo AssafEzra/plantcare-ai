@@ -99,7 +99,7 @@
 .pc-field textarea:focus {
   outline: none;
   border-color: var(--pc-primary);
-  box-shadow: 0 0 0 3px var(--pc-success-bg);
+  box-shadow: 0 0 0 3px var(--pc-primary-soft);
 }
 
 .pc-field small {
@@ -364,7 +364,7 @@ a.pc-btn:hover {
 
 .pc-candidate.is-chosen {
   border-color: var(--pc-primary);
-  background: var(--pc-success-bg);
+  background: var(--pc-primary-soft);
 }
 
 .pc-candidatebody {
