@@ -57,7 +57,7 @@
   justify-content: center;
   gap: var(--pc-space-1);
   padding: var(--pc-space-1);
-  background: rgba(36, 48, 39, 0.62);
+  background: rgba(30, 43, 35, 0.62);
 }
 
 .pc-galleryicon {

@@ -37,9 +37,16 @@
   background: var(--pc-surface-alt);
   display: grid;
   place-items: center;
+  /* The photograph is positioned, not laid out. As a grid item its `block-size: 100%`
+     resolves against a row the item itself is sizing, which is circular: the browser
+     falls back to the intrinsic height and a portrait photo renders at twice the box.
+     Taking it out of flow gives it a definite containing block. */
+  position: relative;
 }
 
 .pc-plantthumb img {
+  position: absolute;
+  inset: 0;
   inline-size: 100%;
   block-size: 100%;
   object-fit: cover;
