@@ -209,16 +209,29 @@ a.pc-btn:hover {
   text-decoration: none;
 }
 
+/* Two across on a phone, not four stacked. Stacked, the filter row filled the entire
+   first screen and the user scrolled past every control to reach the first plant - on a
+   screen whose whole job is showing plants. The search field keeps the full width
+   because it is the one a thumb types into. */
 .pc-filters {
   display: grid;
-  gap: var(--pc-space-3);
-  grid-template-columns: 1fr;
-  margin-block-end: var(--pc-space-4);
+  gap: var(--pc-space-3) var(--pc-space-2);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-block-end: var(--pc-space-5);
+}
+
+.pc-filters > .pc-filter:first-child {
+  grid-column: 1 / -1;
 }
 
 @media (min-width: 640px) {
   .pc-filters {
+    gap: var(--pc-space-3);
     grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  }
+
+  .pc-filters > .pc-filter:first-child {
+    grid-column: auto;
   }
 }
 
