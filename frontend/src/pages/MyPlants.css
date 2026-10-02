@@ -1,0 +1,282 @@
+/* My Plants only. Anything a second screen starts using belongs in
+   styles/components.css — a route's stylesheet is loaded by that route's module, so
+   sharing from here is a rule that happens to work until the routes are split.
+
+   Logical properties only. */
+
+/* --- hero ---------------------------------------------------------------- */
+
+/* The page opens on something rather than on a filter row. The panel carries the
+   title, the one number worth knowing before scrolling — how many plants want
+   something — and the search, which is the control people actually reach for. */
+.pc-planthero {
+  position: relative;
+  overflow: hidden;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: var(--pc-space-4);
+  padding: var(--pc-space-5);
+  margin-block-end: var(--pc-space-5);
+  border-radius: var(--pc-radius-card);
+  background:
+    radial-gradient(90% 120% at 85% -20%, rgba(255, 255, 255, 0.55) 0%, rgba(255, 255, 255, 0) 60%),
+    linear-gradient(160deg, var(--pc-primary-soft) 0%, var(--pc-surface-alt) 100%);
+  border: 1px solid var(--pc-border);
+}
+
+/* A leaf, very faint, bled off the start corner. Decoration, so it is drawn here
+   rather than put in the markup for a screen reader to find. */
+.pc-planthero::before {
+  content: "";
+  position: absolute;
+  inset-block-start: -40%;
+  inset-inline-start: -6%;
+  inline-size: 260px;
+  block-size: 260px;
+  background: currentColor;
+  color: var(--pc-primary);
+  opacity: 0.06;
+  mask: radial-gradient(circle at 70% 30%, #000 0 42%, transparent 43%) no-repeat;
+  -webkit-mask: radial-gradient(circle at 70% 30%, #000 0 42%, transparent 43%) no-repeat;
+  pointer-events: none;
+}
+
+.pc-planthero-text {
+  min-inline-size: 0;
+}
+
+.pc-planthero h1 {
+  margin: 0;
+}
+
+.pc-planthero-sub {
+  margin: var(--pc-space-1) 0 0;
+  color: var(--pc-text-muted);
+  font-size: var(--pc-h4);
+}
+
+.pc-planthero-add {
+  justify-self: end;
+  white-space: nowrap;
+}
+
+/* --- search -------------------------------------------------------------- */
+
+.pc-plantsearch {
+  grid-column: 1 / -1;
+  position: relative;
+  display: block;
+}
+
+.pc-plantsearch input {
+  inline-size: 100%;
+  padding-block: var(--pc-space-3);
+  /* Room for the icon on the start edge, ordinary padding on the other. */
+  padding-inline: calc(var(--pc-space-5) + var(--pc-space-4)) var(--pc-space-4);
+  font: inherit;
+  color: var(--pc-text);
+  background: var(--pc-surface);
+  border: 1px solid transparent;
+  border-radius: var(--pc-radius-pill);
+  box-shadow: var(--pc-shadow-card);
+  transition: border-color var(--pc-transition), box-shadow var(--pc-transition);
+}
+
+.pc-plantsearch input:focus {
+  outline: none;
+  border-color: var(--pc-primary);
+  box-shadow: 0 0 0 3px var(--pc-primary-soft);
+}
+
+.pc-plantsearch-icon {
+  position: absolute;
+  inset-inline-start: var(--pc-space-4);
+  inset-block-start: 50%;
+  transform: translateY(-50%);
+  display: grid;
+  place-items: center;
+  color: var(--pc-text-muted);
+  pointer-events: none;
+}
+
+.pc-plantsearch-icon svg {
+  inline-size: 18px;
+  block-size: 18px;
+}
+
+/* --- controls ------------------------------------------------------------ */
+
+.pc-plantcontrols {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--pc-space-3);
+  margin-block-end: var(--pc-space-5);
+}
+
+/* Scrolls rather than wraps on a narrow screen: a chip row that grows to three lines
+   pushes the plants off the first screen, which is the thing the page exists to show. */
+.pc-chiprow {
+  display: flex;
+  gap: var(--pc-space-2);
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding-block-end: 2px;
+}
+
+.pc-chiprow::-webkit-scrollbar {
+  display: none;
+}
+
+.pc-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--pc-space-2);
+  flex: 0 0 auto;
+  padding: var(--pc-space-2) var(--pc-space-4);
+  /* Comfortably above the 44px touch minimum. */
+  min-block-size: 44px;
+  background: var(--pc-surface);
+  border: 1px solid var(--pc-border);
+  border-radius: var(--pc-radius-pill);
+  color: var(--pc-text-muted);
+  font-size: var(--pc-h5);
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background var(--pc-transition),
+    border-color var(--pc-transition),
+    color var(--pc-transition);
+}
+
+.pc-chip:hover {
+  border-color: var(--pc-primary);
+  color: var(--pc-text);
+}
+
+.pc-chipcount {
+  display: inline-grid;
+  place-items: center;
+  min-inline-size: 22px;
+  padding-inline: 6px;
+  border-radius: var(--pc-radius-pill);
+  background: var(--pc-surface-alt);
+  color: var(--pc-text-muted);
+  font-size: var(--pc-h6);
+  font-weight: 600;
+}
+
+/* Engaged. The chip takes its own tone so the row reads as the status vocabulary it
+   filters by, not as four identical buttons. */
+.pc-chip.is-on {
+  background: var(--pc-primary-soft);
+  border-color: var(--pc-primary);
+  color: var(--pc-primary);
+}
+
+.pc-chip.is-on .pc-chipcount {
+  background: var(--pc-primary);
+  color: #fff;
+}
+
+.pc-chip-success.is-on {
+  background: var(--pc-success-bg);
+  border-color: var(--pc-success);
+  color: var(--pc-success);
+}
+
+.pc-chip-success.is-on .pc-chipcount {
+  background: var(--pc-success);
+}
+
+.pc-chip-warning.is-on {
+  background: var(--pc-warning-bg);
+  border-color: var(--pc-warning);
+  color: var(--pc-warning);
+}
+
+.pc-chip-warning.is-on .pc-chipcount {
+  background: var(--pc-warning);
+}
+
+.pc-chip-danger.is-on {
+  background: var(--pc-danger-bg);
+  border-color: var(--pc-danger);
+  color: var(--pc-danger);
+}
+
+.pc-chip-danger.is-on .pc-chipcount {
+  background: var(--pc-danger);
+}
+
+.pc-plantselects {
+  display: flex;
+  gap: var(--pc-space-2);
+  flex: 0 0 auto;
+}
+
+.pc-plantselects .pc-field {
+  margin-block-end: 0;
+}
+
+/* --- empty --------------------------------------------------------------- */
+
+.pc-plantempty {
+  display: grid;
+  justify-items: center;
+  gap: var(--pc-space-4);
+  padding: var(--pc-space-8) var(--pc-space-4);
+  text-align: center;
+}
+
+.pc-plantempty p {
+  margin: 0;
+  color: var(--pc-text-muted);
+}
+
+.pc-plantempty-art {
+  display: grid;
+  place-items: center;
+  inline-size: 96px;
+  block-size: 96px;
+  border-radius: var(--pc-radius-pill);
+  background: var(--pc-primary-soft);
+  color: var(--pc-primary);
+}
+
+.pc-plantempty-art svg {
+  inline-size: 44px;
+  block-size: 44px;
+}
+
+/* --- narrow -------------------------------------------------------------- */
+
+@media (max-width: 639px) {
+  .pc-planthero {
+    grid-template-columns: 1fr;
+    padding: var(--pc-space-4);
+  }
+
+  .pc-planthero-add {
+    justify-self: stretch;
+    text-align: center;
+  }
+
+  .pc-plantcontrols {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  /* The row bleeds into the page gutter so a scrolled chip is visibly cut off at the
+     edge rather than appearing to end there. */
+  .pc-chiprow {
+    margin-inline: calc(var(--pc-space-4) * -1);
+    padding-inline: var(--pc-space-4);
+  }
+
+  .pc-plantselects .pc-field {
+    flex: 1 1 0;
+  }
+}

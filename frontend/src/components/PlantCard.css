@@ -1,16 +1,14 @@
 /* Logical properties only.
  *
- * The card is image-forward: a 4:3 photograph across the top, the name, species, status
- * and next task stacked beneath it. It was previously a 72px thumbnail beside two lines
- * of text, which is a list row wearing a card's border — at three or four across it gave
- * the photograph about a twentieth of the tile and the plant was unrecognisable.
- *
- * There is no row variant. Every caller — Home, My Plants and both sections of Health —
- * renders into `.pc-plantgrid`, so a second form would be dead code the day it was
- * written. If an inline list ever needs one, it belongs here as a modifier class.
+ * The chevron in the footer is the one exception worth naming: it points toward the
+ * start edge, which in this RTL app means it points left. It is drawn that way in the
+ * markup rather than flipped here, because the glyph IS the direction — mirroring it
+ * with a transform would make a future LTR build silently wrong in the other
+ * direction instead.
  */
 
 .pc-plantcard {
+  position: relative;
   display: flex;
   flex-direction: column;
   background: var(--pc-surface);
@@ -18,96 +16,203 @@
   border-radius: var(--pc-radius-card);
   box-shadow: var(--pc-shadow-card);
   color: var(--pc-text);
-  /* The image is square-cornered; the card's own radius is what rounds it. */
   overflow: hidden;
-  transition: border-color var(--pc-transition), box-shadow var(--pc-transition);
+  transition:
+    transform var(--pc-transition),
+    box-shadow var(--pc-transition),
+    border-color var(--pc-transition);
+  /* Entrance. The delay is set per card from the render index. */
+  animation: pc-card-in 420ms cubic-bezier(0.2, 0.7, 0.3, 1) backwards;
+  animation-delay: calc(var(--pc-card-i, 0) * 45ms);
 }
 
-.pc-plantcard:hover {
+@keyframes pc-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.985);
+  }
+}
+
+.pc-plantcard:hover,
+.pc-plantcard:focus-visible {
   text-decoration: none;
+  transform: translateY(-4px);
   border-color: var(--pc-primary);
   box-shadow: var(--pc-shadow-raised);
 }
 
+/* --- the photograph ------------------------------------------------------ */
+
 .pc-plantthumb {
+  position: relative;
   flex: 0 0 auto;
-  aspect-ratio: 4 / 3;
+  aspect-ratio: 4 / 5;
   inline-size: 100%;
   overflow: hidden;
-  background: var(--pc-surface-alt);
   display: grid;
   place-items: center;
-  /* The photograph is positioned, not laid out. As a grid item its `block-size: 100%`
-     resolves against a row the item itself is sizing, which is circular: the browser
-     falls back to the intrinsic height and a portrait photo renders at twice the box.
-     Taking it out of flow gives it a definite containing block. */
-  position: relative;
+  /* The fallback when there is no photograph: a wash mixed from the plant's own id,
+     so two unphotographed plants never look like the same empty box. */
+  background:
+    radial-gradient(
+      120% 100% at 70% 0%,
+      hsl(var(--pc-plant-hue, 110) 34% 88%) 0%,
+      hsl(var(--pc-plant-hue, 110) 28% 78%) 100%
+    );
 }
 
+/* Positioned, not laid out: as a grid item the image's `block-size: 100%` resolves
+   against a row the image itself is sizing, which is circular, and a portrait photo
+   then renders at twice the height of its frame. */
 .pc-plantthumb img {
   position: absolute;
   inset: 0;
   inline-size: 100%;
   block-size: 100%;
   object-fit: cover;
-  transition: transform var(--pc-transition);
+  transition: transform 400ms cubic-bezier(0.2, 0.7, 0.3, 1);
 }
 
-/* Enough to register as alive under the cursor, not enough to reflow anything. The
-   reduced-motion rule in base.css flattens the transition to nothing. */
 .pc-plantcard:hover .pc-plantthumb img {
-  transform: scale(1.03);
+  transform: scale(1.06);
 }
 
 .pc-plantthumb-empty {
-  color: var(--pc-text-muted);
-  opacity: 0.45;
+  color: hsl(var(--pc-plant-hue, 110) 30% 32%);
+  opacity: 0.4;
 }
 
 .pc-plantthumb-empty svg {
-  inline-size: 48px;
-  block-size: 48px;
+  inline-size: 64px;
+  block-size: 64px;
 }
 
-.pc-plantbody {
-  min-inline-size: 0;
+/* Carries the caption. Dark enough at the foot for white text to clear 4.5:1 over any
+   photograph, and clear at the top so the plant is not dimmed for nothing. */
+.pc-plantscrim {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    to bottom,
+    rgba(18, 28, 22, 0.42) 0%,
+    rgba(18, 28, 22, 0) 32%,
+    rgba(18, 28, 22, 0.16) 52%,
+    rgba(18, 28, 22, 0.78) 100%
+  );
+}
+
+.pc-plantbadges {
+  position: absolute;
+  inset-block-start: var(--pc-space-3);
+  inset-inline-start: var(--pc-space-3);
   display: flex;
-  flex-direction: column;
+  flex-wrap: wrap;
   gap: var(--pc-space-2);
+  max-inline-size: calc(100% - var(--pc-space-5));
+}
+
+/* The badge sits on a photograph, so it brings its own surface rather than trusting
+   whatever happens to be behind it. The tone colour still carries the meaning. */
+.pc-plantbadges .pc-statusbadge {
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(6px);
+  box-shadow: 0 1px 3px rgba(18, 28, 22, 0.24);
+}
+
+.pc-plantcaption {
+  position: absolute;
+  inset-block-end: 0;
+  inset-inline: 0;
   padding: var(--pc-space-4);
+  color: #fff;
 }
 
 .pc-plantname {
   margin: 0;
-  font-size: var(--pc-h3);
-  font-weight: var(--pc-h3-weight);
+  font-size: var(--pc-h2);
+  font-weight: var(--pc-h2-weight);
+  line-height: 1.2;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  text-shadow: 0 1px 8px rgba(18, 28, 22, 0.45);
 }
 
-/* Pulls the species up under the name: they are one block of identification, and the
-   body's own gap would read as a separation between two facts. */
 .pc-plantspecies {
-  margin-block-start: calc(var(--pc-space-2) * -1 + var(--pc-space-1));
-  margin-block-end: 0;
-  color: var(--pc-text-muted);
+  margin: 2px 0 0;
   font-size: var(--pc-h5);
+  font-style: italic;
+  opacity: 0.88;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.pc-plantmeta {
+/* --- the next task ------------------------------------------------------- */
+
+.pc-plantfoot {
   display: flex;
-  flex-wrap: wrap;
-  gap: var(--pc-space-2);
+  align-items: center;
+  gap: var(--pc-space-3);
+  padding: var(--pc-space-3) var(--pc-space-4);
+  min-block-size: 56px;
 }
 
-.pc-plantnext {
-  margin: 0;
-  color: var(--pc-text-muted);
+.pc-planttaskicon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  inline-size: 32px;
+  block-size: 32px;
+  border-radius: var(--pc-radius-pill);
+  background: var(--pc-primary-soft);
+  color: var(--pc-primary);
+}
+
+.pc-planttaskicon svg {
+  inline-size: 18px;
+  block-size: 18px;
+}
+
+.pc-planttask {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+  display: flex;
+  flex-direction: column;
+  font-size: var(--pc-h5);
+  font-weight: 600;
+}
+
+.pc-planttaskwhen {
+  font-weight: 400;
   font-size: var(--pc-h6);
+  color: var(--pc-text-muted);
+}
+
+.pc-planttask-none {
+  font-weight: 400;
+  color: var(--pc-text-muted);
+}
+
+.pc-plantgo {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  color: var(--pc-text-muted);
+  transition: transform var(--pc-transition), color var(--pc-transition);
+}
+
+.pc-plantgo svg {
+  inline-size: 20px;
+  block-size: 20px;
+}
+
+.pc-plantcard:hover .pc-plantgo {
+  color: var(--pc-primary);
+  /* Leftward, the way the glyph points: in this RTL app that is onward, toward the
+     page the card opens. A transform rather than a logical offset, because the motion
+     follows the drawn arrow and not the writing direction. */
+  transform: translateX(-3px);
 }
 
 /* --- grid ---------------------------------------------------------------- */
@@ -115,13 +220,29 @@
 .pc-plantgrid {
   display: grid;
   gap: var(--pc-space-4);
-  grid-template-columns: 1fr;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 230px), 1fr));
 }
 
-/* 260px rather than 300: the tile carries its width in the photograph, so a narrower
-   column still reads, and 1280 minus the sidebar holds four of them. */
 @media (min-width: 640px) {
   .pc-plantgrid {
-    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: var(--pc-space-5);
+  }
+}
+
+/* Two across even on the narrowest phone: at one card per row a 4:5 photograph is
+   most of the viewport and the list stops being a list. */
+@media (max-width: 420px) {
+  .pc-plantgrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--pc-space-3);
+  }
+
+  .pc-plantname {
+    font-size: var(--pc-h4);
+  }
+
+  .pc-plantcaption,
+  .pc-plantfoot {
+    padding: var(--pc-space-3);
   }
 }

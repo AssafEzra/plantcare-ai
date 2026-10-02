@@ -7,8 +7,18 @@
  *
  * The whole card is one link rather than a div with a click handler, so it is
  * keyboard reachable, announces itself as a link, and supports open-in-new-tab.
+ *
+ * The photograph is the card. Name, species and health sit on top of it over a scrim,
+ * and only the next task gets its own strip underneath — a plant is recognised by
+ * sight long before its name is read, and the previous layout gave the picture about a
+ * twentieth of the tile.
+ *
+ * A plant with no photograph is not given a grey box. `hueOf` turns its id into a
+ * stable hue, so every unphotographed plant has its own colour and is still told apart
+ * at a glance; the same id always produces the same one.
  */
 
+import type { CSSProperties, ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import type { Plant } from '../api/plants'
 import { plantName } from '../api/plants'
@@ -18,14 +28,77 @@ import StatusBadge from './StatusBadge'
 import { formatDueDate } from '../lib/dates'
 import './PlantCard.css'
 
-export default function PlantCard({ plant }: { plant: Plant }) {
+/* The action a task describes, as a glyph. Watering is far and away the most common,
+   and a row of identical dots tells the eye nothing. */
+const ACTION_ICONS: Record<string, ReactNode> = {
+  WATERING: <path d="M12 3s5 5.4 5 9a5 5 0 0 1-10 0c0-3.6 5-9 5-9z" />,
+  FERTILIZING: (
+    <>
+      <path d="M12 20v-7" />
+      <path d="M12 13c0-3.4 2.4-6.2 5.7-6.8-.3 3.6-2.7 6.2-5.7 6.8z" />
+      <path d="M12 15c0-2.9-2-5.4-4.9-6 .3 3.1 2.3 5.4 4.9 6z" />
+    </>
+  ),
+  REPOTTING: (
+    <>
+      <path d="M5 9h14l-1.6 10.2a2 2 0 0 1-2 1.8H8.6a2 2 0 0 1-2-1.8z" />
+      <path d="M4 6h16v3H4z" />
+    </>
+  ),
+  PRUNING: (
+    <>
+      <circle cx="7" cy="18" r="2.4" />
+      <circle cx="17" cy="18" r="2.4" />
+      <path d="M8.6 16.2L19 4M15.4 16.2L5 4" />
+    </>
+  ),
+  MISTING: (
+    <>
+      <path d="M10 21V9a3 3 0 0 1 3-3h4" />
+      <path d="M10 9h6" />
+      <path d="M19 4.5h.01M21.5 7h.01M19 9.5h.01" />
+    </>
+  ),
+  ROTATING: (
+    <>
+      <path d="M20 12a8 8 0 1 1-2.3-5.7" />
+      <path d="M20 4v4h-4" />
+    </>
+  ),
+  INSPECTION: (
+    <>
+      <circle cx="11" cy="11" r="6.5" />
+      <path d="M20 20l-4.2-4.2" />
+    </>
+  ),
+}
+
+function hueOf(id: string): number {
+  let h = 0
+  for (let i = 0; i < id.length; i += 1) h = (h * 31 + id.charCodeAt(i)) % 360
+  /* Kept off the blues and purples: this is a plant app and a lilac tile reads as a
+     bug. 60–170 is straw through leaf green. */
+  return 60 + (h % 110)
+}
+
+export default function PlantCard({ plant, index = 0 }: { plant: Plant; index?: number }) {
   const name = plantName(plant)
   const health = statusStyle(plant.current_health_status)
   const isActive = plant.status === 'ACTIVE'
+  const species =
+    plant.species_name && plant.name && plant.species_name !== plant.name
+      ? plant.species_name
+      : null
 
   return (
-    <Link to={`/plants/${plant.id}`} className="pc-plantcard">
-      <div className="pc-plantthumb">
+    <Link
+      to={`/plants/${plant.id}`}
+      className="pc-plantcard"
+      /* Drives the entrance stagger. Capped so the twentieth card is not still
+         waiting to appear a second after the first one landed. */
+      style={{ '--pc-card-i': Math.min(index, 11) } as CSSProperties}
+    >
+      <div className="pc-plantthumb" style={{ '--pc-plant-hue': hueOf(plant.id) } as CSSProperties}>
         {plant.thumbnail_url ? (
           <img src={plant.thumbnail_url} alt="" loading="lazy" />
         ) : (
@@ -37,18 +110,10 @@ export default function PlantCard({ plant }: { plant: Plant }) {
             </svg>
           </span>
         )}
-      </div>
 
-      <div className="pc-plantbody">
-        <h3 className="pc-plantname">{name}</h3>
+        <span className="pc-plantscrim" aria-hidden="true" />
 
-        {/* Only when it adds something. A plant the user never renamed carries the
-            species as its display name, and repeating it reads as a bug. */}
-        {plant.species_name && plant.name && plant.species_name !== plant.name && (
-          <p className="pc-plantspecies">{plant.species_name}</p>
-        )}
-
-        <div className="pc-plantmeta">
+        <div className="pc-plantbadges">
           {/* Only an active plant's health means anything; one still being
               identified has no assessment behind the value. */}
           {isActive ? (
@@ -66,11 +131,36 @@ export default function PlantCard({ plant }: { plant: Plant }) {
           )}
         </div>
 
-        {plant.next_task && (
-          <p className="pc-plantnext">
-            {actionLabel(plant.next_task.action_type)} · {formatDueDate(plant.next_task.due_at_utc)}
-          </p>
+        <div className="pc-plantcaption">
+          <h3 className="pc-plantname">{name}</h3>
+          {/* Only when it adds something. A plant the user never renamed carries the
+              species as its display name, and repeating it reads as a bug. */}
+          {species && <p className="pc-plantspecies">{species}</p>}
+        </div>
+      </div>
+
+      <div className="pc-plantfoot">
+        {plant.next_task ? (
+          <>
+            <span className="pc-planttaskicon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                {ACTION_ICONS[plant.next_task.action_type] ?? <circle cx="12" cy="12" r="7" />}
+              </svg>
+            </span>
+            <span className="pc-planttask">
+              {actionLabel(plant.next_task.action_type)}
+              <span className="pc-planttaskwhen">{formatDueDate(plant.next_task.due_at_utc)}</span>
+            </span>
+          </>
+        ) : (
+          <span className="pc-planttask pc-planttask-none">אין טיפול מתוכנן</span>
         )}
+
+        <span className="pc-plantgo" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M15 6l-6 6 6 6" />
+          </svg>
+        </span>
       </div>
     </Link>
   )
