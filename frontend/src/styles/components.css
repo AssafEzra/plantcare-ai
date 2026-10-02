@@ -14,7 +14,16 @@
   border: 1px solid var(--pc-border);
   border-radius: var(--pc-radius-card);
   box-shadow: var(--pc-shadow-card);
-  padding: var(--pc-space-5);
+  padding: var(--pc-space-4);
+}
+
+/* A card at phone width is nearly the whole screen, so its padding is competing with
+   the page gutter for the same pixels. It can afford to be generous once there is room
+   on either side of it. */
+@media (min-width: 640px) {
+  .pc-card {
+    padding: var(--pc-space-5);
+  }
 }
 
 .pc-placeholder-note {
@@ -56,6 +65,11 @@
 
 .pc-btn:hover:not(:disabled) {
   background: var(--pc-primary-hover);
+}
+
+.pc-btn:active:not(:disabled) {
+  background: var(--pc-primary-hover);
+  transform: translateY(1px);
 }
 
 .pc-btn:disabled {
@@ -176,6 +190,15 @@
   margin: 0;
 }
 
+/* Display size is for wide screens only. On a phone the h1 is already the largest
+   thing on the page, and a second step up just costs a line. */
+@media (min-width: 900px) {
+  .pc-pagehead h1 {
+    font-size: var(--pc-display);
+    font-weight: var(--pc-display-weight);
+  }
+}
+
 /* A link styled as a button needs the padding to apply to an inline element. */
 a.pc-btn {
   display: inline-block;
@@ -199,8 +222,30 @@ a.pc-btn:hover {
   }
 }
 
+/* The filter row reads as a strip of controls rather than a stack of form fields: the
+   inputs sit on the soft surface with a pill edge and no border of their own, so the
+   page's own card is the only thing drawing a box. The <label> above each one stays —
+   a chip whose meaning has to be inferred from its value is a guessing game. */
 .pc-filter {
   margin-block-end: 0;
+}
+
+.pc-filter input,
+.pc-filter select {
+  padding-inline: var(--pc-space-4);
+  background: var(--pc-surface-alt);
+  border-color: transparent;
+  border-radius: var(--pc-radius-pill);
+}
+
+.pc-filter input:hover,
+.pc-filter select:hover {
+  background: var(--pc-primary-soft);
+}
+
+.pc-filter input:focus,
+.pc-filter select:focus {
+  background: var(--pc-surface);
 }
 
 .pc-linkbtn {
@@ -223,7 +268,13 @@ a.pc-btn:hover {
   align-items: baseline;
   justify-content: space-between;
   gap: var(--pc-space-3);
-  margin-block: var(--pc-space-5) var(--pc-space-3);
+  margin-block: var(--pc-space-7) var(--pc-space-4);
+}
+
+@media (min-width: 900px) {
+  .pc-sectionhead {
+    margin-block-start: var(--pc-space-8);
+  }
 }
 
 .pc-sectionhead h2 {
