@@ -1,14 +1,25 @@
-/* Logical properties only. */
+/* Logical properties only.
+ *
+ * The card is image-forward: a 4:3 photograph across the top, the name, species, status
+ * and next task stacked beneath it. It was previously a 72px thumbnail beside two lines
+ * of text, which is a list row wearing a card's border — at three or four across it gave
+ * the photograph about a twentieth of the tile and the plant was unrecognisable.
+ *
+ * There is no row variant. Every caller — Home, My Plants and both sections of Health —
+ * renders into `.pc-plantgrid`, so a second form would be dead code the day it was
+ * written. If an inline list ever needs one, it belongs here as a modifier class.
+ */
 
 .pc-plantcard {
   display: flex;
-  gap: var(--pc-space-3);
-  padding: var(--pc-space-3);
+  flex-direction: column;
   background: var(--pc-surface);
   border: 1px solid var(--pc-border);
   border-radius: var(--pc-radius-card);
   box-shadow: var(--pc-shadow-card);
   color: var(--pc-text);
+  /* The image is square-cornered; the card's own radius is what rounds it. */
+  overflow: hidden;
   transition: border-color var(--pc-transition), box-shadow var(--pc-transition);
 }
 
@@ -20,9 +31,8 @@
 
 .pc-plantthumb {
   flex: 0 0 auto;
-  inline-size: 72px;
-  block-size: 72px;
-  border-radius: var(--pc-radius-control);
+  aspect-ratio: 4 / 3;
+  inline-size: 100%;
   overflow: hidden;
   background: var(--pc-surface-alt);
   display: grid;
@@ -33,38 +43,49 @@
   inline-size: 100%;
   block-size: 100%;
   object-fit: cover;
+  transition: transform var(--pc-transition);
+}
+
+/* Enough to register as alive under the cursor, not enough to reflow anything. The
+   reduced-motion rule in base.css flattens the transition to nothing. */
+.pc-plantcard:hover .pc-plantthumb img {
+  transform: scale(1.03);
 }
 
 .pc-plantthumb-empty {
   color: var(--pc-text-muted);
-  opacity: 0.55;
+  opacity: 0.45;
 }
 
 .pc-plantthumb-empty svg {
-  inline-size: 32px;
-  block-size: 32px;
+  inline-size: 48px;
+  block-size: 48px;
 }
 
 .pc-plantbody {
   min-inline-size: 0;
   display: flex;
   flex-direction: column;
-  gap: var(--pc-space-1);
+  gap: var(--pc-space-2);
+  padding: var(--pc-space-4);
 }
 
 .pc-plantname {
   margin: 0;
-  font-size: var(--pc-h4);
-  font-weight: var(--pc-h4-weight);
+  font-size: var(--pc-h3);
+  font-weight: var(--pc-h3-weight);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+/* Pulls the species up under the name: they are one block of identification, and the
+   body's own gap would read as a separation between two facts. */
 .pc-plantspecies {
-  margin: 0;
+  margin-block-start: calc(var(--pc-space-2) * -1 + var(--pc-space-1));
+  margin-block-end: 0;
   color: var(--pc-text-muted);
-  font-size: var(--pc-h6);
+  font-size: var(--pc-h5);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -73,8 +94,7 @@
 .pc-plantmeta {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--pc-space-1);
-  margin-block-start: 2px;
+  gap: var(--pc-space-2);
 }
 
 .pc-plantnext {
@@ -87,12 +107,14 @@
 
 .pc-plantgrid {
   display: grid;
-  gap: var(--pc-space-3);
+  gap: var(--pc-space-4);
   grid-template-columns: 1fr;
 }
 
+/* 260px rather than 300: the tile carries its width in the photograph, so a narrower
+   column still reads, and 1280 minus the sidebar holds four of them. */
 @media (min-width: 640px) {
   .pc-plantgrid {
-    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
   }
 }
