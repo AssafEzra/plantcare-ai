@@ -92,6 +92,12 @@
   padding: var(--pc-space-4);
 }
 
+@media (min-width: 640px) {
+  .pc-content {
+    padding: var(--pc-space-5);
+  }
+}
+
 /* --- bottom navigation (mobile) ------------------------------------------ */
 
 .pc-bottomnav {
@@ -130,6 +136,18 @@
   text-decoration: none;
 }
 
+/* The pill sits behind the glyph alone, not the cell: the whole 64px cell stays the
+   touch target, but a full-width block of colour at the foot of the screen reads as a
+   banner rather than as "you are here". */
+.pc-tabicon {
+  display: grid;
+  place-items: center;
+  inline-size: 56px;
+  block-size: 28px;
+  border-radius: var(--pc-radius-pill);
+  transition: background var(--pc-transition);
+}
+
 .pc-tab svg {
   inline-size: 24px;
   block-size: 24px;
@@ -137,6 +155,11 @@
 
 .pc-tab.active {
   color: var(--pc-primary);
+  font-weight: 600;
+}
+
+.pc-tab.active .pc-tabicon {
+  background: var(--pc-primary-soft);
 }
 
 .pc-tablabel {
@@ -181,7 +204,7 @@
     align-items: center;
     gap: var(--pc-space-3);
     padding: var(--pc-space-3);
-    border-radius: var(--pc-radius-control);
+    border-radius: var(--pc-radius-pill);
     color: var(--pc-text-muted);
     white-space: nowrap;
     transition: background var(--pc-transition), color var(--pc-transition);
@@ -217,7 +240,7 @@
   }
 
   .pc-content {
-    padding: var(--pc-space-5);
+    padding: var(--pc-space-7);
   }
 
   /* Icon-only mode. The label is removed from view but kept for screen readers,
