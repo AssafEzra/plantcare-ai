@@ -62,6 +62,15 @@ export default defineConfig({
       '/v1': { target: API_TARGET, changeOrigin: true },
     },
   },
+  // In development Vite injects every stylesheet as a <style> block through JavaScript,
+  // so it can hot-reload them. The cost is that DevTools sees 24 anonymous blocks and
+  // one real file, cannot name the source of any rule, and has nothing on disk to save
+  // an edit back into — which makes styling by hand in the browser a dead end.
+  //
+  // Source maps restore the link: the Styles pane then reads "tokens.css:21" and, with
+  // the folder added under Sources → Workspace, an edit made in the browser is written
+  // to the actual file. Development only; the production build is untouched.
+  css: { devSourcemap: true },
   // `npm run preview` serves the built bundle, and it is the only way to exercise the
   // service worker at all — `devOptions.enabled` is false above, so the dev server
   // registers none and installability cannot be judged there. Both settings are
