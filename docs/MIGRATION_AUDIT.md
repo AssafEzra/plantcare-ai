@@ -192,18 +192,31 @@ Recorded so they are not later mistaken for regressions:
 - **Header notifications** (§11) has no feed endpoint, only preferences and the
   email delivery log. **Decision: the bell shows today's care tasks.**
 
-### Unresolved, and not a code question
+### Resolved after the fact: the deployment target
 
-**There is no deployment target once Streamlit is removed.** The application runs
-today only because FastAPI is embedded in the Streamlit process. A React SPA plus
-FastAPI is two services. Deferred by decision; phases 1–7 are unaffected, but §51's
-"PWA works and is installable" cannot be proven until a host exists.
+This read, when written: *"There is no deployment target once Streamlit is removed.
+The application runs today only because FastAPI is embedded in the Streamlit
+process. A React SPA plus FastAPI is two services. Deferred by decision; phases 1–7
+are unaffected, but §51's 'PWA works and is installable' cannot be proven until a
+host exists."*
+
+**It is one service, not two.** The premise was wrong in a way worth recording: a
+React build is not a service. It is a directory of files, and the thing that runs it
+is the reader's browser. So uvicorn serves `/v1` and that directory from one origin
+(`app/api/spa.py`), which is also what the frontend had already been written
+against — `VITE_API_BASE_URL` is empty, so the browser asks for a relative `/v1`,
+and no CORS middleware was ever added anywhere.
+
+Host: **Google Cloud Run**, one container. See `docs/DEPLOY_CLOUD_RUN.md` and the
+deviation recorded in `DEPLOYMENT_AND_OPERATIONS` §3. §51 becomes provable at that
+point, because installability needs an HTTPS origin and `localhost` is not one for
+anything but the service worker.
 
 ---
 
 ## 6 · Decisions taken during this audit
 
-1. **Hosting** — deferred; build and verify locally.
+1. **Hosting** — deferred at audit time; resolved as Cloud Run, one container (see above).
 2. **Gallery** — all three backend changes in scope, under the §5 exception.
 3. **Plant limit** — out of scope.
 4. **Restore** — existing backend behaviour wins.

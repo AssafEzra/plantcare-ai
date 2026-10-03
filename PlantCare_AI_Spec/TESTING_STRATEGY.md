@@ -283,46 +283,47 @@ and it is the same mistake: a page-wide assertion passes because *something else
 on the page satisfies it. Both now render the card alone through
 `AppTest.from_function`, which is what they always meant.
 
-## The browser layer, and why it had to exist (PR 31)
+## The browser layer, and why it is currently missing (PR 31, retired at PR CR)
 
-**Added in PR 31 per `FINAL §37`, and it revises A15.** `tests/browser/` drives a
+**PR 31 added `tests/browser/` per `FINAL §37`, and it revised A15.** It drove a
 real Chromium against the running Streamlit, the running API, the DEV database and
-a **live model** — the product as it ships.
+a **live model** — the product as it shipped. `tests/ui/` sat below it, rendering
+the Streamlit script with `AppTest` against a stubbed `api_client`.
 
-The three layers below it each test a half, and the halves were never joined:
+**Both were deleted with the Streamlit interface, and nothing has replaced them.**
+This section stays because the reasoning that justified them has not changed, and
+it is now a statement of what is *not* covered.
 
-| Layer | Real | Stubbed |
-|---|---|---|
-| `tests/ui` (`AppTest`) | the Streamlit script | `api_client` |
-| `tests/e2e` (journeys) | the HTTP API, the database | the model, and there is no interface at all |
-| `tests/browser` | everything | nothing |
+| Layer | Real | Stubbed | Status |
+|---|---|---|---|
+| `tests/ui` (`AppTest`) | the Streamlit script | `api_client` | **gone** — the script it rendered no longer exists |
+| `tests/e2e` (journeys) | the HTTP API, the database | the model, and there is no interface at all | kept |
+| `tests/browser` | everything | nothing | **gone** — its selectors were Streamlit's DOM |
+| the React interface | — | — | **no test runner at all** |
 
-Every serious defect in this build lived in the seam between the first two. A stub
-returning `thumbnail_url` proved the card renders an image while the endpoint
-never set the key; both suites stayed green for weeks and every card in the grid
-said "אין תמונה".
+The finding that justified the browser layer was that every serious defect in that
+build lived in the seam between the first two layers: a stubbed API client cannot
+show that a real response has a field the page reads under another name, and a
+journey test that never renders anything cannot show that the page does not read
+it at all. That seam still exists. It is now the boundary between `/v1` and
+`frontend/src/api/`, and nothing tests across it.
 
-**Three rules this layer keeps.**
+What this costs, concretely:
 
-1. *Assert on what a person can read or press.* `expect(main).to_contain_text(...)`
-   over a rendered page, never a response body. "The field is in the payload" and
-   "the photograph is on the card" are different claims, and for six weeks they
-   disagreed.
-2. *The model is live.* This is the only layer that can catch a timeout budget or
-   a provider-shaped regression, both of which reached a user in one week. It is
-   also why the suite is marked `browser`, excluded from CI, and run deliberately.
-3. *Fixtures must be able to exercise the thing under test.* The first run
-   uploaded a flat green rectangle and identification correctly answered "we could
-   not identify this"; the second picked the newest image in DEV, which is always
-   one of this project's own solid-colour uploads. It now picks the largest, since
-   a photograph dwarfs a flat JPEG. A fixture that looks like data but cannot
-   drive the feature turns a green suite into a lie.
+- `frontend/package.json` has no `test` script and no vitest, so no TypeScript
+  logic is tested — including the date and status vocabulary, the care-plan diff,
+  and the query-cache keys that must include the acted-as identity.
+- The interface was verified for this release by driving a browser by hand. That
+  found real defects, and it does not run again on the next change.
+- `GET /v1/health/overview`, `plants_repo.thumbnail_paths` and the `instructions`
+  and `interval_days` fields on `decorate_tasks` were added for the redesign and
+  have no tests on either side.
 
-Streamlit needs two accommodations, both harness facts rather than product ones:
-every tab's content is in the DOM even when hidden, so lookups are scoped to a
-form or panel; and a field with help text has a "?" button carrying
-`aria-label="Help for <label>"`, so fields are found by role rather than by label
-alone.
+Rebuilding the layer is cheaper than it was: Playwright can drive `npm run
+preview`, and the selectors would be the application's own semantics rather than
+accommodations for a framework's DOM. Streamlit needed two of those — every tab's
+content present even when hidden, and a "?" help button carrying
+`aria-label="Help for <label>"` — and neither has an equivalent here.
 
 ## 13. Acceptance Gate
 

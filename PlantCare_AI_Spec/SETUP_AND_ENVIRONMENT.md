@@ -97,7 +97,7 @@ RESEND_FROM_EMAIL=
 DEFAULT_TIMEZONE=Asia/Jerusalem
 ```
 
-Service-role credentials must only be used server-side and must never be exposed to Streamlit browser code.
+Service-role credentials must only be used server-side and must never reach the browser. In practice that means they are never named in a `VITE_`-prefixed variable: anything with that prefix is bundled into the client by Vite, where it is readable by anyone who opens the page.
 
 ## 6. Supabase Environments
 
@@ -157,12 +157,25 @@ Original, processed, and thumbnail representations may be retained according to 
 The exact command may depend on the final package configuration. The intended development topology is:
 
 ```text
-Streamlit UI → FastAPI → application services → Supabase
-                                      ↘ AI Gateway
-                                      ↘ Notification Service
+React SPA (browser) → FastAPI → application services → Supabase
+                                          ↘ AI Gateway
+                                          ↘ Notification Service
 ```
 
-Run the API and UI as separate development processes when using the separated architecture.
+Two processes in development, one origin:
+
+```bash
+uv run uvicorn app.api.main:app --reload   # :8000
+cd frontend && npm run dev                 # :5173, proxies /v1 to :8000
+```
+
+The proxy is what keeps the browser on a single origin, which is why no CORS
+configuration exists anywhere in the application. In production the same property
+is obtained differently — one container, uvicorn serving both — so the thing the
+code depends on is true in both places. See `docs/DEPLOY_CLOUD_RUN.md`.
+
+`npm run preview` serves the built bundle on :4173 and is the only way to exercise
+the service worker; `vite dev` registers none.
 
 ## 10. Local Development Rules
 

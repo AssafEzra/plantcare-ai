@@ -1,5 +1,11 @@
 # PlantCare AI — Final Project Specification
 
+> **Superseded on the frontend.** This document describes a Streamlit interface.
+> The interface is React + TypeScript (Vite, PWA) in `frontend/`, served by the API
+> from one origin — see `PROJECT_STRUCTURE` §2 and §7, `DEPLOYMENT_AND_OPERATIONS`
+> §3, and `docs/MIGRATION_AUDIT.md`. Everything else here still stands, and the
+> text is left as written so the decisions behind it stay legible.
+
 > **Status:** Final MVP specification  
 > **MVP language:** Hebrew (RTL)  
 > **Frontend:** Streamlit  

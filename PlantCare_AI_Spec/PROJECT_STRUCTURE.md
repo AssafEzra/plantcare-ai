@@ -10,20 +10,19 @@ The goal is to keep UI, domain logic, AI Agents, infrastructure, and persistence
 
 ```text
 plantcare-ai/
-├── app/
-│   ├── ui/
-│   │   ├── streamlit_app.py
-│   │   ├── app_pages/     # see §13
-│   │   │   ├── home.py
-│   │   │   ├── my_plants.py
-│   │   │   ├── add_plant.py
-│   │   │   ├── plant_dashboard.py
-│   │   │   ├── settings.py
-│   │   │   └── admin.py
+├── frontend/              # the interface: React + TypeScript + Vite, a PWA
+│   ├── src/
+│   │   ├── pages/         # Tasks, MyPlants, Health, AddPlant, PlantDashboard,
+│   │   │                  #   Settings, Admin, Auth, More
 │   │   ├── components/
-│   │   ├── state/
-│   │   └── styles/
-│   │
+│   │   ├── api/           # one module per resource, over fetch
+│   │   ├── app/           # AppShell: header, sidebar, bottom nav
+│   │   ├── auth/          # supabase-js session handling
+│   │   ├── lib/           # api client, errors, dates, vocabulary
+│   │   └── styles/        # tokens.css, base.css, components.css
+│   └── dist/              # `npm run build` output; served by app/api/spa.py
+│
+├── app/
 │   ├── api/
 │   │   ├── main.py
 │   │   ├── dependencies.py
@@ -120,7 +119,10 @@ Supabase / Storage / External Providers
 
 Agents are domain-level components invoked by orchestration. Agents must not call one another directly.
 
-The domain layer must not depend on Streamlit.
+The domain layer must not depend on the web framework, and cannot depend on the
+interface at all: the interface is a separate TypeScript application that reaches
+data only over `/v1`. `tests/unit/test_architecture_boundaries.py` walks the import
+graph for the rules it can still check from Python.
 
 ## 4. Naming
 
@@ -163,14 +165,26 @@ HEALTH_MODEL
 
 ## 7. UI Boundary
 
-Streamlit pages should orchestrate presentation and user interaction only.
+The interface orchestrates presentation and user interaction only.
 
-They should not:
+It should not:
 - contain SQL;
 - call Supabase directly for business operations;
 - implement Agent prompts;
 - decide authorization;
 - mutate authoritative records without going through application services.
+
+Most of this is now structural rather than a rule to remember. The interface is a
+bundle running in a browser: it has no database driver, no agent module and no
+service layer to reach past, so four of the five are things it *cannot* do rather
+than things it must not. What remains a genuine discipline is the last one — every
+write goes through `/v1`, and the interface must not treat a 202 as a completed
+change.
+
+The one exception is authentication, and it is deliberate. `frontend/src/auth/`
+talks to Supabase Auth directly, because obtaining a credential is not a business
+operation and proxying it through the API would buy nothing. The browser holds the
+anon key, which is public by design; the service-role key never leaves the server.
 
 ## 8. Repository Boundary
 
@@ -213,33 +227,43 @@ layout does not silently diverge from this specification.
 Classified: MVP. Rationale: tooling constraint, not a design preference. Recorded
 per `FINAL_SPECIFICATION §37`.
 
-## 13. UI Pages Directory — Recorded Deviation
+## 13. UI Pages Directory — Deviation Withdrawn
 
-This document names `app/ui/pages/`. Streamlit reserves a `pages/` directory
-beside the entry script for its legacy auto-discovery API, which would compete
-with the explicit `st.navigation` routing the app uses. Streamlit's own guidance
-is to name the directory anything but `pages/`.
+This document names `app/ui/pages/`. Streamlit reserved `pages/` beside the entry
+script for its legacy auto-discovery API, which competed with the explicit
+`st.navigation` routing, so the directory was `app/ui/app_pages/`.
 
-**Resolution:** the directory is `app/ui/app_pages/`. Nothing else about the
-structure changes.
+**Withdrawn.** There is no `app/ui/`. Screens live in `frontend/src/pages/`, and
+the framework constraint that forced the rename does not exist in React Router —
+routes are declared in `frontend/src/App.tsx` and the directory is named for what
+it holds.
 
-Classified: MVP. Rationale: framework constraint, not a design preference.
-Recorded per `FINAL_SPECIFICATION §37`.
+Kept as a record rather than deleted, because the original deviation is in the
+history and a reader who finds `app_pages` in an old commit should be able to
+learn why. Recorded per `FINAL_SPECIFICATION §37`.
 
 ## 14. UI Styling — Where It Lives
 
 `UI_DESIGN_TOKENS_AND_WIREFRAMES` expresses the visual direction as CSS custom
-properties. In implementation those live in `.streamlit/config.toml`, which
-Streamlit applies to its own components — colours, fonts, radii and the heading
-scale all map onto native theme options.
+properties, and they are now literally that: `frontend/src/styles/tokens.css`
+holds the palette, type scale, spacing and radii; `base.css` the element
+defaults; `components.css` the shared pieces. Everything else is a stylesheet
+beside the component it styles.
 
-Hand-written CSS is confined to `app/ui/styles/rtl.py` and covers only
-right-to-left layout, which Streamlit's theming cannot express. This is
-deliberate: CSS written against Streamlit's internal class names breaks silently
-on upgrade, so the smaller that surface, the better.
+This was `.streamlit/config.toml`, which mapped the tokens onto Streamlit's own
+theme options because hand-written CSS against that framework's internal class
+names broke silently on upgrade. The constraint is gone — the stylesheets are the
+implementation now, not a translation of it — and so is the trap that came with
+it, where an invalid `[theme]` option made Streamlit discard the whole block and
+report it only in the server log.
 
-One trap worth knowing: Streamlit rejects the **entire** `[theme]` block when any
-option is invalid — for instance a Google Fonts URL requesting two families — and
-reports it only in the server log. The app then renders in default styling with
-no browser-visible error. `tests/ui/test_theme_config.py` guards the cases that
-trigger it.
+Two rules replaced it, both enforceable by reading:
+
+- **Logical properties only.** No `left`, `right`, `margin-left`,
+  `padding-right`. The interface is Hebrew and right-to-left, so a physical
+  offset is a bug that only shows up in one direction. A grep for those
+  properties across `frontend/src` should return nothing but comment prose.
+- **Two breakpoints.** 640px for components and 900px for the shell, which is
+  where the sidebar replaces the bottom navigation. Where content width rather
+  than viewport width decides a layout, `auto-fill` sizing does the work instead
+  of a third breakpoint.

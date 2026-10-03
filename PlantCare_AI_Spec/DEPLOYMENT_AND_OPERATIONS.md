@@ -30,8 +30,8 @@ Recommended MVP topology:
 
 ```text
                     ┌───────────────┐
-                    │   Streamlit   │
-                    │      UI       │
+                    │  React SPA    │
+                    │  (in browser) │
                     └───────┬───────┘
                             │
                             ▼
@@ -46,7 +46,13 @@ Recommended MVP topology:
          Storage
 ```
 
-Railway is the preferred initial hosting direction for Python services, subject to final deployment configuration.
+Railway was the preferred initial hosting direction. **The MVP deploys to Google
+Cloud Run** — see the deviation recorded below and `docs/DEPLOY_CLOUD_RUN.md`.
+
+The top box changed shape, not just name, and it is worth being precise about how.
+The UI is no longer a service: it is a directory of static files with no process of
+its own, executed in the reader's browser. So the arrow it draws is not a hop
+between two servers — it is the browser calling the API it was served from.
 
 ### The scheduler tick has two drivers (added PR 32, per FINAL §37)
 
@@ -61,8 +67,16 @@ The API therefore carries its own timer. The tick body lives in
 
 | Driver | Where | Controlled by |
 |---|---|---|
-| Cron service | `POST /v1/internal/tick`, shared secret | Railway cron (PR 24) |
+| Cron service | `POST /v1/internal/tick`, shared secret | Cloud Scheduler (`docs/DEPLOY_CLOUD_RUN.md`) |
 | In-process timer | FastAPI lifespan task | `INTERNAL_TICK_INTERVAL_SECONDS` (default 900; `0` disables) |
+
+**On Cloud Run the cron is the only driver, and the timer is switched off.** The
+timer exists so that an API deployed with no cron is not silently inert, and on a
+scale-to-zero host it cannot do that job: there is no process to hold it between
+requests, and the loop sleeps before its first sweep, so an instance that lives
+under fifteen minutes sweeps zero times. The Streamlit deployment's advice was the
+exact opposite — keep the timer, there is no cron available — and the reversal is
+about what the host can run, not about the sweep.
 
 They do not conflict. `run_tick` is idempotent — materialisation skips a rule that
 already has a pending task and the database refuses a second one regardless, and
@@ -102,58 +116,69 @@ Operational notes:
   task overdue freed its rule and every tick after that added a copy. Corrected in
   migration `20260906000100`; see FINAL §13.
 
-### The tester deploy collapses the two services into one (added PR HF, per FINAL §37)
+### One Cloud Run service serves both halves (added PR CR, per FINAL §37)
 
 The topology above is two services with private networking between them, and that
-remains the shape PROD should have. It is not a shape any free host offers: free
-tiers give you one always-on service and no private network between services, so
-the two-box design cannot be expressed there at all.
+remains the shape a larger deployment should have. The MVP runs as one.
 
-Two collapsed forms exist in the repository, both pre-PR-24 and neither a target:
+What makes one service correct here rather than merely cheap is that the interface
+stopped being a service when it stopped being Streamlit. A React build is a
+directory of files; the thing that executes it is the reader's browser. There is no
+second process to put on a private network, so "two services" would mean a static
+host plus an API host — two deployments, two configurations, and a cross-origin
+boundary between a page and the API it came from.
 
-| | Two services (PROD, PR 24) | One container | One process |
+| | Two services | **One service (this)** | One process (retired) |
 |---|---|---|---|
-| Where | Railway et al. | `Dockerfile`, `scripts/start.sh` | `app/ui/embedded_api.py` |
-| Host | paid | any container host | Streamlit Community Cloud |
-| API runs | own service | own process, same container | daemon thread in the UI process |
-| UI reaches API by | private address | `127.0.0.1:8000` | `127.0.0.1:8000` |
-| API is public | no | no | no |
-| Scale/restart halves alone | yes | no | no |
-| Crash isolation | yes | partial - `start.sh` kills both | none - one process |
-| Application code touched | none | none | `embedded_api.py` + one call |
+| Where | a paid host | `Dockerfile`, Cloud Run | `app/ui/embedded_api.py` |
+| Interface | its own static host | files served by the API | Streamlit, in the API's process |
+| Origin | two, CORS required | one | one |
+| API is public | yes | yes | no |
+| Scale/restart halves alone | yes | n/a — there is one half | no |
+| Application code touched | none | `app/api/spa.py` | `embedded_api.py` + one call |
 
-**The tester deployment is the third column**, because Hugging Face Spaces - the
-container plan - stopped being free: its creation page now states that Gradio and
-Docker Spaces require a paid plan, leaving only Static, which runs no Python. The
-container files are kept, unused, because they are host-agnostic and are what a
-move to Cloud Run or similar would use.
+The last column is `EMBEDDED_API`, removed in the same change that deleted
+`app/ui/`. It ran uvicorn on a daemon thread inside Streamlit so that Streamlit
+Community Cloud — one process, one repository — could serve the app at all.
+That host cannot serve a React build: its static file serving sends anything that
+is not an image, font, PDF, XML or JSON as `Content-Type: text/plain`, on purpose,
+so `index.html` would arrive as source.
 
-What the deviation costs is independent scaling, independent restart, and crash
-isolation. What it does not cost is the security property the two-service design
-was bought for: the API binds to `127.0.0.1`, only Streamlit's port is served, and
-nothing outside can reach FastAPI. `SUPABASE_SERVICE_ROLE_KEY` and `AI_API_KEY`
-sit in that process exactly as they sit on a developer's machine today, and the
-browser still never sees either.
+**What this costs.** Independent scaling and restart of the two halves, and crash
+isolation between them — though with the interface no longer a process, "the halves"
+now means the API and nothing else, so the loss is smaller than it was. Also, and
+specifically on Cloud Run:
 
-Nor does it move the seam PROJECT_STRUCTURE §7 draws: the UI still speaks HTTP to
-the API and still holds no business logic. `embedded_api.py` starts a server; it
-does not let a page reach past one.
+- **Agent work needs CPU the platform does not allocate by default.** All four
+  agents run in a FastAPI `BackgroundTask` after their 202 is sent, with budgets up
+  to 600s. Cloud Run's default request-based allocation throttles the instance once
+  a response goes out. `--no-cpu-throttling` is therefore not a tuning flag but a
+  correctness one, and it moves the service to instance-based billing.
+- **Background work does not keep an instance alive.** Cloud Run counts requests in
+  flight, not work in progress, so a long knowledge run can still lose its
+  instance. `agent_requests.reap_abandoned` already compensates — it was written for
+  process death during a deploy and this is the same failure.
+- **The in-process tick cannot be the only scheduler.** An instance that has scaled
+  to zero runs no timer, and the loop sleeps before its first sweep, so a
+  short-lived instance sweeps zero times. `INTERNAL_TICK_INTERVAL_SECONDS=0` and
+  Cloud Scheduler calls `POST /v1/internal/tick` instead. This reverses the advice
+  the Streamlit deployment gave, and for the opposite reason: that host had no cron
+  available, this one has nothing else that works.
+- **The rate limiter pins the service to one instance.** Counters live in process
+  memory (`app/api/rate_limit.py`), so `--max-instances=1` is what keeps the
+  configured limit the actual limit.
 
-Three operational notes specific to the single-process deployment:
+**What it does not cost** is the boundary PROJECT_STRUCTURE §7 draws. The interface
+still reaches data only through `/v1`, and it now does so over the network from a
+browser, which is a harder boundary than the one a Python page had: it cannot import
+a repository even by accident. `SUPABASE_SERVICE_ROLE_KEY` stays in the server
+process and the browser holds only the anon key, which is public by design.
 
-- **`st.cache_resource` is what makes the server start once.** Streamlit re-runs
-  the whole script on every interaction, so an unguarded call would try to bind
-  the port again on the first click.
-- **The in-process tick is the only scheduler.** There is no cron service, so
-  `INTERNAL_TICK_INTERVAL_SECONDS` must stay non-zero. A free host sleeps when
-  nobody is using it, and a sleeping process runs no sweep - so reminders and
-  overdue transitions advance only while somebody is using the app. Acceptable for
-  testers; not acceptable for PROD.
-- **Route handlers are `async def` over synchronous Supabase I/O**, so requests
-  serialise on the event loop. Invisible with one user; with several testers
-  acting at once, a plant dashboard's ~1.6s of round trips is 1.6s during which
-  nobody else's request progresses. The fix, when it is needed, is to drop `async`
-  and let FastAPI use its threadpool.
+The one genuinely new property is that **the API is now publicly reachable**, where
+both collapsed forms kept it on loopback. That is unavoidable once the client is a
+browser rather than a co-located process, and it is what every route's
+authentication and every table's RLS policy were always for.
+
 
 ## 4. CI/CD
 
@@ -181,9 +206,9 @@ item rather than something the file can express.
 
 | Setting | DEV | PROD | Why |
 |---|---|---|---|
-| `auth.site_url` / `additional_redirect_urls` | `localhost:8501` | the deployed UI origin | A production project that still allows a localhost redirect is an open redirect into a developer's machine. |
+| `auth.site_url` / `additional_redirect_urls` | the Cloud Run URL, plus `localhost:5173` and `:4173` for Vite's dev and preview servers | the production UI origin alone | A production project that still allows a localhost redirect is an open redirect into a developer's machine. |
 | `auth.sessions.inactivity_timeout` | commented out | `12h` | The server-side half of the twelve-hour idle window (FINAL 22), and the only half that revokes. Paid-plan only: pushing it to the free DEV project returns `402 "User sessions can only be configured on Pro Plans and up"`, and because that fails the entire auth update, an uncommented value blocks every other setting in the file from reaching the project. Uncomment when PROD is on a paid plan. |
-| `auth.site_url` | the deployed tester app | the production UI origin | Confirmation and password-reset emails link to whatever this says, and `sign_up` passes no `email_redirect_to`. DEV pointed at `localhost:8501` until PR HF, which sent every tester's confirmation link to their own machine. |
+| `auth.site_url` | the deployed tester app | the production UI origin | Confirmation and password-reset emails link to whatever this says, and `sign_up` passes no `email_redirect_to`. DEV pointed at `localhost:8501` until PR HF, which sent every tester's confirmation link to their own machine. The Cloud Run URL is only knowable after the first deploy, so updating this is a step in `docs/DEPLOY_CLOUD_RUN.md` rather than a value the file can carry in advance. |
 
 `auth.jwt_expiry` was a row here until PR HF, `43200` on DEV against `3600` on PROD, so
 that a testing session survived a working day. The refresh-token cookie does that job

@@ -22,7 +22,7 @@ that reads them — a ruff `banned-api` rule rejects `os.environ` anywhere else.
 | Variable | Owner | Notes |
 |---|---|---|
 | `SUPABASE_URL`, `SUPABASE_ANON_KEY` | per environment | anon key is safe in the UI process |
-| `SUPABASE_SERVICE_ROLE_KEY` | per environment | **server-side only**, never reaches Streamlit |
+| `SUPABASE_SERVICE_ROLE_KEY` | per environment | **server-side only**, never in a `VITE_` variable — those are bundled into the browser |
 | `SUPABASE_DB_PASSWORD` | per environment | Supabase CLI + integration tests only |
 | `ANTHROPIC_API_KEY`, `GOOGLE_API_KEY`, `OPENAI_API_KEY` | shared or per environment | one per vendor; only the vendors you configure need one. `AI_API_KEY` is the deprecated single-provider name, still accepted as a fallback for Anthropic |
 | `*_PROVIDER` | per environment | `anthropic` \| `google` \| `openai`, per agent. Defaults to `anthropic`. Validated at startup - a typo refuses to boot |
@@ -53,7 +53,7 @@ which has no database.
 ## Known gaps
 
 - PROD project not created (Phase 17).
-- `AI_API_KEY` is a placeholder; a real key is needed before Phase 8.
+- `AI_API_KEY` is the deprecated single-provider name. Prefer `GOOGLE_API_KEY` / `ANTHROPIC_API_KEY` / `OPENAI_API_KEY`.
 - No seed data yet (Phase 2, PR 6).
 
 ## Auth settings
@@ -67,7 +67,7 @@ so they are reviewable and reproducible rather than clicked into a dashboard.
 | `minimum_password_length` | `8` | 6 is Supabase's floor and weak for an account holding personal data |
 | `otp_length` | `8` | keeps the stronger remote default rather than the CLI's 6 |
 | `max_frequency` | `60s` | 1s permits trivial mail-bombing of an inbox through repeated signup |
-| `site_url` | `http://localhost:8501` | Streamlit's port; verification and reset links resolve here |
+| `site_url` | the deployed origin | verification and reset links resolve here, and `sign_up` passes no `email_redirect_to`, so this value alone decides where a new account lands. Local development is in `additional_redirect_urls` instead: `:5173` for `npm run dev`, `:4173` for `npm run preview` |
 
 `supabase config push` reporting `auth: up_to_date` means remote matches this file exactly.
 
@@ -98,9 +98,15 @@ call sites do not change.
 
 | Path | Meaning | Use for |
 |---|---|---|
-| `/health` | process is up; **checks nothing else** | liveness |
-| `/ready` | database answered a trivial query | readiness / load-balancer rotation |
+| `/healthz` | process is up; **checks nothing else** | liveness |
+| `/readyz` | database answered a trivial query | readiness / load-balancer rotation |
 
-Point liveness at `/health` and readiness at `/ready`, not both at `/ready`. A liveness
-probe that touches the database restarts healthy containers during a database blip and
-turns a partial outage into a total one.
+Point liveness at `/healthz` and readiness at `/readyz`, not both at `/readyz`. A
+liveness probe that touches the database restarts healthy containers during a database
+blip and turns a partial outage into a total one.
+
+The `z` is not decoration. These were `/health` and `/ready` until the interface moved
+to React and began sharing an origin with the API — and `/health` is a screen in that
+interface (the בריאות page). The probe would have won the path, so a reader who
+refreshed that page would have been served `{"status": "ok"}`. The probe moved because
+it had no readers to disappoint.

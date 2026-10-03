@@ -1,5 +1,11 @@
 # PlantCare AI — UI_DESIGN_TOKENS_AND_WIREFRAMES.md
 
+> **Superseded on the frontend.** This document describes a Streamlit interface.
+> The interface is React + TypeScript (Vite, PWA) in `frontend/`, served by the API
+> from one origin — see `PROJECT_STRUCTURE` §2 and §7, `DEPLOYMENT_AND_OPERATIONS`
+> §3, and `docs/MIGRATION_AUDIT.md`. Everything else here still stands, and the
+> text is left as written so the decisions behind it stay legible.
+
 ## MVP direction
 Hebrew-only, RTL, Streamlit, desktop-first/responsive, sidebar navigation, calm premium natural visual language. The approved mockup remains the source of truth for exact visual details.
 

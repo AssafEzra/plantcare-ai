@@ -3,7 +3,7 @@ name: CI
 on:
   pull_request:
   push:
-    branches: [main, dev]
+    branches: [main, dev, react-migration]
   workflow_dispatch:
 
 concurrency:
@@ -39,7 +39,42 @@ jobs:
 
       # Integration/e2e need a live DEV Supabase project and run on `dev`, not on PRs.
       - name: Tests
-        run: uv run pytest -m "not live and not integration and not e2e and not browser"
+        run: uv run pytest -m "not live and not integration and not e2e"
+
+  interface:
+    name: interface · lint · types · build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Oxlint
+        run: npm run lint
+
+      # `npm run build` is `tsc -b && vite build`, so this is the type check as
+      # well as the build. Both matter here: the container builds the bundle the
+      # same way, and a type error that reaches that stage fails a deploy instead
+      # of a pull request.
+      #
+      # The VITE_ values are build inputs baked into the bundle. These are
+      # deliberately not the real ones - nothing here is deployed, and the build
+      # only needs them to be present.
+      - name: Build
+        env:
+          VITE_SUPABASE_URL: https://example-ci.supabase.co
+          VITE_SUPABASE_ANON_KEY: anon-key-for-ci
+        run: npm run build
 
   integration:
     name: integration · journeys · RLS matrix
@@ -141,7 +176,7 @@ jobs:
 
       - name: Integration, journeys and the RLS matrix
         if: steps.creds.outputs.available == 'true'
-        run: uv run pytest -m "integration and not live and not browser" -q
+        run: uv run pytest -m "integration and not live" -q
 
   secret-scan:
     name: no committed secrets

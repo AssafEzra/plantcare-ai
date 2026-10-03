@@ -1,5 +1,11 @@
 # PlantCare AI — MVP Implementation Plan
 
+> **Superseded on the frontend.** This document describes a Streamlit interface.
+> The interface is React + TypeScript (Vite, PWA) in `frontend/`, served by the API
+> from one origin — see `PROJECT_STRUCTURE` §2 and §7, `DEPLOYMENT_AND_OPERATIONS`
+> §3, and `docs/MIGRATION_AUDIT.md`. Everything else here still stands, and the
+> text is left as written so the decisions behind it stay legible.
+
 > **Status:** in progress — PRs 1–12 of 24 delivered.
 > **Repository:** https://github.com/AssafEzra/plantcare-ai (branch `dev`)
 > **DEV environment:** Supabase project `plantcare-dev`, eu-central-1

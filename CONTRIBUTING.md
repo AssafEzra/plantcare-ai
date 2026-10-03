@@ -34,7 +34,7 @@ These are not style preferences — they are the architecture, and CI or review 
 5. **Never persist or log chain-of-thought.** The logging redactor drops it, but do not rely on that.
 6. **Never let a failed AI call create an authoritative record.**
 7. **Never commit `.env` or any credential.**
-8. **Never put business logic in a Streamlit page or a repository.** Pages present; repositories persist; domain services decide.
+8. **Never put business logic in the interface or a repository.** The interface presents; repositories persist; domain services decide. A rule implemented in `frontend/` is a rule the API does not enforce, and the API is the only thing a client cannot bypass.
 
 ## Changing the spec
 

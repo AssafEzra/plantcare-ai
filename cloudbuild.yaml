@@ -19,7 +19,11 @@
 # explained in docs/DEPLOY_CLOUD_RUN.md.
 
 substitutions:
-  _REGION: europe-west1
+  # Frankfurt, to sit beside the Supabase project. docs/ENVIRONMENTS.md picked
+  # eu-central-1 for latency to Israel and requires both environments to share a
+  # region so measurements transfer; putting the application in another continent
+  # would put every one of the ~1.6s of round trips a dashboard makes across it.
+  _REGION: europe-west3
   _SERVICE: plantcare-ai
   _REPO: plantcare
   _SUPABASE_URL: ""
