@@ -64,9 +64,9 @@ p {
   margin: 0 0 var(--pc-space-3);
 }
 
-/* Lists indent on the start edge. The Streamlit build needed an explicit override
-   here because Streamlit's own stylesheet set `margin-left`; in plain CSS the
-   logical property is simply correct from the outset. */
+/* Lists indent on the start edge, which in Hebrew is the right. Stated rather than
+   inherited: the browser default is a physical offset, so a list left alone hangs
+   its bullets off the wrong side of the text. */
 ul,
 ol {
   margin: 0 0 var(--pc-space-3);
