@@ -45,6 +45,23 @@ export function formatDueDate(iso: string, now = new Date()): string {
   return DATE.format(new Date(iso))
 }
 
+const WEEKDAY = new Intl.DateTimeFormat('he-IL', { weekday: 'long' })
+
+/**
+ * A heading over a day's worth of upcoming work.
+ *
+ * Within the coming week the weekday is what a person plans against — "יום רביעי" places
+ * the work in the week, where "8 באוקטובר" makes them count. Past that the date is the
+ * only thing that still means anything.
+ */
+export function formatDayHeading(iso: string, now = new Date()): string {
+  const days = dayOffset(iso, now)
+  if (days <= 0) return 'היום'
+  if (days === 1) return 'מחר'
+  if (days <= 6) return WEEKDAY.format(new Date(iso))
+  return DATE_FULL.format(new Date(iso))
+}
+
 export function formatDate(iso: string): string {
   return DATE_FULL.format(new Date(iso))
 }

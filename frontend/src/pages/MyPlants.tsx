@@ -14,9 +14,11 @@
  * species filter to offer "only species that actually exist for the user", derived
  * from the loaded rows; the health filter now follows the same rule.
  *
- * `Filter` is deliberately wider than `HealthStatus`. The stat row offers two cuts that
- * are not a single health value — everything needing attention, and everything due
- * today — and a stat the reader cannot act on is decoration.
+ * `Filter` is deliberately wider than `HealthStatus`: the stat row offers cuts that are
+ * not a single health value — everything needing attention, everything still waiting to
+ * be identified — and a stat the reader cannot act on is decoration. The fourth stat
+ * counts today's TASKS, which this screen cannot act on at all, so it links to משימות
+ * instead of filtering; `DUE_TODAY` is therefore no longer a filter value.
  */
 
 import { useMemo, useState } from 'react'
@@ -32,13 +34,12 @@ import '../components/PlantCard.css'
 import './MyPlants.css'
 
 type Sort = 'name' | 'created' | 'health'
-type Filter = '' | HealthStatus | 'ATTENTION' | 'DUE_TODAY' | 'PENDING'
+type Filter = '' | HealthStatus | 'ATTENTION' | 'PENDING'
 
 const HEALTH_ORDER: HealthStatus[] = ['CRITICAL', 'NEEDS_ATTENTION', 'UNKNOWN', 'HEALTHY']
 
 const FILTER_LABELS: Record<string, string> = {
   ATTENTION: 'דורשים תשומת לב',
-  DUE_TODAY: 'טיפול להיום',
   PENDING: 'ממתינים לזיהוי',
 }
 
@@ -100,10 +101,22 @@ export default function MyPlants() {
     return [...filtered].sort(comparator(sort))
   }, [visible, species, filter, sort])
 
-  const stats: { key: Filter; caption: string; value: number; unit: string; tone: string }[] = [
+  /* Three of these cut the list below them; the fourth leaves the page. "טיפולים להיום"
+     counts tasks, and a task is not something this screen can do anything with — the
+     place to act on one is משימות, which is where the card now goes. */
+  type Stat = {
+    caption: string
+    value: number
+    unit: string
+    tone: string
+    key?: Filter
+    to?: string
+  }
+
+  const stats: Stat[] = [
     { key: 'HEALTHY', caption: 'במצב תקין', value: counts.healthy, unit: 'צמחים', tone: 'success' },
     { key: 'ATTENTION', caption: 'דורשים תשומת לב', value: counts.attention, unit: 'צמחים', tone: 'warning' },
-    { key: 'DUE_TODAY', caption: 'טיפולים להיום', value: counts.dueToday, unit: 'משימות', tone: 'primary' },
+    { to: '/tasks', caption: 'טיפולים להיום', value: counts.dueToday, unit: 'משימות', tone: 'primary' },
     { key: 'PENDING', caption: 'ממתינים לזיהוי', value: counts.pending, unit: 'צמחים', tone: 'neutral' },
   ]
 
@@ -124,22 +137,37 @@ export default function MyPlants() {
 
       {!archived && (
         <div className="pc-statrow">
-          {stats.map((stat) => (
-            <button
-              key={stat.key}
-              type="button"
-              className={`pc-stat pc-stat-${stat.tone}${filter === stat.key ? ' is-on' : ''}`}
-              aria-pressed={filter === stat.key}
-              onClick={() => setFilter(filter === stat.key ? '' : stat.key)}
-              disabled={stat.value === 0}
-            >
-              <span className="pc-statcaption">{stat.caption}</span>
-              <span className="pc-statvalue">
-                {stat.value}
-                <span className="pc-statunit">{stat.unit}</span>
-              </span>
-            </button>
-          ))}
+          {stats.map((stat) =>
+            stat.to ? (
+              <Link
+                key={stat.to}
+                to={stat.to}
+                className={`pc-stat pc-stat-link pc-stat-${stat.tone}`}
+              >
+                <span className="pc-statcaption">{stat.caption}</span>
+                <span className="pc-statvalue">
+                  {stat.value}
+                  <span className="pc-statunit">{stat.unit}</span>
+                </span>
+                <span className="pc-statgo">למסך המשימות</span>
+              </Link>
+            ) : (
+              <button
+                key={stat.key}
+                type="button"
+                className={`pc-stat pc-stat-${stat.tone}${filter === stat.key ? ' is-on' : ''}`}
+                aria-pressed={filter === stat.key}
+                onClick={() => setFilter(filter === stat.key ? '' : stat.key!)}
+                disabled={stat.value === 0}
+              >
+                <span className="pc-statcaption">{stat.caption}</span>
+                <span className="pc-statvalue">
+                  {stat.value}
+                  <span className="pc-statunit">{stat.unit}</span>
+                </span>
+              </button>
+            ),
+          )}
         </div>
       )}
 
@@ -304,7 +332,6 @@ function isPending(plant: Plant): boolean {
 }
 
 function matches(plant: Plant, filter: Filter): boolean {
-  if (filter === 'DUE_TODAY') return isDueToday(plant)
   if (filter === 'PENDING') return isPending(plant)
   if (filter === 'ATTENTION') {
     return (

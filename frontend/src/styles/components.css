@@ -332,6 +332,126 @@ a.pc-btn:hover {
   font-weight: 700;
 }
 
+/* --- stat row ------------------------------------------------------------ */
+
+/* Counted figures over a list, each one a cut of that list the reader can take. Lifted
+   out of MyPlants.css when משימות wanted the same row for overdue / today / later: a
+   route's stylesheet is loaded by that route's module, so the second screen would have
+   been borrowing styles that only happen to be present. */
+
+.pc-statrow {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--pc-space-3);
+  margin-block-end: var(--pc-space-5);
+}
+
+@media (min-width: 900px) {
+  .pc-statrow {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: var(--pc-space-4);
+  }
+}
+
+/* Each stat is a button, because each one is a cut of the list the reader can take.
+   A number they cannot act on is decoration. */
+.pc-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--pc-space-2);
+  padding: var(--pc-space-4);
+  text-align: start;
+  background: var(--pc-surface);
+  border: 1px solid var(--pc-border);
+  border-radius: var(--pc-radius-card);
+  box-shadow: var(--pc-shadow-card);
+  cursor: pointer;
+  transition:
+    border-color var(--pc-transition),
+    box-shadow var(--pc-transition),
+    transform var(--pc-transition);
+}
+
+.pc-stat:hover:not(:disabled) {
+  transform: translateY(-2px);
+  border-color: var(--pc-primary);
+  box-shadow: var(--pc-shadow-raised);
+}
+
+/* Zero of something is still worth saying — it is the difference between "nothing
+   needs attention" and "we have not looked". It just cannot be clicked. */
+.pc-stat:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.pc-statcaption {
+  font-size: var(--pc-label);
+  font-weight: var(--pc-label-weight);
+  letter-spacing: var(--pc-label-tracking);
+  text-transform: uppercase;
+  color: var(--pc-text-muted);
+}
+
+.pc-statvalue {
+  display: flex;
+  align-items: baseline;
+  gap: var(--pc-space-2);
+  font-size: var(--pc-display);
+  font-weight: var(--pc-display-weight);
+  line-height: 1;
+  letter-spacing: var(--pc-display-tracking);
+  color: var(--pc-text);
+  /* Digits are LTR inside an RTL line; isolating them keeps a two-digit count from
+     being reordered against its unit. */
+  unicode-bidi: isolate;
+}
+
+.pc-statunit {
+  font-size: var(--pc-h5);
+  font-weight: 400;
+  letter-spacing: 0;
+  color: var(--pc-text-muted);
+}
+
+/* The tone shows on the number and on the engaged state, not as a filled card: four
+   filled cards in a row would out-shout the plants underneath them. */
+.pc-stat-success .pc-statvalue { color: var(--pc-success); }
+.pc-stat-warning .pc-statvalue { color: var(--pc-warning); }
+.pc-stat-primary .pc-statvalue { color: var(--pc-primary); }
+.pc-stat-danger .pc-statvalue { color: var(--pc-danger); }
+
+.pc-stat.is-on {
+  border-color: var(--pc-primary);
+  box-shadow: 0 0 0 1px var(--pc-primary) inset, var(--pc-shadow-card);
+}
+
+@media (max-width: 899px) {
+  .pc-statvalue {
+    font-size: var(--pc-h1);
+  }
+}
+
+/* The row is not always a set of filters. "טיפולים להיום" counts tasks, not plants, and
+   the place to act on a task is משימות — so that one card is a link out rather than a
+   filter of the list beneath it. It says so in words: a card that behaves differently
+   from the three beside it has to admit it. */
+.pc-stat-link {
+  color: inherit;
+}
+
+.pc-stat-link:hover {
+  text-decoration: none;
+}
+
+.pc-statgo {
+  margin-block-start: auto;
+  color: var(--pc-primary);
+  font-size: var(--pc-h6);
+  font-weight: 600;
+}
+
 /* --- empty states -------------------------------------------------------- */
 
 /* Every screen's "there is nothing here yet" looks the same: a disc, a sentence, and
@@ -454,6 +574,24 @@ a.pc-btn:hover {
   display: flex;
   gap: var(--pc-space-2);
   flex: 0 0 auto;
+}
+
+/* On a phone the two buttons take their own line, always. Left to wrap on their own
+   they went below the text on a row with a long plant name and stayed beside it on a
+   row with a short one, so a list of eight tasks had the same two buttons in two
+   different places. */
+@media (max-width: 639px) {
+  .pc-taskrow {
+    align-items: flex-start;
+  }
+
+  .pc-taskactions {
+    flex: 1 0 100%;
+  }
+
+  .pc-taskactions .pc-btn {
+    flex: 1 1 0;
+  }
 }
 
 /* Comfortably above the 44px touch minimum even at the small size. */

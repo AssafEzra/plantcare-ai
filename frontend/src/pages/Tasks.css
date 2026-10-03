@@ -1,37 +1,103 @@
-/* Home only. Anything used by a second screen belongs in styles/components.css:
+/* משימות only. Anything used by a second screen belongs in styles/components.css:
    a route's stylesheet is loaded by that route's module, so sharing from here is
-   a rule that happens to work until the routes are split. */
+   a rule that happens to work until the routes are split. The stat row left for
+   components.css when this screen started using it.
 
-.pc-overdue-detail {
+   Logical properties only. */
+
+/* Three bands instead of four cards. `.pc-statrow` is a two-up grid below 900px, which
+   would leave the third band alone on its own row; three equal columns fit at every
+   width because the captions here are one short word. */
+/* Doubled class, not for emphasis: components.css sets four columns at 900px with the
+   same specificity, and which file wins would otherwise depend on bundle order. */
+.pc-statrow.pc-statrow-3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+/* --- bands --------------------------------------------------------------- */
+
+/* The first band sits directly under the stat row, so it loses the big top margin that
+   separates one section from the next. */
+/* `:first-of-type` rather than `:first-child` — the hero and the stat row come first,
+   and they are a header and a div. */
+.pc-taskband:first-of-type .pc-sectionhead {
+  margin-block-start: 0;
+}
+
+/* A marker the width of the band rather than a tint behind it: the rows inside already
+   carry their own overdue edge, and a wash under them would be a second, louder way of
+   saying the same thing. */
+.pc-taskband.is-late .pc-sectionhead h2 {
+  color: var(--pc-danger);
+}
+
+.pc-taskband.is-late .pc-countpill {
+  background: var(--pc-danger-bg);
+  color: var(--pc-danger);
+}
+
+/* One line under a section head, explaining what the band is for. Not decoration: the
+   upcoming band has no buttons, and a list of tasks you cannot complete needs to say
+   why before the reader decides the screen is broken. */
+.pc-bandnote {
+  margin: calc(var(--pc-space-2) * -1) 0 var(--pc-space-4);
+  color: var(--pc-text-muted);
+  font-size: var(--pc-h5);
+}
+
+/* --- a day inside the upcoming band -------------------------------------- */
+
+.pc-taskday + .pc-taskday {
+  margin-block-start: var(--pc-space-4);
+}
+
+/* A rule that runs from the label to the end of the row, so the days read as dividers
+   in one list rather than as four more headings competing with the section head. */
+.pc-taskdayhead {
+  display: flex;
+  align-items: center;
+  gap: var(--pc-space-3);
+  margin: 0 0 var(--pc-space-2);
+  font-size: var(--pc-h5);
+  font-weight: 600;
+  color: var(--pc-text-muted);
+}
+
+.pc-taskdayhead::after {
+  content: '';
+  flex: 1 1 auto;
+  block-size: 1px;
+  background: var(--pc-border);
+}
+
+.pc-taskdaycount {
+  display: inline-grid;
+  place-items: center;
+  min-inline-size: 22px;
+  padding-inline: 6px;
+  border-radius: var(--pc-radius-pill);
+  background: var(--pc-surface-alt);
   color: var(--pc-text-muted);
   font-size: var(--pc-h6);
+  font-weight: 600;
+  /* Digits keep their order inside an RTL line. */
+  unicode-bidi: isolate;
 }
 
-/* A card with a warning edge rather than a solid block of warning. Filled end to end,
-   this panel was the loudest thing on the page while being the least urgent part of it
-   - the overdue tasks themselves are already listed above it, each with its own
-   actions. The edge marks it without shouting. */
-.pc-overdue {
-  margin-block-start: var(--pc-space-5);
-  padding: var(--pc-space-4);
+/* Quieter than a task you can act on today: flat, no hover lift, and no shadow. The
+   difference has to be visible before the missing buttons are noticed. */
+.pc-taskday .pc-taskrow {
+  background: var(--pc-surface-alt);
+  border-color: transparent;
+  box-shadow: none;
+}
+
+.pc-taskday .pc-taskrow:hover {
+  border-color: var(--pc-border);
+  box-shadow: none;
+}
+
+.pc-taskday .pc-taskicon {
   background: var(--pc-surface);
-  border: 1px solid var(--pc-border);
-  border-inline-start: 3px solid var(--pc-warning);
-  border-radius: var(--pc-radius-card);
-  box-shadow: var(--pc-shadow-card);
-}
-
-.pc-overdue h3 {
-  margin: 0 0 var(--pc-space-3);
-  font-size: var(--pc-h5);
-  color: var(--pc-warning);
-}
-
-.pc-overdue ul {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: var(--pc-space-1);
+  color: var(--pc-text-muted);
 }
