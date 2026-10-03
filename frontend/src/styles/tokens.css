@@ -31,9 +31,9 @@
   /* The page is a soft near-white carrying a faint green cast, so white cards lift
      off it without a shadow doing the work. Text is a deep green-black rather than
      a neutral one — at 13.8:1 it reads as ink, not as grey. */
-  --pc-primary: #1e5139;
-  --pc-primary-hover: #003a24;
-  --pc-primary-soft: #d9efe2;
+  --pc-primary: #33755a;
+  --pc-primary-hover: #265a44;
+  --pc-primary-soft: #e2f3e9;
   --pc-bg: #f9f9f6;
   --pc-surface: #ffffff;
   --pc-surface-alt: #f1f1ee;
