@@ -27,19 +27,32 @@
 }
 
 .pc-morelink:hover {
-  background: var(--pc-surface-alt);
+  background: var(--pc-bg);
   text-decoration: none;
 }
 
+/* The same glyph-in-a-disc used for care actions and empty states, so a list of
+   destinations looks like it belongs to the same app as everything else. */
 .pc-moreicon {
   display: grid;
   place-items: center;
+  flex: 0 0 auto;
+  inline-size: 36px;
+  block-size: 36px;
+  border-radius: var(--pc-radius-pill);
+  background: var(--pc-surface-alt);
   color: var(--pc-text-muted);
+  transition: background var(--pc-transition), color var(--pc-transition);
+}
+
+.pc-morelink:hover .pc-moreicon {
+  background: var(--pc-primary-soft);
+  color: var(--pc-primary);
 }
 
 .pc-moreicon svg {
-  inline-size: 22px;
-  block-size: 22px;
+  inline-size: 20px;
+  block-size: 20px;
 }
 
 .pc-morechevron {

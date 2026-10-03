@@ -235,7 +235,7 @@ export default function MyPlants() {
           archived ? (
             <p>אין צמחים בארכיון.</p>
           ) : hasFilters(q, species, filter) ? (
-            <div className="pc-plantempty">
+            <div className="pc-empty">
               <p>לא נמצאו צמחים שמתאימים לחיפוש.</p>
               <button
                 type="button"
@@ -250,8 +250,8 @@ export default function MyPlants() {
               </button>
             </div>
           ) : (
-            <div className="pc-plantempty">
-              <span className="pc-plantempty-art" aria-hidden="true">
+            <div className="pc-empty">
+              <span className="pc-emptyart" aria-hidden="true">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M12 21v-8" />
                   <path d="M12 13c0-3.5 2.4-6.4 5.8-7-.3 3.7-2.7 6.4-5.8 7z" />

@@ -323,36 +323,6 @@
   font-size: var(--pc-h5);
 }
 
-/* --- empty --------------------------------------------------------------- */
-
-.pc-plantempty {
-  display: grid;
-  justify-items: center;
-  gap: var(--pc-space-4);
-  padding: var(--pc-space-8) var(--pc-space-4);
-  text-align: center;
-}
-
-.pc-plantempty p {
-  margin: 0;
-  color: var(--pc-text-muted);
-}
-
-.pc-plantempty-art {
-  display: grid;
-  place-items: center;
-  inline-size: 96px;
-  block-size: 96px;
-  border-radius: var(--pc-radius-pill);
-  background: var(--pc-primary-soft);
-  color: var(--pc-primary);
-}
-
-.pc-plantempty-art svg {
-  inline-size: 44px;
-  block-size: 44px;
-}
-
 /* --- narrow -------------------------------------------------------------- */
 
 @media (max-width: 639px) {

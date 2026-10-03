@@ -53,13 +53,27 @@ export default function Health() {
         emptyState={
           plants.length === 0 ? (
             <div className="pc-empty">
+              <span className="pc-emptyart" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 21v-8" />
+                  <path d="M12 13c0-3.5 2.4-6.4 5.8-7-.3 3.7-2.7 6.4-5.8 7z" />
+                  <path d="M12 15c0-3-2-5.6-5-6.2.3 3.2 2.3 5.6 5 6.2z" />
+                </svg>
+              </span>
               <p>עוד לא הוספתם צמחים.</p>
               <Link to="/plants/new" className="pc-btn">
                 הוספת צמח
               </Link>
             </div>
           ) : (
-            <p>כל הצמחים במצב תקין. אין מה לטפל כרגע.</p>
+            <div className="pc-empty">
+              <span className="pc-emptyart" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M4 12.5l5 5L20 6.5" />
+                </svg>
+              </span>
+              <p>כל הצמחים במצב תקין. אין מה לטפל כרגע.</p>
+            </div>
           )
         }
       >
@@ -67,11 +81,16 @@ export default function Health() {
           {needing.length > 0 && (
             <>
               <div className="pc-sectionhead">
-                <h2>דורשים תשומת לב</h2>
+                <div>
+                  <span className="pc-eyebrow">הדחוף ביותר קודם</span>
+                  <h2>
+                    דורשים תשומת לב <span className="pc-countpill">{needing.length}</span>
+                  </h2>
+                </div>
               </div>
               <div className="pc-plantgrid">
-                {needing.map((plant) => (
-                  <PlantCard key={plant.id} plant={plant} />
+                {needing.map((plant, i) => (
+                  <PlantCard key={plant.id} plant={plant} index={i} />
                 ))}
               </div>
             </>
@@ -80,14 +99,19 @@ export default function Health() {
           {unassessed.length > 0 && (
             <>
               <div className="pc-sectionhead">
-                <h2>טרם נבדקו</h2>
+                <div>
+                  <span className="pc-eyebrow">אין עדיין אבחנה</span>
+                  <h2>
+                    טרם נבדקו <span className="pc-countpill">{unassessed.length}</span>
+                  </h2>
+                </div>
               </div>
               <p className="pc-placeholder-note">
                 לצמחים האלה עדיין אין בדיקת בריאות. אפשר להריץ בדיקה מדף הצמח.
               </p>
               <div className="pc-plantgrid">
-                {unassessed.map((plant) => (
-                  <PlantCard key={plant.id} plant={plant} />
+                {unassessed.map((plant, i) => (
+                  <PlantCard key={plant.id} plant={plant} index={i} />
                 ))}
               </div>
             </>

@@ -42,13 +42,30 @@ export default function Home() {
       </header>
 
       <div className="pc-sectionhead">
-        <h2>הטיפולים של היום</h2>
+        <div>
+          <span className="pc-eyebrow">מה צריך לעשות</span>
+          <h2>
+            הטיפולים של היום{' '}
+            {(data?.today_care.length ?? 0) > 0 && (
+              <span className="pc-countpill">{data?.today_care.length}</span>
+            )}
+          </h2>
+        </div>
       </div>
 
       <Async
         query={query}
         empty={(data?.today_care.length ?? 0) === 0}
-        emptyState={<p>אין טיפולים להיום. הכול מעודכן.</p>}
+        emptyState={
+          <div className="pc-empty">
+            <span className="pc-emptyart" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M4 12.5l5 5L20 6.5" />
+              </svg>
+            </span>
+            <p>אין טיפולים להיום. הכול מעודכן.</p>
+          </div>
+        }
       >
         <ul className="pc-tasklist">
           {data?.today_care.map((task) => (
@@ -75,7 +92,13 @@ export default function Home() {
       )}
 
       <div className="pc-sectionhead">
-        <h2>הצמחים שלי</h2>
+        <div>
+          <span className="pc-eyebrow">הגינה שלכם</span>
+          <h2>
+            הצמחים שלי{' '}
+            {plants.length > 0 && <span className="pc-countpill">{plants.length}</span>}
+          </h2>
+        </div>
         <Link to="/plants">לכל הצמחים</Link>
       </div>
 
@@ -84,6 +107,13 @@ export default function Home() {
         empty={plants.length === 0}
         emptyState={
           <div className="pc-empty">
+            <span className="pc-emptyart" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 21v-8" />
+                <path d="M12 13c0-3.5 2.4-6.4 5.8-7-.3 3.7-2.7 6.4-5.8 7z" />
+                <path d="M12 15c0-3-2-5.6-5-6.2.3 3.2 2.3 5.6 5 6.2z" />
+              </svg>
+            </span>
             <p>עוד לא הוספתם צמחים.</p>
             {!readOnly && (
               <Link to="/plants/new" className="pc-btn">
@@ -94,8 +124,8 @@ export default function Home() {
         }
       >
         <div className="pc-plantgrid">
-          {plants.slice(0, 6).map((plant) => (
-            <PlantCard key={plant.id} plant={plant} />
+          {plants.slice(0, 6).map((plant, i) => (
+            <PlantCard key={plant.id} plant={plant} index={i} />
           ))}
         </div>
       </Async>

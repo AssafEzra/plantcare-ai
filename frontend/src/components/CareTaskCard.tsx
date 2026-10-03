@@ -14,6 +14,7 @@
 
 import { Link } from 'react-router-dom'
 import { useIsReadOnly } from '../lib/viewAs'
+import ActionIcon from '../lib/actionIcon'
 import {
   actionLabel,
   dueText,
@@ -46,6 +47,10 @@ export default function CareTaskCard({
 
   return (
     <li className={`pc-taskrow${overdue ? ' is-overdue' : ''}`}>
+      <span className="pc-taskicon" aria-hidden="true">
+        <ActionIcon type={task.action_type} />
+      </span>
+
       <div className="pc-taskinfo">
         <span className="pc-taskaction">{actionLabel(task.action_type)}</span>
         {linkToPlant && (
