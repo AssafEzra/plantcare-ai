@@ -116,9 +116,12 @@
   padding-block-end: env(safe-area-inset-bottom);
 }
 
+/* Columns follow the number of items rather than a hard-coded four: the bar carries
+   five since adding a plant became a destination of its own. */
 .pc-bottomnav ul {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
   margin: 0;
   padding: 0;
   list-style: none;

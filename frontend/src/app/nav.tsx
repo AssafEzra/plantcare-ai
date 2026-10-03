@@ -1,9 +1,14 @@
 /* Navigation model.
  *
  * One definition drives both shells, so the mobile bar and the desktop sidebar can
- * never drift apart. Section 11 fixes the mobile set at exactly four items —
- * בית, הצמחים שלי, בריאות, עוד — and states there is no separate "add plant" tab;
- * adding a plant is reached from Home and My Plants.
+ * never drift apart.
+ *
+ * DEVIATION FROM SPEC (FINAL §37, recorded rather than silent): section 11 fixes the
+ * mobile set at exactly four items — בית, הצמחים שלי, בריאות, עוד — and says there is
+ * no separate "add plant" tab, because adding a plant is reached from Home and My
+ * Plants. The user asked for five, with adding a plant among them, after My Plants
+ * became the landing screen and Home became משימות. The buttons on My Plants and on
+ * משימות remain, so the tab is an extra way in rather than the only one.
  *
  * Icons are inline SVG rather than an icon package: four glyphs do not justify a
  * dependency, and the CDN allowlist does not matter for a self-hosted bundle.
@@ -30,10 +35,18 @@ const stroke = {
   strokeLinejoin: 'round' as const,
 }
 
-const HomeIcon = (
+const TasksIcon = (
   <svg viewBox="0 0 24 24" aria-hidden="true" {...stroke}>
-    <path d="M3 10.5 12 3l9 7.5" />
-    <path d="M5.5 9.5V20h13V9.5" />
+    <path d="M4 7.5l2 2 3.5-3.5" />
+    <path d="M4 16.5l2 2 3.5-3.5" />
+    <path d="M13 8h7M13 17h7" />
+  </svg>
+)
+
+const AddIcon = (
+  <svg viewBox="0 0 24 24" aria-hidden="true" {...stroke}>
+    <circle cx="12" cy="12" r="9" />
+    <path d="M12 8.5v7M8.5 12h7" />
   </svg>
 )
 
@@ -74,10 +87,11 @@ const AdminIcon = (
   </svg>
 )
 
-/** The four in the mobile bar, in order. */
+/** The mobile bar, in order. Adding sits in the middle, where a thumb reaches. */
 export const PRIMARY_NAV: NavItem[] = [
-  { to: '/', label: 'בית', icon: HomeIcon, primary: true },
-  { to: '/plants', label: 'הצמחים שלי', icon: PlantsIcon, primary: true },
+  { to: '/', label: 'הצמחים שלי', icon: PlantsIcon, primary: true },
+  { to: '/tasks', label: 'משימות', icon: TasksIcon, primary: true },
+  { to: '/plants/new', label: 'הוספה', icon: AddIcon, primary: true },
   { to: '/health', label: 'בריאות', icon: HealthIcon, primary: true },
   { to: '/more', label: 'עוד', icon: MoreIcon, primary: true },
 ]

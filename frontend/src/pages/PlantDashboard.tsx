@@ -94,7 +94,7 @@ function Loaded({ plantId, plant }: { plantId: string; plant: Dashboard }) {
     <>
       <header className="pc-pagehead">
         <h1>{plant.name || plant.species?.common_name || 'הצמח שלי'}</h1>
-        <Link to="/plants">לרשימת הצמחים</Link>
+        <Link to="/">לרשימת הצמחים</Link>
       </header>
 
       {archived && (

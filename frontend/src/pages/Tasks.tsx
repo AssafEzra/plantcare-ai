@@ -1,9 +1,12 @@
-/* Home (section 12).
+/* משימות — the day's work (section 12's dashboard, renamed and narrowed).
  *
  * "The dashboard is action-oriented. The user should understand in seconds what needs
- * attention today." That sentence decides the ordering, and it is carried over from
- * the Streamlit home page: today's work first, because it is why someone opened the
- * app; the plants after it; the way to add one last.
+ * attention today." That sentence still decides the ordering: today's work first,
+ * then what is late.
+ *
+ * This screen used to be Home and used to end with a grid of plants. My Plants is now
+ * the landing page, so that grid was showing the same collection one tap away from
+ * itself; it has been removed and this screen is only about tasks.
  *
  * There is NO health check action here — section 12 says so explicitly, and section
  * 21 puts the check on the plant dashboard. Overdue work is a summary rather than a
@@ -13,29 +16,25 @@
 import { Link } from 'react-router-dom'
 import { useDashboard, actionLabel } from '../api/careTasks'
 import { useMe } from '../api/profile'
-import { usePlants } from '../api/plants'
-import PlantCard from '../components/PlantCard'
 import CareTaskCard from '../components/CareTaskCard'
 import Async from '../components/Async'
 import PageHero from '../components/PageHero'
 import { useIsReadOnly } from '../lib/viewAs'
-import '../components/PlantCard.css'
-import './Home.css'
+import './Tasks.css'
 
-export default function Home() {
+export default function Tasks() {
   const { data: me } = useMe()
   const query = useDashboard()
-  const plantsQuery = usePlants()
   const data = query.data
 
-  const plants = (plantsQuery.data ?? []).filter((p) => p.status !== 'ARCHIVED')
   const readOnly = useIsReadOnly()
 
   return (
     <section>
       <PageHero
-        eyebrow="היום בגינה"
-        title={me?.display_name ? `שלום ${me.display_name}` : 'בית'}
+        eyebrow={me?.display_name ? `שלום ${me.display_name}` : 'היום בגינה'}
+        title="משימות"
+        count={data?.today_care.length}
         subtitle={greeting(data?.today_care.length ?? 0)}
       >
         {!readOnly && (
@@ -95,44 +94,6 @@ export default function Home() {
         </div>
       )}
 
-      <div className="pc-sectionhead">
-        <div>
-          <span className="pc-eyebrow">הגינה שלכם</span>
-          <h2>
-            הצמחים שלי{' '}
-            {plants.length > 0 && <span className="pc-countpill">{plants.length}</span>}
-          </h2>
-        </div>
-        <Link to="/plants">לכל הצמחים</Link>
-      </div>
-
-      <Async
-        query={plantsQuery}
-        empty={plants.length === 0}
-        emptyState={
-          <div className="pc-empty">
-            <span className="pc-emptyart" aria-hidden="true">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 21v-8" />
-                <path d="M12 13c0-3.5 2.4-6.4 5.8-7-.3 3.7-2.7 6.4-5.8 7z" />
-                <path d="M12 15c0-3-2-5.6-5-6.2.3 3.2 2.3 5.6 5 6.2z" />
-              </svg>
-            </span>
-            <p>עוד לא הוספתם צמחים.</p>
-            {!readOnly && (
-              <Link to="/plants/new" className="pc-btn">
-                הוספת הצמח הראשון
-              </Link>
-            )}
-          </div>
-        }
-      >
-        <div className="pc-plantgrid">
-          {plants.slice(0, 6).map((plant, i) => (
-            <PlantCard key={plant.id} plant={plant} index={i} />
-          ))}
-        </div>
-      </Async>
     </section>
   )
 }

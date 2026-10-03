@@ -104,7 +104,7 @@ function NotificationsMenu() {
           )}
 
           {data && (today.length > 0 || overdue > 0) && (
-            <NavLink to="/" className="pc-menulink" onClick={close}>
+            <NavLink to="/tasks" className="pc-menulink" onClick={close}>
               לכל הטיפולים
             </NavLink>
           )}

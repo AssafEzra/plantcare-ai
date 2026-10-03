@@ -2,8 +2,11 @@
  *
  * Section 40: Streamlit's URLs were never meaningful, so nothing is preserved here.
  * The structure is the one the flows imply — plants are a collection with a detail
- * view, and adding one is a step inside that collection rather than a top-level
- * destination (section 11 removes the separate "add plant" tab).
+ * view, and adding one is a step inside that collection.
+ *
+ * "/" is the plant collection, which is what the user opens the app to see. The day's
+ * work moved to "/tasks". "/plants" still resolves, redirecting to "/", so a bookmark
+ * or a link written before the change keeps working rather than hitting the catch-all.
  *
  * /auth sits outside both the guard and the shell: signing in has no navigation.
  */
@@ -15,7 +18,7 @@ import Auth from './pages/Auth'
 import PlantDashboard from './pages/PlantDashboard'
 import Settings from './pages/Settings'
 import Admin from './pages/Admin'
-import Home from './pages/Home'
+import Tasks from './pages/Tasks'
 import MyPlants from './pages/MyPlants'
 import Health from './pages/Health'
 import AddPlant from './pages/AddPlant'
@@ -30,8 +33,9 @@ export default function App() {
       <Route element={<RequireAuth />}>
         <Route element={<AppShell />}>
           <Route index element={<Landing />} />
+          <Route path="tasks" element={<Tasks />} />
           <Route path="plants">
-            <Route index element={<MyPlants />} />
+            <Route index element={<Navigate to="/" replace />} />
             <Route path="new" element={<AddPlant />} />
             <Route path=":plantId" element={<PlantDashboard />} />
           </Route>
@@ -49,11 +53,12 @@ export default function App() {
 /**
  * Where "/" goes.
  *
- * An administrator has no plants of their own, so Home would be an empty list and an
- * invitation to add one — into the wrong account. They land on the panel instead.
+ * An administrator has no plants of their own, so the collection would be an empty
+ * list and an invitation to add one — into the wrong account. They land on the panel
+ * instead.
  *
  * `useMe` reports the *acted-as* account under "view as user", so an administrator
- * looking through a user's eyes gets that user's Home, which is the whole point of
+ * looking through a user's eyes gets that user's plants, which is the whole point of
  * the mode. While the profile is still loading neither branch is taken: redirecting on
  * an unknown role would bounce a user to a 403 and an admin to an empty screen, and
  * the flash is worse than the wait.
@@ -61,6 +66,6 @@ export default function App() {
 function Landing() {
   const { data: me, isPending } = useMe()
   if (isPending) return null
-  return me?.role === 'ADMIN' ? <Navigate to="/admin" replace /> : <Home />
+  return me?.role === 'ADMIN' ? <Navigate to="/admin" replace /> : <MyPlants />
 }
 

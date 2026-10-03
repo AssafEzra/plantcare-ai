@@ -10,7 +10,7 @@
  * in the DOM for assistive technology to find.
  */
 
-import { NavLink, Outlet } from 'react-router-dom'
+import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { useEffect, useState } from 'react'
 import { navFor } from './nav'
 import { useMe } from '../api/profile'
@@ -25,6 +25,7 @@ export default function AppShell() {
     () => localStorage.getItem(COLLAPSED_KEY) === '1',
   )
   const { data: me } = useMe()
+  const path = useLocation().pathname
 
   useEffect(() => {
     localStorage.setItem(COLLAPSED_KEY, collapsed ? '1' : '0')
@@ -47,8 +48,8 @@ export default function AppShell() {
               <li key={item.to}>
                 <NavLink
                   to={item.to}
-                  end={item.to === '/'}
-                  className={({ isActive }) => `pc-navlink${isActive ? ' active' : ''}`}
+                  end
+                  className={`pc-navlink${isCurrent(item.to, path) ? ' active' : ''}`}
                 >
                   <span className="pc-navicon">{item.icon}</span>
                   <span className="pc-navlabel">{item.label}</span>
@@ -72,8 +73,8 @@ export default function AppShell() {
             <li key={item.to}>
               <NavLink
                 to={item.to}
-                end={item.to === '/'}
-                className={({ isActive }) => `pc-tab${isActive ? ' active' : ''}`}
+                end
+                className={`pc-tab${isCurrent(item.to, path) ? ' active' : ''}`}
               >
                 <span className="pc-tabicon">{item.icon}</span>
                 <span className="pc-tablabel">{item.label}</span>
@@ -84,4 +85,18 @@ export default function AppShell() {
       </nav>
     </div>
   )
+}
+
+/**
+ * Which tab owns the current URL.
+ *
+ * `NavLink`'s own matching cannot express this. The collection lives at "/", so
+ * without `end` it would match every page in the app; with `end` it stops matching
+ * "/plants/<id>", and a plant's own page would light up no tab at all — the one place
+ * a reader most wants to know where they are. A plant belongs to the collection, and
+ * "/plants/new" belongs to the tab that points at it, not to the collection.
+ */
+function isCurrent(to: string, path: string): boolean {
+  if (to === '/') return path === '/' || (path.startsWith('/plants/') && path !== '/plants/new')
+  return path === to || path.startsWith(`${to}/`)
 }

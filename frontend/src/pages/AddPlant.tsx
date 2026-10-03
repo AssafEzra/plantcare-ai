@@ -59,7 +59,7 @@ export default function AddPlant() {
         <p className="pc-formnotice" role="status">
           צפייה כמשתמש אחר היא לקריאה בלבד. אי אפשר להוסיף צמח לחשבון של מישהו אחר.
         </p>
-        <Link to="/plants" className="pc-btn">
+        <Link to="/" className="pc-btn">
           לרשימת הצמחים
         </Link>
       </section>
@@ -440,11 +440,11 @@ function DoneStep({
         <button
           type="button"
           className="pc-btn"
-          onClick={() => navigate(plantId ? `/plants/${plantId}` : '/plants')}
+          onClick={() => navigate(plantId ? `/plants/${plantId}` : '/')}
         >
           לצמח שלי
         </button>
-        <Link to="/plants" className="pc-btn pc-btn-quiet">
+        <Link to="/" className="pc-btn pc-btn-quiet">
           לרשימת הצמחים
         </Link>
       </div>
