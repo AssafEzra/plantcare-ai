@@ -4,88 +4,188 @@
 
    Logical properties only. */
 
-/* --- hero ---------------------------------------------------------------- */
+/* --- page head ----------------------------------------------------------- */
 
-/* The page opens on something rather than on a filter row. The panel carries the
-   title, the one number worth knowing before scrolling — how many plants want
-   something — and the search, which is the control people actually reach for. */
-.pc-planthero {
-  position: relative;
-  overflow: hidden;
-  display: grid;
-  grid-template-columns: 1fr auto;
+.pc-plantshead {
+  display: flex;
   align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
   gap: var(--pc-space-4);
-  padding: var(--pc-space-5);
   margin-block-end: var(--pc-space-5);
-  border-radius: var(--pc-radius-card);
-  background:
-    radial-gradient(90% 120% at 85% -20%, rgba(255, 255, 255, 0.55) 0%, rgba(255, 255, 255, 0) 60%),
-    linear-gradient(160deg, var(--pc-primary-soft) 0%, var(--pc-surface-alt) 100%);
-  border: 1px solid var(--pc-border);
 }
 
-/* A leaf, very faint, bled off the start corner. Decoration, so it is drawn here
-   rather than put in the markup for a screen reader to find. */
-.pc-planthero::before {
-  content: "";
-  position: absolute;
-  inset-block-start: -40%;
-  inset-inline-start: -6%;
-  inline-size: 260px;
-  block-size: 260px;
-  background: currentColor;
-  color: var(--pc-primary);
-  opacity: 0.06;
-  mask: radial-gradient(circle at 70% 30%, #000 0 42%, transparent 43%) no-repeat;
-  -webkit-mask: radial-gradient(circle at 70% 30%, #000 0 42%, transparent 43%) no-repeat;
-  pointer-events: none;
-}
-
-.pc-planthero-text {
+.pc-plantstitle {
+  display: flex;
+  align-items: center;
+  gap: var(--pc-space-3);
   min-inline-size: 0;
 }
 
-.pc-planthero h1 {
+.pc-plantshead h1 {
   margin: 0;
 }
 
-.pc-planthero-sub {
-  margin: var(--pc-space-1) 0 0;
+@media (min-width: 900px) {
+  .pc-plantshead h1 {
+    font-size: var(--pc-display);
+    font-weight: var(--pc-display-weight);
+    letter-spacing: var(--pc-display-tracking);
+  }
+}
+
+/* The count beside the title, not under it: how many plants there are is part of the
+   heading, and a sentence saying so would be a sentence nobody reads twice. */
+.pc-plantscount {
+  display: inline-grid;
+  place-items: center;
+  min-inline-size: 32px;
+  padding: 2px var(--pc-space-3);
+  border-radius: var(--pc-radius-pill);
+  background: var(--pc-primary-soft);
+  color: var(--pc-primary);
+  font-size: var(--pc-h5);
+  font-weight: 700;
+}
+
+/* --- stat row ------------------------------------------------------------ */
+
+.pc-statrow {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--pc-space-3);
+  margin-block-end: var(--pc-space-5);
+}
+
+@media (min-width: 900px) {
+  .pc-statrow {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: var(--pc-space-4);
+  }
+}
+
+/* Each stat is a button, because each one is a cut of the list the reader can take.
+   A number they cannot act on is decoration. */
+.pc-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--pc-space-2);
+  padding: var(--pc-space-4);
+  text-align: start;
+  background: var(--pc-surface);
+  border: 1px solid var(--pc-border);
+  border-radius: var(--pc-radius-card);
+  box-shadow: var(--pc-shadow-card);
+  cursor: pointer;
+  transition:
+    border-color var(--pc-transition),
+    box-shadow var(--pc-transition),
+    transform var(--pc-transition);
+}
+
+.pc-stat:hover:not(:disabled) {
+  transform: translateY(-2px);
+  border-color: var(--pc-primary);
+  box-shadow: var(--pc-shadow-raised);
+}
+
+/* Zero of something is still worth saying — it is the difference between "nothing
+   needs attention" and "we have not looked". It just cannot be clicked. */
+.pc-stat:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.pc-statcaption {
+  font-size: var(--pc-label);
+  font-weight: var(--pc-label-weight);
+  letter-spacing: var(--pc-label-tracking);
+  text-transform: uppercase;
   color: var(--pc-text-muted);
-  font-size: var(--pc-h4);
 }
 
-.pc-planthero-add {
-  justify-self: end;
-  white-space: nowrap;
+.pc-statvalue {
+  display: flex;
+  align-items: baseline;
+  gap: var(--pc-space-2);
+  font-size: var(--pc-display);
+  font-weight: var(--pc-display-weight);
+  line-height: 1;
+  letter-spacing: var(--pc-display-tracking);
+  color: var(--pc-text);
+  /* Digits are LTR inside an RTL line; isolating them keeps a two-digit count from
+     being reordered against its unit. */
+  unicode-bidi: isolate;
 }
 
-/* --- search -------------------------------------------------------------- */
+.pc-statunit {
+  font-size: var(--pc-h5);
+  font-weight: 400;
+  letter-spacing: 0;
+  color: var(--pc-text-muted);
+}
+
+/* The tone shows on the number and on the engaged state, not as a filled card: four
+   filled cards in a row would out-shout the plants underneath them. */
+.pc-stat-success .pc-statvalue { color: var(--pc-success); }
+.pc-stat-warning .pc-statvalue { color: var(--pc-warning); }
+.pc-stat-primary .pc-statvalue { color: var(--pc-primary); }
+
+.pc-stat.is-on {
+  border-color: var(--pc-primary);
+  box-shadow: 0 0 0 1px var(--pc-primary) inset, var(--pc-shadow-card);
+}
+
+@media (max-width: 899px) {
+  .pc-statvalue {
+    font-size: var(--pc-h1);
+  }
+}
+
+/* --- control bar --------------------------------------------------------- */
+
+/* Search, species and sort in one surface, as a toolbar rather than as three stacked
+   form fields. */
+.pc-plantbar {
+  display: flex;
+  align-items: center;
+  gap: var(--pc-space-3);
+  padding: var(--pc-space-2);
+  margin-block-end: var(--pc-space-4);
+  background: var(--pc-surface);
+  border: 1px solid var(--pc-border);
+  border-radius: var(--pc-radius-pill);
+  box-shadow: var(--pc-shadow-card);
+}
 
 .pc-plantsearch {
-  grid-column: 1 / -1;
   position: relative;
+  flex: 1 1 auto;
+  min-inline-size: 0;
   display: block;
 }
 
 .pc-plantsearch input {
   inline-size: 100%;
-  padding-block: var(--pc-space-3);
+  padding-block: var(--pc-space-2);
   /* Room for the icon on the start edge, ordinary padding on the other. */
-  padding-inline: calc(var(--pc-space-5) + var(--pc-space-4)) var(--pc-space-4);
+  padding-inline: calc(var(--pc-space-5) + var(--pc-space-3)) var(--pc-space-4);
   font: inherit;
   color: var(--pc-text);
-  background: var(--pc-surface);
-  border: 1px solid transparent;
+  background: transparent;
+  border: 0;
   border-radius: var(--pc-radius-pill);
-  box-shadow: var(--pc-shadow-card);
-  transition: border-color var(--pc-transition), box-shadow var(--pc-transition);
 }
 
 .pc-plantsearch input:focus {
   outline: none;
-  border-color: var(--pc-primary);
+}
+
+/* The focus ring goes on the label, so the whole search area lights up rather than a
+   borderless input appearing to do nothing. */
+.pc-plantsearch:focus-within {
+  border-radius: var(--pc-radius-pill);
   box-shadow: 0 0 0 3px var(--pc-primary-soft);
 }
 
@@ -105,16 +205,24 @@
   block-size: 18px;
 }
 
-/* --- controls ------------------------------------------------------------ */
-
-.pc-plantcontrols {
+.pc-plantselects {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--pc-space-3);
-  margin-block-end: var(--pc-space-5);
+  gap: var(--pc-space-2);
+  flex: 0 0 auto;
 }
+
+.pc-plantselects .pc-field {
+  margin-block-end: 0;
+}
+
+.pc-plantselects select {
+  background: var(--pc-surface-alt);
+  border-color: transparent;
+  border-radius: var(--pc-radius-pill);
+  padding-inline: var(--pc-space-4);
+}
+
+/* --- chips --------------------------------------------------------------- */
 
 /* Scrolls rather than wraps on a narrow screen: a chip row that grows to three lines
    pushes the plants off the first screen, which is the thing the page exists to show. */
@@ -124,6 +232,7 @@
   overflow-x: auto;
   scrollbar-width: none;
   padding-block-end: 2px;
+  margin-block-end: var(--pc-space-5);
 }
 
 .pc-chiprow::-webkit-scrollbar {
@@ -187,9 +296,7 @@
   color: var(--pc-success);
 }
 
-.pc-chip-success.is-on .pc-chipcount {
-  background: var(--pc-success);
-}
+.pc-chip-success.is-on .pc-chipcount { background: var(--pc-success); }
 
 .pc-chip-warning.is-on {
   background: var(--pc-warning-bg);
@@ -197,9 +304,7 @@
   color: var(--pc-warning);
 }
 
-.pc-chip-warning.is-on .pc-chipcount {
-  background: var(--pc-warning);
-}
+.pc-chip-warning.is-on .pc-chipcount { background: var(--pc-warning); }
 
 .pc-chip-danger.is-on {
   background: var(--pc-danger-bg);
@@ -207,18 +312,15 @@
   color: var(--pc-danger);
 }
 
-.pc-chip-danger.is-on .pc-chipcount {
-  background: var(--pc-danger);
-}
+.pc-chip-danger.is-on .pc-chipcount { background: var(--pc-danger); }
 
-.pc-plantselects {
+.pc-activefilter {
   display: flex;
-  gap: var(--pc-space-2);
-  flex: 0 0 auto;
-}
-
-.pc-plantselects .pc-field {
-  margin-block-end: 0;
+  align-items: center;
+  gap: var(--pc-space-3);
+  margin-block: calc(var(--pc-space-4) * -1) var(--pc-space-4);
+  color: var(--pc-text-muted);
+  font-size: var(--pc-h5);
 }
 
 /* --- empty --------------------------------------------------------------- */
@@ -254,19 +356,17 @@
 /* --- narrow -------------------------------------------------------------- */
 
 @media (max-width: 639px) {
-  .pc-planthero {
-    grid-template-columns: 1fr;
-    padding: var(--pc-space-4);
-  }
-
-  .pc-planthero-add {
-    justify-self: stretch;
-    text-align: center;
-  }
-
-  .pc-plantcontrols {
+  /* The toolbar unrolls: a pill holding a search field and two selects has nowhere to
+     put them side by side on a phone. */
+  .pc-plantbar {
     flex-direction: column;
     align-items: stretch;
+    padding: var(--pc-space-3);
+    border-radius: var(--pc-radius-card);
+  }
+
+  .pc-plantselects .pc-field {
+    flex: 1 1 0;
   }
 
   /* The row bleeds into the page gutter so a scrolled chip is visibly cut off at the
@@ -274,9 +374,5 @@
   .pc-chiprow {
     margin-inline: calc(var(--pc-space-4) * -1);
     padding-inline: var(--pc-space-4);
-  }
-
-  .pc-plantselects .pc-field {
-    flex: 1 1 0;
   }
 }

@@ -8,10 +8,10 @@
  * The whole card is one link rather than a div with a click handler, so it is
  * keyboard reachable, announces itself as a link, and supports open-in-new-tab.
  *
- * The photograph is the card. Name, species and health sit on top of it over a scrim,
- * and only the next task gets its own strip underneath — a plant is recognised by
- * sight long before its name is read, and the previous layout gave the picture about a
- * twentieth of the tile.
+ * The photograph leads and the words follow it. Health sits on the picture, because it
+ * is the one fact worth reading before the eye has finished recognising the plant;
+ * everything else — name, species, the owner's note, the next task — is set on white
+ * below it, where Hebrew is legible without fighting whatever is behind it.
  *
  * A plant with no photograph is not given a grey box. `hueOf` turns its id into a
  * stable hue, so every unphotographed plant has its own colour and is still told apart
@@ -25,7 +25,7 @@ import { plantName } from '../api/plants'
 import { actionLabel } from '../api/careTasks'
 import { statusStyle, PLANT_STATUS_LABELS } from '../lib/status'
 import StatusBadge from './StatusBadge'
-import { formatDueDate } from '../lib/dates'
+import { formatDueDate, dayOffset } from '../lib/dates'
 import './PlantCard.css'
 
 /* The action a task describes, as a glyph. Watering is far and away the most common,
@@ -73,6 +73,18 @@ const ACTION_ICONS: Record<string, ReactNode> = {
   ),
 }
 
+/* The only tag that goes on the photograph besides health. Stitch's design puts a
+   second chip there; it filled it with a vitality percentage we do not measure, so
+   this carries the one thing that is both true and urgent. Absent when neither. */
+function dueTag(plant: Plant): { label: string; tone: 'danger' | 'warning' } | null {
+  if (!plant.next_task) return null
+  if (plant.next_task.status === 'OVERDUE') return { label: 'באיחור', tone: 'danger' }
+  const days = dayOffset(plant.next_task.due_at_utc)
+  if (days < 0) return { label: 'באיחור', tone: 'danger' }
+  if (days === 0) return { label: 'להיום', tone: 'warning' }
+  return null
+}
+
 function hueOf(id: string): number {
   let h = 0
   for (let i = 0; i < id.length; i += 1) h = (h * 31 + id.charCodeAt(i)) % 360
@@ -89,6 +101,8 @@ export default function PlantCard({ plant, index = 0 }: { plant: Plant; index?: 
     plant.species_name && plant.name && plant.species_name !== plant.name
       ? plant.species_name
       : null
+  const note = plant.notes?.trim() || null
+  const due = dueTag(plant)
 
   return (
     <Link
@@ -111,8 +125,6 @@ export default function PlantCard({ plant, index = 0 }: { plant: Plant; index?: 
           </span>
         )}
 
-        <span className="pc-plantscrim" aria-hidden="true" />
-
         <div className="pc-plantbadges">
           {/* Only an active plant's health means anything; one still being
               identified has no assessment behind the value. */}
@@ -131,12 +143,19 @@ export default function PlantCard({ plant, index = 0 }: { plant: Plant; index?: 
           )}
         </div>
 
-        <div className="pc-plantcaption">
-          <h3 className="pc-plantname">{name}</h3>
-          {/* Only when it adds something. A plant the user never renamed carries the
-              species as its display name, and repeating it reads as a bug. */}
-          {species && <p className="pc-plantspecies">{species}</p>}
-        </div>
+        {due && <span className={`pc-plantdue pc-plantdue-${due.tone}`}>{due.label}</span>}
+      </div>
+
+      <div className="pc-plantbody">
+        <h3 className="pc-plantname">{name}</h3>
+        {species && <p className="pc-plantspecies">{species}</p>}
+
+        {/* The owner's own note, not a generated one. Shown only when they wrote it. */}
+        {note && (
+          <p className="pc-plantnote">
+            <span aria-hidden="true">·</span> {note}
+          </p>
+        )}
       </div>
 
       <div className="pc-plantfoot">

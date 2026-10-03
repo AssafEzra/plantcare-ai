@@ -1,10 +1,8 @@
 /* Logical properties only.
  *
- * The chevron in the footer is the one exception worth naming: it points toward the
- * start edge, which in this RTL app means it points left. It is drawn that way in the
- * markup rather than flipped here, because the glyph IS the direction — mirroring it
- * with a transform would make a future LTR build silently wrong in the other
- * direction instead.
+ * The chevron in the footer is the one thing worth naming: it is drawn pointing left in
+ * the markup rather than mirrored here with a transform, because the glyph IS the
+ * direction. Flipping it would make a future LTR build silently wrong the other way.
  */
 
 .pc-plantcard {
@@ -46,7 +44,7 @@
 .pc-plantthumb {
   position: relative;
   flex: 0 0 auto;
-  aspect-ratio: 4 / 5;
+  aspect-ratio: 4 / 3;
   inline-size: 100%;
   overflow: hidden;
   display: grid;
@@ -83,22 +81,8 @@
 }
 
 .pc-plantthumb-empty svg {
-  inline-size: 64px;
-  block-size: 64px;
-}
-
-/* Carries the caption. Dark enough at the foot for white text to clear 4.5:1 over any
-   photograph, and clear at the top so the plant is not dimmed for nothing. */
-.pc-plantscrim {
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(
-    to bottom,
-    rgba(18, 28, 22, 0.42) 0%,
-    rgba(18, 28, 22, 0) 32%,
-    rgba(18, 28, 22, 0.16) 52%,
-    rgba(18, 28, 22, 0.78) 100%
-  );
+  inline-size: 56px;
+  block-size: 56px;
 }
 
 .pc-plantbadges {
@@ -116,36 +100,71 @@
 .pc-plantbadges .pc-statusbadge {
   background: rgba(255, 255, 255, 0.92);
   backdrop-filter: blur(6px);
-  box-shadow: 0 1px 3px rgba(18, 28, 22, 0.24);
+  box-shadow: 0 1px 3px rgba(26, 28, 27, 0.24);
 }
 
-.pc-plantcaption {
+/* The second tag, on the end corner. Only ever "overdue" or "today". */
+.pc-plantdue {
   position: absolute;
-  inset-block-end: 0;
-  inset-inline: 0;
-  padding: var(--pc-space-4);
-  color: #fff;
+  inset-block-start: var(--pc-space-3);
+  inset-inline-end: var(--pc-space-3);
+  padding: 2px var(--pc-space-3);
+  border-radius: var(--pc-radius-pill);
+  font-size: var(--pc-h6);
+  font-weight: 700;
+  white-space: nowrap;
+  box-shadow: 0 1px 3px rgba(26, 28, 27, 0.24);
+}
+
+.pc-plantdue-warning {
+  background: var(--pc-warning-bg);
+  color: var(--pc-warning);
+}
+
+.pc-plantdue-danger {
+  background: var(--pc-danger-bg);
+  color: var(--pc-danger);
+}
+
+/* --- the words ----------------------------------------------------------- */
+
+.pc-plantbody {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+  padding: var(--pc-space-4) var(--pc-space-4) var(--pc-space-3);
 }
 
 .pc-plantname {
   margin: 0;
-  font-size: var(--pc-h2);
-  font-weight: var(--pc-h2-weight);
-  line-height: 1.2;
+  font-size: var(--pc-h3);
+  font-weight: var(--pc-h3-weight);
+  line-height: 1.25;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  text-shadow: 0 1px 8px rgba(18, 28, 22, 0.45);
 }
 
 .pc-plantspecies {
   margin: 2px 0 0;
+  color: var(--pc-text-muted);
   font-size: var(--pc-h5);
   font-style: italic;
-  opacity: 0.88;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Two lines at most. A note is a reminder, not a journal entry, and a card that grows
+   with the length of one breaks the row it sits in. */
+.pc-plantnote {
+  margin: var(--pc-space-3) 0 0;
+  color: var(--pc-text-muted);
+  font-size: var(--pc-h5);
+  line-height: 1.45;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 /* --- the next task ------------------------------------------------------- */
@@ -155,6 +174,7 @@
   align-items: center;
   gap: var(--pc-space-3);
   padding: var(--pc-space-3) var(--pc-space-4);
+  border-block-start: 1px solid var(--pc-border);
   min-block-size: 56px;
 }
 
@@ -220,7 +240,10 @@
 .pc-plantgrid {
   display: grid;
   gap: var(--pc-space-4);
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 230px), 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr));
+  /* Equal heights across a row even when one card has a note and its neighbour does
+     not: the body grows, the photograph and the task strip do not. */
+  align-items: stretch;
 }
 
 @media (min-width: 640px) {
@@ -230,8 +253,8 @@
 }
 
 /* Two across on every phone. Left to auto-fill, a 502px viewport lands just under the
-   230px minimum twice over and collapses to a single column, where one 4:5 photograph
-   is most of the screen and the list stops being a list. */
+   minimum twice over and collapses to a single column, where one card is most of the
+   screen and the list stops being a list. */
 @media (max-width: 639px) {
   .pc-plantgrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -242,8 +265,12 @@
     font-size: var(--pc-h4);
   }
 
-  .pc-plantcaption,
+  .pc-plantnote {
+    display: none;
+  }
+
+  .pc-plantbody,
   .pc-plantfoot {
-    padding: var(--pc-space-3);
+    padding-inline: var(--pc-space-3);
   }
 }
