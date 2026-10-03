@@ -9,6 +9,12 @@
  * or a link written before the change keeps working rather than hitting the catch-all.
  *
  * /auth sits outside both the guard and the shell: signing in has no navigation.
+ *
+ * /admin is guarded here as well as on the server. Every admin route depends on
+ * `AdminDep` and every admin table carries its own `is_admin()` policy, so nothing
+ * leaks either way — but without this a signed-in user who typed the URL was shown the
+ * whole console, nine tabs and a page title, over a single 403 and a "נסו שוב" button
+ * that could never succeed.
  */
 
 import { Routes, Route, Navigate } from 'react-router-dom'
@@ -42,7 +48,7 @@ export default function App() {
           <Route path="health" element={<Health />} />
           <Route path="more" element={<More />} />
           <Route path="settings" element={<Settings />} />
-          <Route path="admin" element={<Admin />} />
+          <Route path="admin" element={<AdminOnly />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       </Route>
@@ -69,3 +75,25 @@ function Landing() {
   return me?.role === 'ADMIN' ? <Navigate to="/admin" replace /> : <MyPlants />
 }
 
+/**
+ * The admin panel, for administrators.
+ *
+ * `Landing` makes the opposite decision with the same machinery, and for the same
+ * reason it waits on `isPending`: refusing on an unknown role would flash "this area is
+ * for administrators" at an actual administrator while their profile loads.
+ *
+ * A refusal rather than a redirect. Someone who typed /admin asked a question, and
+ * being returned silently to their plants does not answer it.
+ */
+function AdminOnly() {
+  const { data: me, isPending } = useMe()
+  if (isPending) return null
+  if (me?.role !== 'ADMIN') {
+    return (
+      <p className="pc-formnotice" role="status">
+        האזור הזה מיועד למנהלי מערכת בלבד.
+      </p>
+    )
+  }
+  return <Admin />
+}

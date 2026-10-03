@@ -76,7 +76,11 @@
   font-size: var(--pc-h2);
 }
 
+/* Same trick as `.pc-taskplant`: a wider pressable box, the same layout. */
 .pc-healthwho h3 a {
+  display: inline-block;
+  padding-block: 5px;
+  margin-block: -5px;
   color: var(--pc-text);
 }
 

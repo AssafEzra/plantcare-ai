@@ -41,6 +41,14 @@
   font-weight: 600;
 }
 
+/* The one control in a source row, and the only link on this panel that leaves the
+   application. Padded out and pulled back in, like the other standalone links. */
+.pc-source a {
+  display: inline-block;
+  padding-block: 6px;
+  margin-block: calc(var(--pc-space-1) - 6px) -6px;
+}
+
 /* The summary is a sentence, not a label, so it is set as prose: ordinary weight and
    size, wrapping like the paragraph it opens onto, and `plaintext` for the same reason
    the paragraphs have it — one of these sections is a Latin binomial. */

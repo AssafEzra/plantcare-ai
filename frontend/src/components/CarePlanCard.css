@@ -45,21 +45,36 @@
   margin-block: var(--pc-space-2) 0;
 }
 
+/* The block padding lives on the summary, not here. A `<details>` only toggles when the
+   `<summary>` itself is pressed, so padding on the parent made a 22px-tall target inside
+   a 38px-tall box — the eight pixels above and below the words did nothing. Horizontal
+   padding stays, because it has to apply to the content as well. */
 .pc-reco,
 .pc-schedule,
 .pc-adjust {
   border: 1px solid var(--pc-border);
   border-radius: var(--pc-radius-control);
-  padding: var(--pc-space-2) var(--pc-space-3);
+  padding-inline: var(--pc-space-3);
   margin-block-end: var(--pc-space-2);
 }
 
+/* Bled out to the box edges and padded to 46px: the whole row is the control, which is
+   what it looked like all along. */
 .pc-reco > summary,
 .pc-schedule > summary,
 .pc-adjust > summary {
+  padding-block: var(--pc-space-3);
+  padding-inline: var(--pc-space-3);
+  margin-inline: calc(var(--pc-space-3) * -1);
   cursor: pointer;
   font-weight: 600;
   font-size: var(--pc-h5);
+}
+
+.pc-reco[open],
+.pc-schedule[open],
+.pc-adjust[open] {
+  padding-block-end: var(--pc-space-3);
 }
 
 .pc-schedule {

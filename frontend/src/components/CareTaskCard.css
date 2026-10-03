@@ -151,7 +151,13 @@
   font-weight: 600;
 }
 
+/* Padded out and pulled back in. A standalone link in a card is not "inline in a
+   sentence", so WCAG 2.5.8 applies and a 22px line is under its 24px floor; the
+   negative margin keeps the card's rhythm exactly where it was while the pressable box
+   grows to 34px. */
 .pc-taskplant {
+  padding-block: 6px;
+  margin-block: -6px;
   color: var(--pc-text-muted);
   font-size: var(--pc-h5);
 }

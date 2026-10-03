@@ -95,8 +95,14 @@ export default function AppShell() {
  * "/plants/<id>", and a plant's own page would light up no tab at all — the one place
  * a reader most wants to know where they are. A plant belongs to the collection, and
  * "/plants/new" belongs to the tab that points at it, not to the collection.
+ *
+ * Settings belongs to "עוד". On a phone it is only reachable through that tab, so a
+ * user who tapped עוד and then הגדרות was looking at a bar with nothing lit on it. The
+ * desktop sidebar lists הגדרות in its own right and has no עוד entry at all, so this
+ * says nothing there.
  */
 function isCurrent(to: string, path: string): boolean {
   if (to === '/') return path === '/' || (path.startsWith('/plants/') && path !== '/plants/new')
+  if (to === '/more') return path === '/more' || path === '/settings'
   return path === to || path.startsWith(`${to}/`)
 }

@@ -251,10 +251,15 @@ a.pc-btn:hover {
   background: var(--pc-surface);
 }
 
+/* Padded out and pulled back in, so the text sits exactly where it did while the
+   pressable box clears the 24px minimum for a control that is not inline in a
+   sentence. */
 .pc-linkbtn {
   border: 0;
   background: transparent;
-  padding: 0;
+  padding-block: 6px;
+  margin-block: -6px;
+  padding-inline: 0;
   color: var(--pc-primary);
   font: inherit;
   cursor: pointer;
