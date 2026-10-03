@@ -229,9 +229,10 @@
   }
 }
 
-/* Two across even on the narrowest phone: at one card per row a 4:5 photograph is
-   most of the viewport and the list stops being a list. */
-@media (max-width: 420px) {
+/* Two across on every phone. Left to auto-fill, a 502px viewport lands just under the
+   230px minimum twice over and collapses to a single column, where one 4:5 photograph
+   is most of the screen and the list stops being a list. */
+@media (max-width: 639px) {
   .pc-plantgrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: var(--pc-space-3);
