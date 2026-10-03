@@ -31,15 +31,15 @@
   /* The page is a soft near-white carrying a faint green cast, so white cards lift
      off it without a shadow doing the work. Text is a deep green-black rather than
      a neutral one — at 13.8:1 it reads as ink, not as grey. */
-  --pc-primary: #2f6b4f;
-  --pc-primary-hover: #25573f;
-  --pc-primary-soft: #e6f0e9;
-  --pc-bg: #f6f8f3;
+  --pc-primary: #1e5139;
+  --pc-primary-hover: #003a24;
+  --pc-primary-soft: #d9efe2;
+  --pc-bg: #f9f9f6;
   --pc-surface: #ffffff;
-  --pc-surface-alt: #edf1ea;
-  --pc-text: #1e2b23;
-  --pc-text-muted: #5f6e65;
-  --pc-border: #e2e7dd;
+  --pc-surface-alt: #f1f1ee;
+  --pc-text: #1a1c1b;
+  --pc-text-muted: #414943;
+  --pc-border: #e2e3e0;
 
   /* --- status palette --------------------------------------------------- */
   /* Drives plant health everywhere. Each has a foreground and a wash. The washes are
@@ -62,8 +62,16 @@
 
   /* Display is for page titles on wide screens only; below 900px the h1 size is
      already the largest thing on screen and a second step just costs lines. */
-  --pc-display: 32px;
+  --pc-display: 44px;
   --pc-display-weight: 700;
+  --pc-display-tracking: -0.03em;
+
+  /* The editorial caption: small, bold, widely tracked, upper case. Used for the stat
+     captions and anywhere else a label has to read as a label rather than as text.
+     Most of what reads as "designed" in this layout is this one setting. */
+  --pc-label: 11px;
+  --pc-label-weight: 700;
+  --pc-label-tracking: 0.08em;
 
   --pc-h1: 28px;
   --pc-h2: 22px;

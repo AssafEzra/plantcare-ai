@@ -196,6 +196,7 @@
   .pc-pagehead h1 {
     font-size: var(--pc-display);
     font-weight: var(--pc-display-weight);
+    letter-spacing: var(--pc-display-tracking);
   }
 }
 
