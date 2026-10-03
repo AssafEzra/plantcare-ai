@@ -125,7 +125,7 @@ def test_liveness_does_not_touch_the_database(client: TestClient, monkeypatch):
 
     monkeypatch.setattr(main_module, "anon_client", _boom)
 
-    assert client.get("/healthz").status_code == 200
+    assert client.get("/livez").status_code == 200
 
 
 # --- throttling ---------------------------------------------------------------
@@ -186,13 +186,13 @@ def test_an_unauthenticated_caller_is_refused_before_spending_allowance(app_env)
 
 
 def test_method_not_allowed_uses_the_envelope(client: TestClient):
-    response = client.delete("/healthz")
+    response = client.delete("/livez")
 
     assert response.status_code in (404, 405)
     assert "error" in response.json()
 
 
 def test_every_response_carries_a_request_id(client: TestClient):
-    for path, method in [("/healthz", "get"), ("/readyz", "get"), ("/v1/me", "get")]:
+    for path, method in [("/livez", "get"), ("/readyz", "get"), ("/v1/me", "get")]:
         response = getattr(client, method)(path)
         assert response.headers.get("X-Request-ID"), f"{path} lost the request id"

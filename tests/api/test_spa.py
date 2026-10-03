@@ -78,7 +78,7 @@ def test_a_deep_link_serves_the_application(client: TestClient):
 
 
 def test_the_health_screen_is_the_application_not_the_probe(client: TestClient):
-    """The collision that forced `/healthz`.
+    """The collision that forced `/livez`.
 
     `/health` is the בריאות screen. If the liveness probe still owned this path, a
     reader who refreshed it would be shown `{"status": "ok"}`.
@@ -121,7 +121,7 @@ def test_an_unknown_api_path_is_still_a_json_envelope(client: TestClient):
 
 
 def test_the_probes_answer_at_their_own_paths(client: TestClient):
-    response = client.get("/healthz")
+    response = client.get("/livez")
 
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}

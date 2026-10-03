@@ -98,15 +98,22 @@ call sites do not change.
 
 | Path | Meaning | Use for |
 |---|---|---|
-| `/healthz` | process is up; **checks nothing else** | liveness |
+| `/livez` | process is up; **checks nothing else** | liveness |
 | `/readyz` | database answered a trivial query | readiness / load-balancer rotation |
 
-Point liveness at `/healthz` and readiness at `/readyz`, not both at `/readyz`. A
+Point liveness at `/livez` and readiness at `/readyz`, not both at `/readyz`. A
 liveness probe that touches the database restarts healthy containers during a database
 blip and turns a partial outage into a total one.
 
-The `z` is not decoration. These were `/health` and `/ready` until the interface moved
-to React and began sharing an origin with the API — and `/health` is a screen in that
-interface (the בריאות page). The probe would have won the path, so a reader who
-refreshed that page would have been served `{"status": "ok"}`. The probe moved because
-it had no readers to disappoint.
+The names are not decoration, and neither is cheap. These were `/health` and `/ready`
+until the interface moved to React and began sharing an origin with the API — and
+`/health` is a screen in that interface (the בריאות page). The probe would have won the
+path, so a reader who refreshed that page would have been served `{"status": "ok"}`. The
+probe moved because it had no readers to disappoint.
+
+The first move was to `/healthz`, which **does not work on Cloud Run**: Google Frontend
+answers that exact path with its own 404 and the request never reaches the container.
+Verified against the deployed service — `/healthz` is intercepted, while `/healthz/`,
+`/livez`, `/_health`, `/liveness` and `/readyz` all arrive. Hence `/livez`, which is the
+conventional partner of `/readyz` anyway. If a probe ever appears to be down while the
+service plainly works, check whether its path is one the platform has claimed.

@@ -29,8 +29,10 @@ substitutions:
   _SUPABASE_URL: ""
   _SUPABASE_ANON_KEY: ""
 
-images:
-  - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/${_SERVICE}:${SHORT_SHA}
+# No `images:` block. Cloud Build pushes those only *after* every step has
+# finished, so the deploy step below would look for a tag that does not exist yet
+# - which is exactly how the first attempt failed. The push is its own step
+# instead, ordered before the deploy.
 
 options:
   logging: CLOUD_LOGGING_ONLY
@@ -58,6 +60,13 @@ steps:
       - --tag=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/${_SERVICE}:${SHORT_SHA}
       - --tag=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/${_SERVICE}:latest
       - .
+
+  - id: push
+    name: gcr.io/cloud-builders/docker
+    args:
+      - push
+      - --all-tags
+      - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/${_SERVICE}
 
   - id: deploy
     name: gcr.io/google.com/cloudsdktool/cloud-sdk

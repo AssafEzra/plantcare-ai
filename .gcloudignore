@@ -1,0 +1,65 @@
+# What `gcloud builds submit` uploads.
+#
+# Without this file gcloud derives its exclusions from `.gitignore`, and it reads
+# only the top-level one. `frontend/node_modules` is ignored by
+# `frontend/.gitignore`, which gcloud never looks at, so the first upload was
+# 10,065 files and 121 MiB of Linux-incompatible native modules that the build
+# then discarded and rebuilt with `npm ci`.
+#
+# This is the upload, not the image. `.dockerignore` governs what the daemon sees
+# once the tarball is unpacked, and anything excluded here never reaches either -
+# so every path the Dockerfile copies has to survive this list.
+#
+# EVERY PATTERN IS ANCHORED WITH A LEADING SLASH, and that is not style. This file
+# uses .gitignore syntax, where a bare name matches at any depth - unlike
+# .dockerignore, whose patterns are relative to the context root. The first
+# version of this file was written as if the two were the same, and cost two
+# failed builds:
+#
+#   `supabase`  also matched `app/infrastructure/supabase/`, so the image shipped
+#               without its database client and uvicorn died on
+#               ModuleNotFoundError before binding a port;
+#   `*.md`      would have matched every file in `prompts/`, which is where the
+#               agent prompts live - a subtler failure, since the container would
+#               have started and then failed on the first agent call.
+
+/.git
+/.gitignore
+
+# Rebuilt inside the image, and the wrong platform's binaries besides.
+/.venv
+/frontend/node_modules
+/frontend/dist
+
+# Never. Secrets reach the service through Secret Manager, and the build gets what
+# it needs through --substitutions.
+/.env
+/.env.*
+!/.env.example
+/frontend/.env
+/frontend/.env.*
+
+# Depth-matched on purpose: bytecode is worth excluding wherever it is.
+__pycache__/
+*.pyc
+
+/.mypy_cache
+/.pytest_cache
+/.ruff_cache
+/.coverage
+/coverage.xml
+/htmlcov
+
+# Not build inputs: the suite, the schema history, the specification. Note
+# `/supabase` is the top-level migrations directory, NOT
+# `app/infrastructure/supabase`, which the application imports.
+/tests
+/migrations
+/supabase
+/PlantCare_AI_Spec
+/docs
+/scripts/*.py
+
+# Root-level prose only. `prompts/` is full of .md files and they are runtime
+# inputs, not documentation.
+/*.md

@@ -226,16 +226,25 @@ def create_app() -> FastAPI:
         log.exception("request.unhandled", error_type=type(exc).__name__)
         return _envelope(request, AppError())
 
-    # `/healthz` and `/readyz`, not `/health` and `/ready`.
+    # `/livez` and `/readyz`, not `/health` and `/ready`.
     #
-    # The interface owns `/health` - it is the בריאות screen
+    # Two separate reasons, both found the hard way.
+    #
+    # `/health` belongs to the interface - it is the בריאות screen
     # (`frontend/src/App.tsx`). While Streamlit was the frontend the two lived on
     # different ports and could not collide; serving both from one origin, the
     # probe would win the path and a reader who refreshed that page would be shown
     # `{"status": "ok"}`. The probe is the one with no users to disappoint, so the
     # probe moved.
-    @app.get("/healthz", include_in_schema=False)
-    async def healthz() -> dict[str, str]:
+    #
+    # It moved to `/healthz` first, and that silently did not work on Cloud Run:
+    # Google Frontend answers `/healthz` itself with its own 404 page and the
+    # request never reaches the container. Measured against the deployed service -
+    # `/healthz` is intercepted while `/healthz/`, `/livez`, `/_health` and
+    # `/readyz` all arrive. `/livez` also happens to be the conventional partner
+    # of `/readyz`, which is the name this should have had from the start.
+    @app.get("/livez", include_in_schema=False)
+    async def livez() -> dict[str, str]:
         """Liveness: is the process up? Deliberately checks nothing else.
 
         A liveness probe that touches the database restarts a healthy container

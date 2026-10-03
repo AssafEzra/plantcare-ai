@@ -55,7 +55,17 @@ ENV PYTHONUNBUFFERED=1 \
 # An unprivileged UID 1000. Creating that user here rather than inheriting root
 # means the virtualenv and the application tree belong to the account that
 # actually runs the process.
-RUN useradd --create-home --uid 1000 user
+#
+# The working directory is created and chowned *before* switching user, because
+# `WORKDIR` creates a missing directory owned by root no matter which `USER` is
+# current. Leaving that to WORKDIR is why the first build of this image failed:
+# `uv sync` could not create `.venv` inside a directory it did not own. The bug
+# had been latent since the file was written for Hugging Face Spaces, which went
+# paid before anything was ever built from it.
+RUN useradd --create-home --uid 1000 user \
+    && mkdir -p /home/user/plantcare \
+    && chown user:user /home/user/plantcare
+
 USER user
 
 ENV HOME=/home/user \
