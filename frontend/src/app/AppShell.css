@@ -20,7 +20,12 @@
   gap: var(--pc-space-2);
   block-size: var(--pc-header-h);
   padding-inline: var(--pc-space-4);
+  /* Translucent, so content scrolling under it stays faintly visible instead of
+     disappearing at a hard line. Falls back to the solid surface where
+     backdrop-filter is unsupported, which is why the colour is stated twice. */
   background: var(--pc-surface);
+  background: color-mix(in srgb, var(--pc-surface) 82%, transparent);
+  backdrop-filter: blur(12px);
   border-block-end: 1px solid var(--pc-border);
 }
 
@@ -184,7 +189,9 @@
     inset-inline-start: 0;
     inline-size: var(--pc-sidebar-w);
     padding: var(--pc-space-3);
-    background: var(--pc-surface);
+    /* A shade below the page rather than above it. The sidebar is a frame, and a white
+       panel beside white cards competes with them for the same attention. */
+    background: var(--pc-surface-alt);
     border-inline-end: 1px solid var(--pc-border);
     overflow-y: auto;
     transition: inline-size var(--pc-transition);
