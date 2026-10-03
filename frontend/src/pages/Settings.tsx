@@ -24,6 +24,7 @@ import { useIsReadOnly } from '../lib/viewAs'
 import { ApiError } from '../lib/errors'
 import Async from '../components/Async'
 import './Settings.css'
+import PageHero from '../components/PageHero'
 
 export default function Settings() {
   const profile = useMe()
@@ -32,9 +33,7 @@ export default function Settings() {
 
   return (
     <section className="pc-settings">
-      <header className="pc-pagehead">
-        <h1>הגדרות</h1>
-      </header>
+      <PageHero eyebrow="החשבון שלכם" title="הגדרות" subtitle="פרופיל, אזור זמן ותזכורות" />
 
       {readOnly && (
         <p className="pc-placeholder-note">

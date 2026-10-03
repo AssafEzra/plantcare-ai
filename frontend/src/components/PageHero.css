@@ -1,0 +1,181 @@
+/* Logical properties only.
+ *
+ * Contrast: the band runs from #1e5139 to #003a24 and the text on it is white, so the
+ * worst pair on the banner is 9.17:1 — the lighter end of the gradient against white.
+ * The eyebrow and the subtitle are set at 0.82 and 0.88 alpha, which hold 7.5:1 and
+ * 8.1:1 against that same end. Nothing on the band falls below AA, including over the
+ * foliage, which is drawn in white at well under half opacity and lightens the ground
+ * rather than darkening it.
+ */
+
+.pc-hero {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--pc-space-4);
+  padding: var(--pc-space-6) var(--pc-space-5);
+  margin-block-end: var(--pc-space-5);
+  border-radius: var(--pc-radius-card);
+  background:
+    radial-gradient(90% 140% at 85% -10%, rgba(255, 255, 255, 0.16) 0%, rgba(255, 255, 255, 0) 55%),
+    linear-gradient(135deg, var(--pc-primary) 0%, var(--pc-primary-hover) 100%);
+  color: #fff;
+  box-shadow: var(--pc-shadow-raised);
+}
+
+/* --- the foliage --------------------------------------------------------- */
+
+/* Bled off the end corner and clipped by the band. It is the only thing on the page
+   allowed to be purely decorative, so it stays faint and stays out of the way of the
+   title even at the narrowest width. */
+.pc-hero-art {
+  position: absolute;
+  inset-block: -20% -30%;
+  inset-inline-end: -4%;
+  inline-size: 260px;
+  color: #fff;
+  opacity: 0.22;
+  pointer-events: none;
+}
+
+.pc-hero-art svg {
+  inline-size: 100%;
+  block-size: 100%;
+}
+
+/* Each leaf drifts on its own clock, around a point near the base of the stem, so the
+   group never returns to the same arrangement twice in a viewing. Slow enough to read
+   as growth rather than as motion: nobody should notice it moving while reading the
+   title, only notice that it has moved.
+
+   The reduced-motion rule in styles/base.css flattens every animation to 0.01ms, which
+   leaves the leaves exactly where they are drawn. */
+.pc-hero-leaf {
+  transform-origin: 120px 175px;
+  animation: pc-leaf-sway 14s ease-in-out infinite alternate;
+}
+
+.pc-hero-leaf-2 {
+  animation-duration: 18s;
+  animation-delay: -4s;
+}
+
+.pc-hero-leaf-3 {
+  animation-duration: 22s;
+  animation-delay: -9s;
+}
+
+@keyframes pc-leaf-sway {
+  from {
+    transform: rotate(-2.5deg) translateY(0);
+  }
+  to {
+    transform: rotate(2.5deg) translateY(-6px);
+  }
+}
+
+/* --- the words ----------------------------------------------------------- */
+
+.pc-hero-text {
+  position: relative;
+  min-inline-size: 0;
+  flex: 1 1 auto;
+}
+
+.pc-hero-eyebrow {
+  display: block;
+  margin-block-end: var(--pc-space-2);
+  font-size: var(--pc-label);
+  font-weight: var(--pc-label-weight);
+  letter-spacing: var(--pc-label-tracking);
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.pc-hero h1 {
+  display: flex;
+  align-items: center;
+  gap: var(--pc-space-3);
+  margin: 0;
+  color: #fff;
+}
+
+@media (min-width: 900px) {
+  .pc-hero h1 {
+    font-size: var(--pc-display);
+    font-weight: var(--pc-display-weight);
+    letter-spacing: var(--pc-display-tracking);
+  }
+}
+
+.pc-hero-count {
+  display: inline-grid;
+  place-items: center;
+  min-inline-size: 32px;
+  padding: 2px var(--pc-space-3);
+  border-radius: var(--pc-radius-pill);
+  background: rgba(255, 255, 255, 0.18);
+  color: #fff;
+  font-size: var(--pc-h5);
+  font-weight: 700;
+  letter-spacing: 0;
+}
+
+.pc-hero-sub {
+  margin: var(--pc-space-2) 0 0;
+  color: rgba(255, 255, 255, 0.88);
+  font-size: var(--pc-h4);
+}
+
+/* --- the action ---------------------------------------------------------- */
+
+.pc-hero-actions {
+  position: relative;
+  flex: 0 0 auto;
+  display: flex;
+  gap: var(--pc-space-2);
+}
+
+/* The primary button inverts on the band: a green button on green is invisible, and
+   the white one is the brightest thing in the banner, which is what a primary action
+   should be. */
+.pc-hero .pc-btn {
+  background: #fff;
+  color: var(--pc-primary);
+}
+
+.pc-hero .pc-btn:hover:not(:disabled) {
+  background: var(--pc-primary-soft);
+}
+
+.pc-hero a.pc-btn:hover {
+  text-decoration: none;
+}
+
+.pc-hero :focus-visible {
+  outline-color: #fff;
+}
+
+@media (max-width: 639px) {
+  .pc-hero {
+    padding: var(--pc-space-5) var(--pc-space-4);
+  }
+
+  .pc-hero-actions {
+    inline-size: 100%;
+  }
+
+  .pc-hero-actions .pc-btn {
+    inline-size: 100%;
+    text-align: center;
+  }
+
+  /* Smaller and fainter: at this width the title has nowhere else to go. */
+  .pc-hero-art {
+    inline-size: 190px;
+    opacity: 0.16;
+  }
+}

@@ -4,50 +4,6 @@
 
    Logical properties only. */
 
-/* --- page head ----------------------------------------------------------- */
-
-.pc-plantshead {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: var(--pc-space-4);
-  margin-block-end: var(--pc-space-5);
-}
-
-.pc-plantstitle {
-  display: flex;
-  align-items: center;
-  gap: var(--pc-space-3);
-  min-inline-size: 0;
-}
-
-.pc-plantshead h1 {
-  margin: 0;
-}
-
-@media (min-width: 900px) {
-  .pc-plantshead h1 {
-    font-size: var(--pc-display);
-    font-weight: var(--pc-display-weight);
-    letter-spacing: var(--pc-display-tracking);
-  }
-}
-
-/* The count beside the title, not under it: how many plants there are is part of the
-   heading, and a sentence saying so would be a sentence nobody reads twice. */
-.pc-plantscount {
-  display: inline-grid;
-  place-items: center;
-  min-inline-size: 32px;
-  padding: 2px var(--pc-space-3);
-  border-radius: var(--pc-radius-pill);
-  background: var(--pc-primary-soft);
-  color: var(--pc-primary);
-  font-size: var(--pc-h5);
-  font-weight: 700;
-}
-
 /* --- stat row ------------------------------------------------------------ */
 
 .pc-statrow {

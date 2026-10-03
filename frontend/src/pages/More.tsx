@@ -10,6 +10,7 @@ import { NavLink } from 'react-router-dom'
 import { navFor } from '../app/nav'
 import { useMe } from '../api/profile'
 import './More.css'
+import PageHero from '../components/PageHero'
 
 export default function More() {
   const { data: me } = useMe()
@@ -17,7 +18,7 @@ export default function More() {
 
   return (
     <section className="pc-more">
-      <h1>עוד</h1>
+      <PageHero eyebrow="ניווט" title="עוד" />
       <ul className="pc-morelist">
         {items.map((item) => (
           <li key={item.to}>

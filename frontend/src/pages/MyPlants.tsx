@@ -26,6 +26,7 @@ import { STATUS_SEVERITY, statusStyle, type HealthStatus } from '../lib/status'
 import { dayOffset } from '../lib/dates'
 import PlantCard from '../components/PlantCard'
 import Async from '../components/Async'
+import PageHero from '../components/PageHero'
 import { useIsReadOnly } from '../lib/viewAs'
 import '../components/PlantCard.css'
 import './MyPlants.css'
@@ -108,18 +109,18 @@ export default function MyPlants() {
 
   return (
     <section className="pc-myplants">
-      <header className="pc-plantshead">
-        <div className="pc-plantstitle">
-          <h1>{archived ? 'צמחים בארכיון' : 'הצמחים שלי'}</h1>
-          <span className="pc-plantscount">{visible.length}</span>
-        </div>
-
+      <PageHero
+        eyebrow={archived ? 'הארכיון' : 'הגינה שלכם'}
+        title={archived ? 'צמחים בארכיון' : 'הצמחים שלי'}
+        count={visible.length}
+        subtitle={summary(visible.length, counts.attention, archived)}
+      >
         {!readOnly && !archived && (
           <Link to="/plants/new" className="pc-btn">
             <span aria-hidden="true">+</span> הוספת צמח
           </Link>
         )}
-      </header>
+      </PageHero>
 
       {!archived && (
         <div className="pc-statrow">
@@ -282,6 +283,13 @@ export default function MyPlants() {
       </p>
     </section>
   )
+}
+
+function summary(total: number, needing: number, archived: boolean): string {
+  if (archived) return 'צמחים שהוצאו מהמעקב'
+  if (total === 0) return 'הגינה שלכם מחכה לצמח הראשון'
+  if (needing === 0) return 'כל הצמחים במצב תקין'
+  return `${needing} מהם דורשים תשומת לב`
 }
 
 /** Overdue counts as due today: it is work waiting now, not work that was missed. */

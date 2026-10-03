@@ -15,6 +15,7 @@ import { usePlants } from '../api/plants'
 import { STATUS_SEVERITY } from '../lib/status'
 import PlantCard from '../components/PlantCard'
 import Async from '../components/Async'
+import PageHero from '../components/PageHero'
 import '../components/PlantCard.css'
 
 export default function Health() {
@@ -43,9 +44,16 @@ export default function Health() {
 
   return (
     <section>
-      <header className="pc-pagehead">
-        <h1>בריאות</h1>
-      </header>
+      <PageHero
+        eyebrow="מה צריך מבט"
+        title="בריאות"
+        count={needing.length + unassessed.length}
+        subtitle={
+          needing.length > 0
+            ? `${needing.length} צמחים דורשים תשומת לב`
+            : 'אין כרגע צמח שדורש טיפול'
+        }
+      />
 
       <Async
         query={query}

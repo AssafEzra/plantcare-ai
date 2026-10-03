@@ -17,6 +17,7 @@ import { usePlants } from '../api/plants'
 import PlantCard from '../components/PlantCard'
 import CareTaskCard from '../components/CareTaskCard'
 import Async from '../components/Async'
+import PageHero from '../components/PageHero'
 import { useIsReadOnly } from '../lib/viewAs'
 import '../components/PlantCard.css'
 import './Home.css'
@@ -32,14 +33,17 @@ export default function Home() {
 
   return (
     <section>
-      <header className="pc-pagehead">
-        <h1>{me?.display_name ? `שלום ${me.display_name}` : 'בית'}</h1>
+      <PageHero
+        eyebrow="היום בגינה"
+        title={me?.display_name ? `שלום ${me.display_name}` : 'בית'}
+        subtitle={greeting(data?.today_care.length ?? 0)}
+      >
         {!readOnly && (
           <Link to="/plants/new" className="pc-btn">
             הוספת צמח
           </Link>
         )}
-      </header>
+      </PageHero>
 
       <div className="pc-sectionhead">
         <div>
@@ -131,4 +135,10 @@ export default function Home() {
       </Async>
     </section>
   )
+}
+
+function greeting(due: number): string {
+  if (due === 0) return 'אין טיפולים להיום'
+  if (due === 1) return 'טיפול אחד מחכה לכם היום'
+  return `${due} טיפולים מחכים לכם היום`
 }

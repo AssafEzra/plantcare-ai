@@ -61,6 +61,7 @@ import type { Tone } from '../lib/status'
 import Async from '../components/Async'
 import StatusBadge from '../components/StatusBadge'
 import './Admin.css'
+import PageHero from '../components/PageHero'
 
 const TABS: [string, string][] = [
   ['overview', 'סקירה'],
@@ -80,10 +81,7 @@ export default function Admin() {
 
   return (
     <section className="pc-admin">
-      <header className="pc-pagehead">
-        <h1>ניהול</h1>
-      </header>
-      <p className="pc-placeholder-note">אזור מנהלי מערכת</p>
+      <PageHero eyebrow="אזור מנהלי מערכת" title="ניהול" />
 
       <div className="pc-tabs pc-admintabs" role="tablist">
         {TABS.map(([key, label]) => (
