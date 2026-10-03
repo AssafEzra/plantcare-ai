@@ -53,9 +53,11 @@ import PlantGallery from '../components/PlantGallery'
 import CareTaskCard from '../components/CareTaskCard'
 import CarePlanCard from '../components/CarePlanCard'
 import ProposalDialog from '../components/ProposalDialog'
-import HealthAssessment, { HealthHistory } from '../components/HealthAssessment'
+import { HealthInsight, AssessedPill, PastChecks } from '../components/HealthInsight'
+import HealthAssessmentDialog from '../components/HealthAssessmentDialog'
 import HealthCheckDialog from '../components/HealthCheckDialog'
 import EnvironmentForm, { EnvironmentSummary } from '../components/EnvironmentForm'
+import Modal from '../components/Modal'
 import Timeline from '../components/Timeline'
 import KnowledgePanel from '../components/KnowledgePanel'
 import IdentificationPrompt from '../components/IdentificationPrompt'
@@ -89,6 +91,8 @@ function Loaded({ plantId, plant }: { plantId: string; plant: Dashboard }) {
 
   const status = statusStyle(plant.health.current_status)
   const trend = plant.health.trend ? trendStyle(plant.health.trend) : null
+  const portraits = plant.gallery.filter(isPortrait)
+  const [galleryOpen, setGalleryOpen] = useState(false)
 
   return (
     <>
@@ -104,13 +108,30 @@ function Loaded({ plantId, plant }: { plantId: string; plant: Dashboard }) {
       )}
 
       <div className="pc-planthero">
-        <div className="pc-heroimage">
+        {/* The whole picture is the way into the gallery. A grid of photographs sitting
+            below the fold was a second copy of the same subject on one page; the one a
+            reader is already looking at is the obvious handle, and the hint says so
+            because a bare clickable image is not obvious at all. */}
+        <button
+          type="button"
+          className="pc-heroimage"
+          onClick={() => setGalleryOpen(true)}
+          aria-label={`תמונות הצמח (${portraits.length})`}
+        >
           {plant.main_image?.url ? (
             <img src={plant.main_image.url} alt={plant.name ?? 'הצמח שלי'} />
           ) : (
             <p className="pc-placeholder-note">אין עדיין תמונה</p>
           )}
-        </div>
+          <span className="pc-heroimagehint" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="5" width="18" height="14" rx="2" />
+              <circle cx="8.5" cy="10" r="1.5" />
+              <path d="M21 16l-5-5-5.5 5.5L8 14l-5 5" />
+            </svg>
+            כל התמונות <span className="pc-num">{portraits.length}</span>
+          </span>
+        </button>
 
         <div className="pc-herofacts">
           {plant.species ? (
@@ -118,7 +139,11 @@ function Loaded({ plantId, plant }: { plantId: string; plant: Dashboard }) {
               <p className="pc-speciesname">
                 {plant.species.common_name || plant.species.scientific_name}
               </p>
-              <p className="pc-speciessci pc-ltr">{plant.species.scientific_name}</p>
+              {/* Latin in an RTL paragraph: isolated so the browser cannot reorder it,
+                  but still set from the start edge. `pc-ltr` also left-aligns, which put
+                  the species name on the far side of the card from the name it belongs
+                  under. */}
+              <p className="pc-speciessci">{plant.species.scientific_name}</p>
             </>
           ) : plant.pending_identification ? (
             <p className="pc-placeholder-note">הזיהוי הושלם וממתין לאישור שלך.</p>
@@ -157,26 +182,9 @@ function Loaded({ plantId, plant }: { plantId: string; plant: Dashboard }) {
 
       <Details plantId={plantId} plant={plant} canEdit={canEdit} />
 
-      <section>
-        <div className="pc-sectionhead">
-          <h2>תמונות</h2>
-        </div>
-        <PlantGallery plantId={plantId} images={plant.gallery} canEdit={canEdit} />
-      </section>
-
       <CareSection plantId={plantId} plant={plant} canEdit={canEdit} />
 
       <HealthSection plantId={plantId} plant={plant} canEdit={canEdit} />
-
-      <section>
-        <div className="pc-sectionhead">
-          <h2>תנאי הגידול</h2>
-        </div>
-        <div className="pc-card">
-          <EnvironmentSummary environment={plant.environment} />
-          {canEdit && <EnvironmentSection plantId={plantId} plant={plant} />}
-        </div>
-      </section>
 
       {plant.species && (
         <section>
@@ -190,6 +198,12 @@ function Loaded({ plantId, plant }: { plantId: string; plant: Dashboard }) {
       )}
 
       <HistorySection plantId={plantId} canEdit={canEdit} />
+
+      {galleryOpen && (
+        <Modal title="תמונות הצמח" onClose={() => setGalleryOpen(false)}>
+          <PlantGallery plantId={plantId} images={plant.gallery} canEdit={canEdit} />
+        </Modal>
+      )}
     </>
   )
 }
@@ -248,13 +262,22 @@ function Details({
   const [notes, setNotes] = useState(plant.notes ?? '')
   const rename = useRenamePlant(plantId)
 
+  /* Read-only — archived, or somebody else's account under view-as. The edit panel is
+     not rendered at all, so what it holds has to be readable somewhere: the conditions
+     are part of what this plant IS, and a record that hides them is a worse record. */
   if (!canEdit) {
-    return plant.notes ? (
+    return (
       <div className="pc-card">
-        <h3>הערות</h3>
-        <p>{plant.notes}</p>
+        {plant.notes && (
+          <>
+            <h3>הערות</h3>
+            <p>{plant.notes}</p>
+          </>
+        )}
+        <h3>תנאי הגידול</h3>
+        <EnvironmentSummary environment={plant.environment} />
       </div>
-    ) : null
+    )
   }
 
   return (
@@ -300,6 +323,17 @@ function Details({
           {rename.isPending ? 'שומרים…' : 'שמירה'}
         </button>
       </form>
+
+      {/* The growing conditions were a section of their own, between the health check
+          and the species article — a form sitting open in the middle of a page that is
+          otherwise read, on fields that are set once and then rarely touched. They are
+          editing, so they live where the editing is. A separate form rather than more
+          fields in the one above it, because saving them does something else entirely:
+          §12 says a change here produces a care-plan proposal. */}
+      <div className="pc-editgroup">
+        <h3>תנאי הגידול</h3>
+        <EnvironmentSection plantId={plantId} plant={plant} />
+      </div>
     </details>
   )
 }
@@ -491,8 +525,11 @@ function HealthSection({
      closed it, and the parameter is cleared so a reload does not reopen it. */
   const [params, setParams] = useSearchParams()
   const [dialogOpen, setDialogOpen] = useState(canEdit && params.get('health-check') === '1')
-  const [historyOpen, setHistoryOpen] = useState(false)
   const [watching, setWatching] = useState<string | null>(null)
+  /* Which past check is open over the page. The summary on the card is a summary; §16
+     turns on the reasoning being reachable, and the dialog is where it is reachable
+     from — the same dialog the בריאות list opens. */
+  const [openAssessment, setOpenAssessment] = useState<string | null>(null)
 
   function closeDialog() {
     setDialogOpen(false)
@@ -507,9 +544,22 @@ function HealthSection({
   const status = watched.data?.status
   const running = Boolean(watching) && status !== 'SUCCEEDED' && status !== 'FAILED'
 
+  /* The plant's own verdict, not the agent request's — `status` above is the run. */
+  const health = statusStyle(plant.health.current_status)
+  const healthTrend = plant.health.trend ? trendStyle(plant.health.trend) : null
+
   const assessment = useAssessment(plant.health.latest_assessment_id)
-  const history = useHealthHistory(plantId, historyOpen)
+  /* Fetched with the section rather than behind a "בדיקות קודמות" link. The dates are
+     the card now, not a disclosure under it, and one small list beside a page that
+     already makes several requests is not the thing to defer. */
+  const history = useHealthHistory(plantId, Boolean(plant.health.latest_assessment_id))
   const adjustment = useRequestHealthAdjustment(plantId)
+
+  /* Everything but the latest: the latest has its own line above these. */
+  const past = (history.data ?? []).filter(
+    (entry) => entry.id !== plant.health.latest_assessment_id,
+  )
+
 
   /* The health check offers the plant's existing photographs as well. Portraits only:
      an earlier health close-up is already tied to the check it was taken for. */
@@ -556,24 +606,45 @@ function HealthSection({
       )}
 
       {plant.health.latest_assessment_id ? (
-        <>
-          <Async query={assessment} loadingLabel="טוען את הבדיקה…">
-            {assessment.data && (
-              <HealthAssessment
-                assessment={assessment.data}
-                adjusting={adjustment.isPending}
-                /* Section 16: the Health Agent cannot change the plan, so this raises a
-                   proposal. Offered only when there is a plan to revisit — queueing one
-                   for a plant with no plan would put a second, competing INITIAL_PLAN in
-                   front of the user. */
-                onAdjustPlan={
-                  canEdit && plant.care_plan
-                    ? (assessmentId) => adjustment.mutate(assessmentId)
-                    : undefined
-                }
+        /* The same card the בריאות list draws: what the last check found, when it ran,
+           and the checks before it as dates. The whole assessment used to be rendered
+           inline here — a wall of prose between the care plan and the species article,
+           which is where a reader stops reading. */
+        <div className="pc-card pc-healthsummary">
+          <div className="pc-healthbadges">
+            <StatusBadge label={health.label} tone={health.tone} glyph={health.glyph} />
+            {healthTrend && (
+              <StatusBadge
+                label={healthTrend.label}
+                tone={healthTrend.tone}
+                glyph={healthTrend.glyph}
               />
             )}
+          </div>
+
+          <Async query={assessment} loadingLabel="טוען את הבדיקה…">
+            {assessment.data && (
+              <>
+                {/* Two of each, as on the בריאות list. The database already orders
+                    issues by severity and recommendations by priority, so the top of
+                    each is the top of each — not a summary written here. */}
+                <HealthInsight
+                  issues={assessment.data.possible_issues.slice(0, 2)}
+                  recommendations={assessment.data.recommendations
+                    .slice(0, 2)
+                    .map((recommendation) => recommendation.recommendation_text)}
+                  unreadable={assessment.data.overall_status === 'UNKNOWN'}
+                  reason={assessment.data.insufficient_information_reason}
+                />
+                <AssessedPill
+                  at={assessment.data.created_at}
+                  onOpen={() => setOpenAssessment(assessment.data.id)}
+                />
+              </>
+            )}
           </Async>
+
+          <PastChecks entries={past} onOpen={setOpenAssessment} />
 
           {adjustment.error && (
             <p className="pc-formerror" role="alert">
@@ -587,25 +658,26 @@ function HealthSection({
               מכינים הצעה לעדכון התוכנית. היא תופיע כאן כשתהיה מוכנה.
             </p>
           )}
-
-          {historyOpen ? (
-            <Async query={history} loadingLabel="טוען היסטוריה…">
-              <HealthHistory entries={history.data ?? []} />
-            </Async>
-          ) : (
-            <p>
-              <button
-                type="button"
-                className="pc-linkbtn"
-                onClick={() => setHistoryOpen(true)}
-              >
-                בדיקות קודמות
-              </button>
-            </p>
-          )}
-        </>
+        </div>
       ) : (
         !running && <p className="pc-placeholder-note">עדיין לא בוצעה בדיקת בריאות לצמח הזה.</p>
+      )}
+
+      {openAssessment && (
+        <HealthAssessmentDialog
+          assessmentId={openAssessment}
+          onClose={() => setOpenAssessment(null)}
+          /* §16: the Health Agent cannot change the plan, so this raises a proposal.
+             Offered only on the latest check and only when there is a plan to revisit —
+             acting on a superseded assessment, or queueing a second competing
+             INITIAL_PLAN, are both worse than not offering it. */
+          onAdjustPlan={
+            canEdit && plant.care_plan && openAssessment === plant.health.latest_assessment_id
+              ? (assessmentId) => adjustment.mutate(assessmentId)
+              : undefined
+          }
+          adjusting={adjustment.isPending}
+        />
       )}
     </section>
   )

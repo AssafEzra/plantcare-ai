@@ -23,18 +23,32 @@ export default function HealthAssessmentDialog({
   assessmentId,
   plantName,
   onClose,
+  onAdjustPlan,
+  adjusting,
 }: {
   assessmentId: string
   /** Named in the title: the reader opened this from a list of several plants. */
   plantName?: string | null
   onClose: () => void
+  /** §16's one route from a finding to the care plan: a proposal the user approves.
+      Absent wherever the finding is not actionable — a superseded check, a plant with
+      no plan, a reader who cannot edit, or the בריאות list, which does not hold the
+      plant's plan to propose against. */
+  onAdjustPlan?: (assessmentId: string) => void
+  adjusting?: boolean
 }) {
   const query = useAssessment(assessmentId)
 
   return (
     <Modal title={plantName ? `בדיקת בריאות · ${plantName}` : 'בדיקת בריאות'} onClose={onClose}>
       <Async query={query} loadingLabel="טוען את הבדיקה…">
-        {query.data && <HealthAssessment assessment={query.data} />}
+        {query.data && (
+          <HealthAssessment
+            assessment={query.data}
+            onAdjustPlan={onAdjustPlan}
+            adjusting={adjusting}
+          />
+        )}
       </Async>
     </Modal>
   )

@@ -92,12 +92,7 @@ function Article({
            information. */
         <p className="pc-placeholder-note">המידע המקצועי אינו זמין להצגה כרגע.</p>
       ) : (
-        sections.map(([label, text]) => (
-          <section key={label} className="pc-knowledgesection">
-            <h4>{label}</h4>
-            <p>{text}</p>
-          </section>
-        ))
+        sections.map(([label, text]) => <Section key={label} label={label} text={text ?? ''} />)
       )}
 
       {provisional ? (
@@ -126,6 +121,56 @@ function Article({
       <ReportForm speciesId={speciesId} plantId={plantId} />
     </div>
   )
+}
+
+/**
+ * One heading, its first sentence, and the rest behind a disclosure.
+ *
+ * Seven sections of three or four paragraphs each is a document, and it was set out in
+ * full on a page that already carries the plant's photographs, its tasks, its plan and
+ * its last health check. The opening sentence of each is what a reader scans for —
+ * "bright indirect light", "every seven to ten days" — and the rest is there the moment
+ * they want it, the same way the source list already works.
+ *
+ * Nothing is summarised or rewritten: the split is the text's own first sentence
+ * boundary. Where there is no second sentence the disclosure is simply absent.
+ */
+function Section({ label, text }: { label: string; text: string }) {
+  const [first, rest] = splitFirstSentence(text)
+
+  return (
+    <section className="pc-knowledgesection">
+      <h4>{label}</h4>
+      <p>{first}</p>
+      {rest && (
+        <details className="pc-reco">
+          <summary>להרחבה</summary>
+          <p>{rest}</p>
+        </details>
+      )}
+    </section>
+  )
+}
+
+/**
+ * Split on the first sentence end.
+ *
+ * `.`, `!`, `?` or `׃` followed by whitespace. The whitespace is what excludes a
+ * decimal: the point inside "5.5" is followed by a digit, never by a space, so "pH של
+ * 5.5–6.5. תערובת מומלצת…" splits where a reader would and "15.5 מעלות" does not split
+ * at all. A first sentence shorter than twenty characters is more likely a stray full
+ * stop than a sentence, so the text is left whole.
+ */
+function splitFirstSentence(text: string): [string, string | null] {
+  const trimmed = text.trim()
+  const match = /[.!?׃](?=\s)/.exec(trimmed)
+  if (!match) return [trimmed, null]
+
+  const cut = match.index + 1
+  const first = trimmed.slice(0, cut).trim()
+  const rest = trimmed.slice(cut).trim()
+  if (!rest || first.length < 20) return [trimmed, null]
+  return [first, rest]
 }
 
 function Sources({ sources }: { sources: Knowledge['sources'] }) {

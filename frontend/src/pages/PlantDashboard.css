@@ -20,20 +20,54 @@
   }
 }
 
+/* A button, not a div: it opens the gallery, and a picture that does something has to
+   be reachable by keyboard and announce itself as a control. */
 .pc-heroimage {
+  position: relative;
   display: grid;
   place-items: center;
+  inline-size: 100%;
+  padding: 0;
   aspect-ratio: 4 / 3;
   overflow: hidden;
   background: var(--pc-surface-alt);
   border: 1px solid var(--pc-border);
   border-radius: var(--pc-radius-card);
+  cursor: pointer;
+}
+
+.pc-heroimage:hover img {
+  transform: scale(1.03);
+}
+
+/* Always visible, not revealed on hover: half this application's use is by touch, and
+   a hint that needs a pointer is a hint half the users never get. */
+.pc-heroimagehint {
+  position: absolute;
+  inset-block-end: var(--pc-space-3);
+  inset-inline-start: var(--pc-space-3);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--pc-space-2);
+  padding: var(--pc-space-2) var(--pc-space-3);
+  border-radius: var(--pc-radius-pill);
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--pc-text);
+  font-size: var(--pc-h6);
+  font-weight: 600;
+  box-shadow: 0 1px 4px rgba(26, 28, 27, 0.2);
+}
+
+.pc-heroimagehint svg {
+  inline-size: 15px;
+  block-size: 15px;
 }
 
 .pc-heroimage img {
   inline-size: 100%;
   block-size: 100%;
   object-fit: cover;
+  transition: transform var(--pc-transition);
 }
 
 .pc-herofacts p {
@@ -45,9 +79,13 @@
   font-weight: var(--pc-h3-weight);
 }
 
+/* Latin inside an RTL line. Isolated so the browser cannot reorder it against the
+   Hebrew around it, but NOT `pc-ltr`, which also left-aligns — that put the species
+   name on the far side of the card from the name it belongs under. */
 .pc-speciessci {
   color: var(--pc-text-muted);
   font-style: italic;
+  unicode-bidi: isolate;
 }
 
 .pc-herobadges {
@@ -113,4 +151,27 @@
   gap: var(--pc-space-2);
   padding-block: var(--pc-space-1);
   cursor: pointer;
+}
+
+/* --- inside the edit panel ------------------------------------------------ */
+
+/* The growing conditions, under the name and notes. Ruled off rather than boxed: a
+   card inside a disclosure inside a card is three frames deep for one form. */
+.pc-editgroup {
+  margin-block-start: var(--pc-space-5);
+  padding-block-start: var(--pc-space-4);
+  border-block-start: 1px solid var(--pc-border);
+}
+
+.pc-editgroup h3 {
+  margin-block: 0 var(--pc-space-3);
+}
+
+/* --- health, as a card ---------------------------------------------------- */
+
+.pc-healthsummary {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--pc-space-3);
 }

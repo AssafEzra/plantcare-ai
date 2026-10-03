@@ -8,9 +8,14 @@
   margin-block-end: var(--pc-space-1);
 }
 
+/* `plaintext` takes each paragraph's direction from its own first strong character.
+   The identification section is a Latin binomial and nothing else, and in an RTL block
+   its full stop was placed at the head of the line — ".Goeppertia makoyana (E.Morren)".
+   Visible all along, and unmissable once each section opened with one sentence. */
 .pc-knowledgesection p {
   margin: 0;
   white-space: pre-line;
+  unicode-bidi: plaintext;
 }
 
 .pc-sources {

@@ -8,7 +8,7 @@
  * can disagree with the reasoning rather than only with the verdict.
  */
 
-import type { Assessment, HealthHistoryEntry } from '../api/health'
+import type { Assessment } from '../api/health'
 import { CONFIDENCE_LABELS, SEVERITY_LABELS } from '../lib/careVocab'
 import { assessedAt } from '../lib/dates'
 import { statusStyle, trendStyle } from '../lib/status'
@@ -151,35 +151,5 @@ export default function HealthAssessment({
         </details>
       )}
     </section>
-  )
-}
-
-/**
- * Past assessments, newest first.
- *
- * Deliberately terse: the detail lives on each assessment, and a history that repeated
- * every finding would bury the one thing history is for, which is seeing the direction
- * of travel. Previous assessments are never modified (section 16), so this is an
- * append-only record of what was thought at each point.
- */
-export function HealthHistory({ entries }: { entries: HealthHistoryEntry[] }) {
-  if (!entries.length) {
-    return <p className="pc-placeholder-note">עדיין לא בוצעו בדיקות בריאות לצמח הזה.</p>
-  }
-
-  return (
-    <ul className="pc-healthhistory">
-      {entries.map((entry) => {
-        const status = statusStyle(entry.overall_status)
-        const trend = entry.trend ? trendStyle(entry.trend) : null
-        return (
-          <li key={entry.id}>
-            <StatusBadge label={status.label} tone={status.tone} glyph={status.glyph} />
-            {trend && <StatusBadge label={trend.label} tone={trend.tone} glyph={trend.glyph} />}
-            <span className="pc-placeholder-note">{assessedAt(entry.created_at)}</span>
-          </li>
-        )
-      })}
-    </ul>
   )
 }

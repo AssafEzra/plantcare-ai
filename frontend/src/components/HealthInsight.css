@@ -1,0 +1,138 @@
+/* What a health check found. Loaded by HealthInsight, which the בריאות list and the
+   plant's own page both render — the classes left HealthPlantCard.css when the second
+   caller appeared, which is the same rule a route stylesheet follows.
+
+   Logical properties only. */
+
+/* Set apart from the name above it, because this is the one part of the card that is a
+   claim about the plant rather than a fact about it. */
+.pc-healthinsight {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pc-space-2);
+  padding: var(--pc-space-3) var(--pc-space-4);
+  background: var(--pc-surface-alt);
+  border-radius: var(--pc-radius-control);
+}
+
+.pc-healthissue {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.pc-healthissuename {
+  font-weight: 600;
+}
+
+/* Quieter than the finding it supports, and never omitted: §16 turns on a reader being
+   able to disagree with the reasoning rather than only with the verdict. */
+.pc-healthevidence {
+  color: var(--pc-text-muted);
+  font-size: var(--pc-h5);
+}
+
+.pc-healthreco {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--pc-space-2);
+  margin: 0;
+  font-size: var(--pc-h5);
+}
+
+.pc-healthrecoglyph {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  inline-size: 20px;
+  block-size: 20px;
+  margin-block-start: 1px;
+  border-radius: var(--pc-radius-pill);
+  background: var(--pc-success-bg);
+  color: var(--pc-success);
+}
+
+.pc-healthrecoglyph svg {
+  inline-size: 12px;
+  block-size: 12px;
+}
+
+.pc-healthnote {
+  margin: 0;
+  color: var(--pc-text-muted);
+  font-size: var(--pc-h5);
+}
+
+/* --- the date, which is the way in --------------------------------------- */
+
+.pc-healthdate {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--pc-space-3);
+  align-self: flex-start;
+  padding: var(--pc-space-2) var(--pc-space-4);
+  border: 1px solid var(--pc-border);
+  border-radius: var(--pc-radius-pill);
+  background: var(--pc-surface);
+  color: var(--pc-text);
+  font: inherit;
+  font-size: var(--pc-h5);
+  cursor: pointer;
+  transition: border-color var(--pc-transition), background var(--pc-transition);
+}
+
+.pc-healthdate:hover {
+  border-color: var(--pc-primary);
+  background: var(--pc-primary-soft);
+}
+
+.pc-healthdatelabel {
+  font-weight: 600;
+  /* Digits keep their order inside an RTL line. */
+  unicode-bidi: isolate;
+}
+
+.pc-healthdatego {
+  color: var(--pc-primary);
+}
+
+/* --- the checks before it ------------------------------------------------ */
+
+.pc-healthpast ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--pc-space-2);
+  margin: var(--pc-space-1) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* A date and a verdict, nothing else — the rest is one press away. The tone comes from
+   `.pc-tone-*` in StatusBadge.css, so a past verdict is coloured exactly like a present
+   one, and the glyph travels with it rather than colour carrying the meaning alone. */
+.pc-pastcheck {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--pc-space-2);
+  padding: var(--pc-space-2) var(--pc-space-3);
+  border: 1px solid transparent;
+  border-radius: var(--pc-radius-pill);
+  font: inherit;
+  font-size: var(--pc-h6);
+  cursor: pointer;
+}
+
+.pc-pastcheck:hover {
+  border-color: currentColor;
+}
+
+.pc-pastdate {
+  font-weight: 600;
+  unicode-bidi: isolate;
+}
+
+.pc-pastverdict {
+  opacity: 0.85;
+}
+

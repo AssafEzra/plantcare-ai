@@ -19,10 +19,9 @@ import type { CSSProperties } from 'react'
 import { Link } from 'react-router-dom'
 import type { Plant } from '../api/plants'
 import { plantName } from '../api/plants'
-import type { HealthHistoryEntry, PlantHealthOverview } from '../api/health'
-import { SEVERITY_LABELS } from '../lib/careVocab'
-import { formatStamp } from '../lib/dates'
+import type { PlantHealthOverview } from '../api/health'
 import { statusStyle, trendStyle } from '../lib/status'
+import { HealthInsight, AssessedPill, PastChecks } from './HealthInsight'
 import StatusBadge from './StatusBadge'
 import './HealthPlantCard.css'
 
@@ -94,70 +93,19 @@ export default function HealthPlantCard({
 
         {latest ? (
           <>
-            <div className="pc-healthinsight">
-              {unreadable ? (
-                /* Saved with its reason, and presented as an outcome rather than an
-                   error, because that is what it is. */
-                <p className="pc-healthnote">
-                  {latest.insufficient_information_reason ||
-                    'לא הצלחנו לקבוע את מצב הצמח מהתמונות האלה.'}
-                </p>
-              ) : latest.issues.length === 0 && latest.recommendations.length === 0 ? (
-                <p className="pc-healthnote">הבדיקה לא העלתה ממצא מיוחד.</p>
-              ) : null}
-
-              {latest.issues.map((issue, index) => (
-                <p key={index} className="pc-healthissue">
-                  <span className="pc-healthissuename">
-                    {issue.issue_name}
-                    {issue.severity && SEVERITY_LABELS[issue.severity]
-                      ? ` · חומרה ${SEVERITY_LABELS[issue.severity]}`
-                      : ''}
-                  </span>
-                  {/* §16: an issue a reader cannot check is one they can only believe. */}
-                  {issue.evidence && (
-                    <span className="pc-healthevidence">על סמך: {issue.evidence}</span>
-                  )}
-                </p>
-              ))}
-
-              {latest.recommendations.map((text, index) => (
-                <p key={index} className="pc-healthreco">
-                  <span className="pc-healthrecoglyph" aria-hidden="true">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M4 12.5l5 5L20 6.5" />
-                    </svg>
-                  </span>
-                  {text}
-                </p>
-              ))}
-            </div>
-
-            <button
-              type="button"
-              className="pc-healthdate"
-              onClick={() => onOpenAssessment(latest.id)}
-            >
-              <span className="pc-healthdatelabel">נבדק ב־{formatStamp(latest.created_at)}</span>
-              <span className="pc-healthdatego">לבדיקה המלאה</span>
-            </button>
+            <HealthInsight
+              issues={latest.issues}
+              recommendations={latest.recommendations}
+              unreadable={unreadable}
+              reason={latest.insufficient_information_reason}
+            />
+            <AssessedPill at={latest.created_at} onOpen={() => onOpenAssessment(latest.id)} />
           </>
         ) : (
           <p className="pc-healthnote">עדיין לא בוצעה בדיקת בריאות לצמח הזה.</p>
         )}
 
-        {health && health.history.length > 0 && (
-          <div className="pc-healthpast">
-            <span className="pc-eyebrow">בדיקות קודמות</span>
-            <ul>
-              {health.history.map((entry) => (
-                <li key={entry.id}>
-                  <PastCheck entry={entry} onOpen={onOpenAssessment} />
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
+        {health && <PastChecks entries={health.history} onOpen={onOpenAssessment} />}
 
         <div className="pc-healthactions">
           {/* The check runs on the plant's own page, where its photographs are. */}
@@ -170,28 +118,5 @@ export default function HealthPlantCard({
         </div>
       </div>
     </article>
-  )
-}
-
-/** A date and the verdict it reached. Nothing else — the rest is one press away. */
-function PastCheck({
-  entry,
-  onOpen,
-}: {
-  entry: HealthHistoryEntry
-  onOpen: (assessmentId: string) => void
-}) {
-  const status = statusStyle(entry.overall_status)
-  return (
-    <button
-      type="button"
-      className={`pc-pastcheck pc-tone-${status.tone}`}
-      onClick={() => onOpen(entry.id)}
-    >
-      <span className="pc-pastdate">{formatStamp(entry.created_at)}</span>
-      <span className="pc-pastverdict">
-        <span aria-hidden="true">{status.glyph}</span> {status.label}
-      </span>
-    </button>
   )
 }
