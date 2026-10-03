@@ -13,9 +13,12 @@
   overflow: hidden;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  /* Packed to the start, not spread. The foliage bleeds off the END corner, and a
+     button pushed to that corner sat on top of it — the one element on the banner that
+     has to be unmissable, drawn over the one element that is only decoration. */
+  justify-content: flex-start;
   flex-wrap: wrap;
-  gap: var(--pc-space-4);
+  gap: var(--pc-space-4) var(--pc-space-6);
   padding: var(--pc-space-6) var(--pc-space-5);
   margin-block-end: var(--pc-space-5);
   border-radius: var(--pc-radius-card);
@@ -37,7 +40,7 @@
   inset-inline-end: -4%;
   inline-size: 260px;
   color: #fff;
-  opacity: 0.3;
+  opacity: 0.45;
   pointer-events: none;
 }
 
@@ -82,7 +85,9 @@
 .pc-hero-text {
   position: relative;
   min-inline-size: 0;
-  flex: 1 1 auto;
+  /* Sized by its own words, so the action sits beside the title rather than being
+     pushed across the banner by a title that grew to fill it. */
+  flex: 0 1 auto;
 }
 
 .pc-hero-eyebrow {
@@ -187,6 +192,6 @@
   /* Smaller and fainter: at this width the title has nowhere else to go. */
   .pc-hero-art {
     inline-size: 190px;
-    opacity: 0.24;
+    opacity: 0.36;
   }
 }

@@ -23,6 +23,7 @@ import {
   STAGES,
 } from '../api/identification'
 import ImagePicker, { type PickedImage } from '../components/ImagePicker'
+import PageHero from '../components/PageHero'
 import { ApiError } from '../lib/errors'
 import { useIsReadOnly } from '../lib/viewAs'
 import './AddPlant.css'
@@ -452,15 +453,10 @@ function DoneStep({
   )
 }
 
+/* The same green banner every other screen opens with, and the step number in the
+   eyebrow it already has. This page used to draw its own heading — a plain h1 with a
+   small label over it — so the one screen a new user meets first was the one screen
+   that did not look like the app. */
 function StepHeader({ title, step }: { title: string; step?: number }) {
-  return (
-    <header className="pc-stephead">
-      <h1>{title}</h1>
-      {step && (
-        <p className="pc-placeholder-note">
-          שלב <span className="pc-num">{step}</span> מתוך <span className="pc-num">3</span>
-        </p>
-      )}
-    </header>
-  )
+  return <PageHero eyebrow={step ? `שלב ${step} מתוך 3` : 'צמח חדש'} title={title} />
 }

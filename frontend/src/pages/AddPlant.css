@@ -5,31 +5,6 @@
   margin-inline: auto;
 }
 
-/* The step counter is set above the title rather than under it, as a label: "where am
-   I" is read before "what is this", and in the flow order the counter is the answer to
-   the first question. `order` moves it without moving it in the DOM, so a screen reader
-   still hears the heading first. */
-.pc-stephead {
-  display: flex;
-  flex-direction: column;
-  margin-block-end: var(--pc-space-5);
-}
-
-.pc-stephead h1 {
-  order: 2;
-  margin-block-end: 0;
-}
-
-.pc-stephead > p {
-  order: 1;
-  margin-block-end: var(--pc-space-2);
-  font-size: var(--pc-label);
-  font-weight: var(--pc-label-weight);
-  letter-spacing: var(--pc-label-tracking);
-  text-transform: uppercase;
-  color: var(--pc-primary);
-}
-
 .pc-tips {
   margin-block-end: var(--pc-space-4);
   padding: var(--pc-space-3);

@@ -14,11 +14,12 @@
  * species filter to offer "only species that actually exist for the user", derived
  * from the loaded rows; the health filter now follows the same rule.
  *
- * `Filter` is deliberately wider than `HealthStatus`: the stat row offers cuts that are
- * not a single health value — everything needing attention, everything still waiting to
- * be identified — and a stat the reader cannot act on is decoration. The fourth stat
- * counts today's TASKS, which this screen cannot act on at all, so it links to משימות
- * instead of filtering; `DUE_TODAY` is therefore no longer a filter value.
+ * `Filter` is deliberately wider than `HealthStatus`: the stat row offers a cut that is
+ * not a single health value — everything still waiting to be identified — and a stat the
+ * reader cannot act on is decoration. Two of the four stats are answered elsewhere and
+ * link there rather than filtering: today's tasks in משימות, and "needs attention" in
+ * בריאות, where the last check says WHY it needs attention. `DUE_TODAY` and `ATTENTION`
+ * are therefore no longer filter values.
  */
 
 import { useMemo, useState } from 'react'
@@ -34,12 +35,11 @@ import '../components/PlantCard.css'
 import './MyPlants.css'
 
 type Sort = 'name' | 'created' | 'health'
-type Filter = '' | HealthStatus | 'ATTENTION' | 'PENDING'
+type Filter = '' | HealthStatus | 'PENDING'
 
 const HEALTH_ORDER: HealthStatus[] = ['CRITICAL', 'NEEDS_ATTENTION', 'UNKNOWN', 'HEALTHY']
 
 const FILTER_LABELS: Record<string, string> = {
-  ATTENTION: 'דורשים תשומת לב',
   PENDING: 'ממתינים לזיהוי',
 }
 
@@ -101,9 +101,10 @@ export default function MyPlants() {
     return [...filtered].sort(comparator(sort))
   }, [visible, species, filter, sort])
 
-  /* Three of these cut the list below them; the fourth leaves the page. "טיפולים להיום"
-     counts tasks, and a task is not something this screen can do anything with — the
-     place to act on one is משימות, which is where the card now goes. */
+  /* Two of these cut the list below them; two leave the page. A stat is a question,
+     and the question is only answered here when the answer is "these plants" — today's
+     TASKS are acted on in משימות, and a plant needing attention is answered by its last
+     health check, which is a screen of its own. */
   type Stat = {
     caption: string
     value: number
@@ -111,12 +112,14 @@ export default function MyPlants() {
     tone: string
     key?: Filter
     to?: string
+    /** The words under the number on a stat that leaves the page. */
+    go?: string
   }
 
   const stats: Stat[] = [
     { key: 'HEALTHY', caption: 'במצב תקין', value: counts.healthy, unit: 'צמחים', tone: 'success' },
-    { key: 'ATTENTION', caption: 'דורשים תשומת לב', value: counts.attention, unit: 'צמחים', tone: 'warning' },
-    { to: '/tasks', caption: 'טיפולים להיום', value: counts.dueToday, unit: 'משימות', tone: 'primary' },
+    { to: '/health', go: 'למסך הבריאות', caption: 'דורשים תשומת לב', value: counts.attention, unit: 'צמחים', tone: 'warning' },
+    { to: '/tasks', go: 'למסך המשימות', caption: 'טיפולים להיום', value: counts.dueToday, unit: 'משימות', tone: 'primary' },
     { key: 'PENDING', caption: 'ממתינים לזיהוי', value: counts.pending, unit: 'צמחים', tone: 'neutral' },
   ]
 
@@ -149,7 +152,7 @@ export default function MyPlants() {
                   {stat.value}
                   <span className="pc-statunit">{stat.unit}</span>
                 </span>
-                <span className="pc-statgo">למסך המשימות</span>
+                <span className="pc-statgo">{stat.go}</span>
               </Link>
             ) : (
               <button
@@ -333,13 +336,6 @@ function isPending(plant: Plant): boolean {
 
 function matches(plant: Plant, filter: Filter): boolean {
   if (filter === 'PENDING') return isPending(plant)
-  if (filter === 'ATTENTION') {
-    return (
-      plant.status === 'ACTIVE' &&
-      (plant.current_health_status === 'CRITICAL' ||
-        plant.current_health_status === 'NEEDS_ATTENTION')
-    )
-  }
   return plant.status === 'ACTIVE'
     ? plant.current_health_status === filter
     : filter === 'UNKNOWN'
