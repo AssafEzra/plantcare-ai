@@ -538,12 +538,20 @@ def tasks_for_user(
 
 
 def decorate_tasks(client: Client, tasks: list[Row]) -> list[Row]:
-    """Attach the plant name and action type a task is meaningless without.
+    """Attach the plant name, action and wording a task is meaningless without.
 
     Lives here rather than in a router because both the care-task list and the
     plant dashboard need it — and the dashboard shipped without it, rendering
     "**** · my plant" where a reminder should have been. A task row on its own is
     two foreign keys and a timestamp.
+
+    `instructions` is the care plan's own sentence about this rule — why the plant
+    is watered every nine days rather than every seven, how much, what to look at
+    while doing it. It was written when the plan was generated and then shown
+    nowhere, so a reminder said "השקיה" and left the reasoning in the database.
+    `interval_days` comes along because it is the other half of that sentence: a
+    task is an occurrence of a recurrence, and the recurrence is the thing a user
+    can judge. Both come from the row already being read — no extra query.
     """
     if not tasks:
         return []
@@ -561,7 +569,7 @@ def decorate_tasks(client: Client, tasks: list[Row]) -> list[Row]:
         rule["id"]: rule
         for rule in rows(
             client.table("care_rules")
-            .select("id, action_type")
+            .select("id, action_type, instructions, interval_days")
             .in_("id", list({str(t["care_rule_id"]) for t in tasks}))
             .execute()
         )
@@ -572,6 +580,8 @@ def decorate_tasks(client: Client, tasks: list[Row]) -> list[Row]:
             **task,
             "plant_name": plants.get(str(task["plant_id"]), {}).get("name"),
             "action_type": care_rules.get(str(task["care_rule_id"]), {}).get("action_type"),
+            "instructions": care_rules.get(str(task["care_rule_id"]), {}).get("instructions"),
+            "interval_days": care_rules.get(str(task["care_rule_id"]), {}).get("interval_days"),
         }
         for task in tasks
     ]

@@ -26,7 +26,7 @@ from fastapi import APIRouter, Body, Depends, Header, Query, Request
 from pydantic import BaseModel, Field
 
 from app.agents.care.agent import CareAgent
-from app.api.dependencies import CurrentUserDep
+from app.api.dependencies import CurrentUser, CurrentUserDep
 from app.api.routers.care import get_care_agent
 from app.api.schemas.common import DataEnvelope
 from app.common.enums import CareTaskStatus, PlantStatus
@@ -34,6 +34,7 @@ from app.common.errors import ForbiddenError
 from app.config.logging import get_logger
 from app.config.settings import get_settings
 from app.domain.rules import recurrence
+from app.infrastructure.storage import plant_images as storage
 from app.orchestration.services import scheduler, tick
 from app.repositories import plants as plants_repo
 
@@ -55,6 +56,15 @@ class TaskResponse(BaseModel):
     completed_at: datetime | None = None
     plant_name: str | None = None
     action_type: str | None = None
+
+    # Decoration, all of it optional: a task whose rule or plant could not be read
+    # still renders, it simply says less. `instructions` is the care plan's own
+    # sentence about this rule and `interval_days` its recurrence; `thumbnail_url`
+    # is a short-lived signed URL, and only the dashboard's today list fills it —
+    # the plant's own page is already a page about that plant.
+    instructions: str | None = None
+    interval_days: int | None = None
+    thumbnail_url: str | None = None
 
 
 class ActionRequest(BaseModel):
@@ -209,6 +219,15 @@ async def get_dashboard(request: Request, user: CurrentUserDep) -> DataEnvelope[
         if plant.get("current_health_status") in {"NEEDS_ATTENTION", "CRITICAL"}
     ]
 
+    # Only today's list. Those rows are cards with a photograph on them; the
+    # upcoming list is a flat plan-ahead strip, and signing ten more URLs for
+    # pictures nobody looks at is a round trip spent on nothing.
+    today_plants = [p for p in plants if str(p["id"]) in {str(t["plant_id"]) for t in today_care}]
+    thumbnails = _sign_thumbnails(user, today_plants)
+    today_care = [
+        {**task, "thumbnail_url": thumbnails.get(str(task["plant_id"]))} for task in today_care
+    ]
+
     return DataEnvelope(
         data=DashboardResponse(
             today_care=[TaskResponse(**t) for t in today_care],
@@ -234,6 +253,25 @@ async def get_dashboard(request: Request, user: CurrentUserDep) -> DataEnvelope[
         ),
         request_id=request.state.request_id,
     )
+
+
+def _sign_thumbnails(user: CurrentUser, plants: list[dict[str, Any]]) -> dict[str, str]:
+    """A signed thumbnail URL per plant, keyed by plant id.
+
+    Best-effort by design, and deliberately swallowing: the day's work is the
+    point of this screen, and a storage call that fails must cost the user a
+    photograph, not the list. The card already renders a lettered tile for a
+    plant with no picture, so there is a shape waiting for the gap.
+    """
+    chosen = plants_repo.thumbnail_paths(user.client, plants)
+    if not chosen:
+        return {}
+    try:
+        signed = storage.signed_urls(user.access_token, list(chosen.values()), client=user.client)
+    except Exception:  # pragma: no cover - storage is not the dashboard's job
+        log.warning("dashboard.thumbnails.failed", exc_info=True)
+        return {}
+    return {plant_id: signed[path] for plant_id, path in chosen.items() if path in signed}
 
 
 def _due(task: dict[str, Any]) -> datetime:

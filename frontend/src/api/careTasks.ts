@@ -23,6 +23,14 @@ export type CareTask = {
   completed_at: string | null
   plant_name: string | null
   action_type: string | null
+  /* Decoration from the care rule the task came from. `instructions` is the plan's own
+     sentence about this rule — why this interval, how much, what to look at — written
+     when the plan was generated and, until now, shown nowhere. */
+  instructions?: string | null
+  interval_days?: number | null
+  /* Signed, short-lived, and sent only for the dashboard's today list. The plant's own
+     page is already a page about that plant. */
+  thumbnail_url?: string | null
 }
 
 export type OverdueSummary = {

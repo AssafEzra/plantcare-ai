@@ -97,7 +97,7 @@
   box-shadow: none;
 }
 
-.pc-taskday .pc-taskicon {
+.pc-taskday .pc-taskmedia {
   background: var(--pc-surface);
   color: var(--pc-text-muted);
 }

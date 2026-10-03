@@ -226,6 +226,54 @@ def upsert_environment(client: Client, plant_id: UUID, values: dict[str, Any]) -
 # --- images -------------------------------------------------------------------
 
 
+def thumbnail_paths(client: Client, plants: list[Row]) -> dict[str, str]:
+    """Which stored object represents each of these plants, by plant id.
+
+    One rule, one query, two callers. The plant grid signs these for its cards and
+    the dashboard signs them for the day's task list, and the *rule* — the plant's
+    main image if it has one, otherwise its newest visible photograph, thumbnail
+    before processed — is the part that must not drift. Written out twice, the two
+    screens would eventually disagree about which photograph is "the" picture of a
+    plant, which is the kind of difference nobody reports as a bug.
+
+    The fallback is not belt-and-braces. Until PR 27 only a `gallery` upload could
+    become a main image, and the Add Plant flow uploads with context
+    `identification`, so every plant created through the normal flow has a
+    photograph and no `main_image_id`.
+
+    Best-effort, like everything else a card is decorated with: a plant with no
+    usable image is simply absent from the result.
+    """
+    plant_ids = [str(plant["id"]) for plant in plants]
+    if not plant_ids:
+        return {}
+
+    candidates = rows(
+        client.table("plant_images")
+        .select("id, plant_id, storage_path_thumbnail, storage_path_processed, created_at")
+        .in_("plant_id", plant_ids)
+        .eq("user_visible", True)
+        .order("created_at", desc=True)
+        .execute()
+    )
+    by_id = {row["id"]: row for row in candidates}
+    newest_for_plant: dict[str, Row] = {}
+    for row in candidates:
+        newest_for_plant.setdefault(str(row["plant_id"]), row)
+
+    chosen: dict[str, str] = {}
+    for plant in plants:
+        picked = by_id.get(str(plant.get("main_image_id"))) or newest_for_plant.get(
+            str(plant["id"])
+        )
+        if not picked:
+            continue
+        path = picked.get("storage_path_thumbnail") or picked.get("storage_path_processed")
+        if path:
+            chosen[str(plant["id"])] = path
+    return chosen
+
+
 def list_images(
     client: Client,
     plant_id: UUID,

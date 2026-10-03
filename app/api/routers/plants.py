@@ -103,42 +103,9 @@ def _decorate_for_grid(client, access_token: str, plants: list[dict]) -> list[di
     species_ids = [str(p["species_id"]) for p in plants if p.get("species_id")]
     plant_ids = [str(p["id"]) for p in plants]
 
-    # One query for every candidate image: the plants' main images, plus the
-    # newest visible photograph of each plant as a fallback.
-    #
-    # The fallback is not belt-and-braces. Until PR 27 only a `gallery` upload
-    # could become a main image, and the Add Plant flow uploads with context
-    # `identification`, so every plant created through the normal flow has a
-    # photograph and no `main_image_id`. Those rows are already in the database
-    # and no migration is going to guess a main image for them; showing the
-    # newest photograph is both correct and what the user expects to see.
-    candidates = rows(
-        client.table("plant_images")
-        .select("id, plant_id, storage_path_thumbnail, storage_path_processed, created_at")
-        .in_("plant_id", plant_ids)
-        .eq("user_visible", True)
-        .order("created_at", desc=True)
-        .execute()
-    )
-    by_id = {row["id"]: row for row in candidates}
-    newest_for_plant: dict[str, dict] = {}
-    for row in candidates:
-        newest_for_plant.setdefault(str(row["plant_id"]), row)
-
-    def _path(row: dict | None) -> str | None:
-        if not row:
-            return None
-        return row.get("storage_path_thumbnail") or row.get("storage_path_processed")
-
-    chosen: dict[str, str] = {}
-    for plant in plants:
-        picked = by_id.get(str(plant.get("main_image_id"))) or newest_for_plant.get(
-            str(plant["id"])
-        )
-        path = _path(picked)
-        if path:
-            chosen[str(plant["id"])] = path
-
+    # Which photograph represents a plant is decided in the repository, because the
+    # dashboard's task list needs the same answer and the two must not drift.
+    chosen = repo.thumbnail_paths(client, plants)
     signed = storage.signed_urls(access_token, list(chosen.values()), client=client)
     thumbnails = {plant_id: signed[path] for plant_id, path in chosen.items() if path in signed}
 

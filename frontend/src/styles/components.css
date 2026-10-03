@@ -485,114 +485,7 @@ a.pc-btn:hover {
   block-size: 40px;
 }
 
-/* --- care tasks ---------------------------------------------------------- */
-
-/* One renderer, two screens. Home and the plant dashboard both list care tasks, and
-   the Streamlit build shipped two separate ones that disagreed about the same task -
-   the plant's own page drew it read-only while Home offered Done and Skip. These
-   moved out of Home.css when the dashboard started using them. */
-
-.pc-tasklist {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: var(--pc-space-2);
-}
-
-.pc-taskrow {
-  display: flex;
-  align-items: center;
-  gap: var(--pc-space-3);
-  flex-wrap: wrap;
-  padding: var(--pc-space-3) var(--pc-space-4);
-  background: var(--pc-surface);
-  border: 1px solid var(--pc-border);
-  border-radius: var(--pc-radius-card);
-  box-shadow: var(--pc-shadow-card);
-  transition: border-color var(--pc-transition), box-shadow var(--pc-transition);
-}
-
-.pc-taskrow:hover {
-  border-color: var(--pc-primary);
-  box-shadow: var(--pc-shadow-raised);
-}
-
-/* The same glyph-in-a-disc the plant card uses for its next task, so one action looks
-   like itself wherever it appears. */
-.pc-taskicon {
-  display: grid;
-  place-items: center;
-  flex: 0 0 auto;
-  inline-size: 36px;
-  block-size: 36px;
-  border-radius: var(--pc-radius-pill);
-  background: var(--pc-primary-soft);
-  color: var(--pc-primary);
-}
-
-.pc-taskicon svg {
-  inline-size: 20px;
-  block-size: 20px;
-}
-
-.pc-taskrow.is-overdue .pc-taskicon {
-  background: var(--pc-warning-bg);
-  color: var(--pc-warning);
-}
-
-.pc-taskinfo {
-  display: flex;
-  align-items: baseline;
-  gap: var(--pc-space-2);
-  flex-wrap: wrap;
-  min-inline-size: 0;
-  flex: 1 1 auto;
-}
-
-.pc-taskaction {
-  font-weight: 600;
-}
-
-.pc-taskplant {
-  color: var(--pc-text);
-}
-
-.pc-taskdue {
-  color: var(--pc-text-muted);
-  font-size: var(--pc-h6);
-}
-
-.pc-taskerror {
-  inline-size: 100%;
-  color: var(--pc-danger);
-  font-size: var(--pc-h6);
-}
-
-.pc-taskactions {
-  display: flex;
-  gap: var(--pc-space-2);
-  flex: 0 0 auto;
-}
-
-/* On a phone the two buttons take their own line, always. Left to wrap on their own
-   they went below the text on a row with a long plant name and stayed beside it on a
-   row with a short one, so a list of eight tasks had the same two buttons in two
-   different places. */
-@media (max-width: 639px) {
-  .pc-taskrow {
-    align-items: flex-start;
-  }
-
-  .pc-taskactions {
-    flex: 1 0 100%;
-  }
-
-  .pc-taskactions .pc-btn {
-    flex: 1 1 0;
-  }
-}
+/* --- small and quiet buttons --------------------------------------------- */
 
 /* Comfortably above the 44px touch minimum even at the small size. */
 .pc-btn-sm {
@@ -608,16 +501,6 @@ a.pc-btn:hover {
 
 .pc-btn-quiet:hover:not(:disabled) {
   background: var(--pc-neutral-bg);
-}
-
-/* The plant's own page already says which plant it is. */
-.pc-taskrow.is-overdue {
-  border-color: var(--pc-warning);
-}
-
-.pc-taskdue.is-late {
-  color: var(--pc-warning);
-  font-weight: 600;
 }
 
 /* A row of choices at the end of a flow. Moved out of AddPlant.css once the proposal

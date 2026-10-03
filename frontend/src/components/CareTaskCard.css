@@ -1,0 +1,223 @@
+/* One care task, as a card.
+ *
+ * Loaded by the component, so every screen that renders a task gets these and no
+ * screen has to remember to. They lived in styles/components.css while a task was a
+ * single row of text; a card with a photograph, a reason and a recurrence on it is
+ * enough of its own thing to own a file.
+ *
+ * Logical properties only. */
+
+.pc-tasklist {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--pc-space-3);
+}
+
+/* Three columns: what it is a picture of, what it says, and what you can do. The
+   middle one is the only one that may grow, and `minmax(0, 1fr)` is what lets a long
+   instruction wrap instead of pushing the buttons off the card. */
+.pc-taskrow {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  gap: var(--pc-space-4);
+  padding: var(--pc-space-4);
+  background: var(--pc-surface);
+  border: 1px solid var(--pc-border);
+  border-radius: var(--pc-radius-card);
+  box-shadow: var(--pc-shadow-card);
+  transition: border-color var(--pc-transition), box-shadow var(--pc-transition);
+}
+
+.pc-taskrow:hover {
+  border-color: var(--pc-primary);
+  box-shadow: var(--pc-shadow-raised);
+}
+
+/* --- the tile ------------------------------------------------------------ */
+
+/* Square, because the photograph is an identifier here and not a view: a 4:3 crop of a
+   plant at 72px tells you no more than a square one and costs the row a line of text. */
+.pc-taskmedia {
+  position: relative;
+  display: grid;
+  place-items: center;
+  inline-size: 72px;
+  block-size: 72px;
+  flex: 0 0 auto;
+  overflow: hidden;
+  border-radius: var(--pc-radius-control);
+  background: var(--pc-primary-soft);
+  color: var(--pc-primary);
+}
+
+/* The same stable hue the plant card gives an unphotographed plant, so a plant looks
+   like itself on both screens. It shows for the moment before the photograph loads
+   and wherever one failed to sign. */
+.pc-taskmedia.has-photo {
+  background: hsl(var(--pc-plant-hue, 120) 24% 88%);
+}
+
+.pc-taskmedia img {
+  position: absolute;
+  inset: 0;
+  inline-size: 100%;
+  block-size: 100%;
+  object-fit: cover;
+}
+
+/* With a photograph the glyph is a badge on its corner — the picture answers "which
+   plant", the glyph answers "what am I doing to it", and both have to survive being
+   read in half a second. With no photograph it simply takes the tile. */
+.pc-taskicon {
+  display: grid;
+  place-items: center;
+}
+
+.pc-taskmedia:not(.has-photo) .pc-taskicon svg {
+  inline-size: 28px;
+  block-size: 28px;
+}
+
+.pc-taskmedia.has-photo .pc-taskicon {
+  position: absolute;
+  inset-block-end: var(--pc-space-1);
+  inset-inline-start: var(--pc-space-1);
+  inline-size: 26px;
+  block-size: 26px;
+  border-radius: var(--pc-radius-pill);
+  background: rgba(255, 255, 255, 0.94);
+  color: var(--pc-primary);
+  box-shadow: 0 1px 3px rgba(26, 28, 27, 0.25);
+}
+
+.pc-taskmedia.has-photo .pc-taskicon svg {
+  inline-size: 15px;
+  block-size: 15px;
+}
+
+.pc-taskrow.is-overdue .pc-taskmedia:not(.has-photo) {
+  background: var(--pc-danger-bg);
+  color: var(--pc-danger);
+}
+
+.pc-taskrow.is-overdue .pc-taskmedia.has-photo .pc-taskicon {
+  color: var(--pc-danger);
+}
+
+/* --- the words ----------------------------------------------------------- */
+
+.pc-taskinfo {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-inline-size: 0;
+}
+
+/* The action and when it is due read as one line: "watering, a day late" is a single
+   fact, and splitting them over two lines makes the reader assemble it. */
+.pc-taskhead {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--pc-space-2);
+}
+
+.pc-taskaction {
+  font-size: var(--pc-h3);
+  font-weight: 600;
+}
+
+.pc-taskplant {
+  color: var(--pc-text-muted);
+  font-size: var(--pc-h5);
+}
+
+.pc-taskdue {
+  color: var(--pc-text-muted);
+  font-size: var(--pc-h6);
+}
+
+.pc-taskdue.is-late {
+  color: var(--pc-danger);
+  font-weight: 600;
+}
+
+/* The care plan's own sentence. Three lines is the budget: it is the reason for the
+   task, not the plan document, and a paragraph here buries the next card. */
+.pc-taskwhy {
+  margin: var(--pc-space-2) 0 0;
+  color: var(--pc-text);
+  font-size: var(--pc-h5);
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  overflow: hidden;
+}
+
+.pc-taskevery {
+  margin-block-start: var(--pc-space-2);
+  padding: 2px var(--pc-space-3);
+  border-radius: var(--pc-radius-pill);
+  background: var(--pc-surface-alt);
+  color: var(--pc-text-muted);
+  font-size: var(--pc-h6);
+  font-weight: 600;
+}
+
+.pc-taskerror {
+  margin-block-start: var(--pc-space-2);
+  color: var(--pc-danger);
+  font-size: var(--pc-h6);
+}
+
+/* --- the actions --------------------------------------------------------- */
+
+.pc-taskactions {
+  display: flex;
+  gap: var(--pc-space-2);
+  flex: 0 0 auto;
+}
+
+/* The edge, not a wash: the band this card sits in is already headed באיחור, and a
+   tinted card under a red heading says the same thing twice. */
+.pc-taskrow.is-overdue {
+  border-color: var(--pc-danger);
+}
+
+/* --- narrow -------------------------------------------------------------- */
+
+@media (max-width: 639px) {
+  .pc-taskrow {
+    /* The buttons drop to a full-width line of their own. Left to wrap they sat below
+       the text on a row with a long plant name and beside it on a row with a short
+       one, so one list had the same two buttons in two places. */
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: var(--pc-space-3);
+    padding: var(--pc-space-3);
+  }
+
+  .pc-taskactions {
+    grid-column: 1 / -1;
+    margin-block-start: var(--pc-space-1);
+  }
+
+  .pc-taskactions .pc-btn {
+    flex: 1 1 0;
+  }
+
+  .pc-taskmedia {
+    inline-size: 60px;
+    block-size: 60px;
+  }
+
+  .pc-taskaction {
+    font-size: var(--pc-h4);
+  }
+}
