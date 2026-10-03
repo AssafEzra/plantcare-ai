@@ -80,7 +80,7 @@ def test_ready_reports_ok_when_the_database_answers(client: TestClient, monkeypa
 
     monkeypatch.setattr(main_module, "anon_client", lambda: _Stub())
 
-    response = client.get("/ready")
+    response = client.get("/readyz")
 
     assert response.status_code == 200
     assert response.json()["checks"]["database"] == "ok"
@@ -96,7 +96,7 @@ def test_ready_reports_unavailable_when_the_database_fails(client: TestClient, m
 
     monkeypatch.setattr(main_module, "anon_client", _boom)
 
-    response = client.get("/ready")
+    response = client.get("/readyz")
 
     assert response.status_code == 503
     assert response.json()["checks"]["database"] == "failed"
@@ -110,7 +110,7 @@ def test_readiness_failure_does_not_leak_the_underlying_error(client: TestClient
 
     monkeypatch.setattr(main_module, "anon_client", _boom)
 
-    body = client.get("/ready").text
+    body = client.get("/readyz").text
     assert "hunter2" not in body
     assert "db.internal" not in body
 
@@ -125,7 +125,7 @@ def test_liveness_does_not_touch_the_database(client: TestClient, monkeypatch):
 
     monkeypatch.setattr(main_module, "anon_client", _boom)
 
-    assert client.get("/health").status_code == 200
+    assert client.get("/healthz").status_code == 200
 
 
 # --- throttling ---------------------------------------------------------------
@@ -186,13 +186,13 @@ def test_an_unauthenticated_caller_is_refused_before_spending_allowance(app_env)
 
 
 def test_method_not_allowed_uses_the_envelope(client: TestClient):
-    response = client.delete("/health")
+    response = client.delete("/healthz")
 
     assert response.status_code in (404, 405)
     assert "error" in response.json()
 
 
 def test_every_response_carries_a_request_id(client: TestClient):
-    for path, method in [("/health", "get"), ("/ready", "get"), ("/v1/me", "get")]:
+    for path, method in [("/healthz", "get"), ("/readyz", "get"), ("/v1/me", "get")]:
         response = getattr(client, method)(path)
         assert response.headers.get("X-Request-ID"), f"{path} lost the request id"

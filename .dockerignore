@@ -1,11 +1,18 @@
-# The container needs the application and what it reads at runtime. Everything
-# else is build noise, and two entries here are a safety property rather than an
-# optimisation.
+# The container needs the application, the interface's source, and what they read
+# at runtime. Everything else is build noise, and several entries here are a
+# safety property rather than an optimisation.
 
 # Never. The image is pushed to a hosting platform.
 .env
 .env.*
 !.env.example
+# Listed separately because these patterns are NOT implicitly recursive: `.env.*`
+# above matches only at the context root, so `frontend/.env.local` - which holds
+# real DEV values on a developer's machine - would otherwise travel into the build
+# and Vite would prefer it over the build arguments. That would make the baked
+# configuration depend on whose machine ran the build.
+frontend/.env
+frontend/.env.*
 
 .git
 .github
@@ -15,6 +22,12 @@
 .mypy_cache
 .pytest_cache
 .ruff_cache
+
+# The Node stage runs `npm ci` from the lockfile and builds its own output. A
+# host's `node_modules` is the wrong platform's binaries, and a stale `dist` would
+# be copied over by the real build anyway - both are pure upload cost.
+frontend/node_modules
+frontend/dist
 
 # Not runtime inputs: the suite, the schema history and the specification.
 tests

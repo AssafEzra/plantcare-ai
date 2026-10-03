@@ -164,15 +164,29 @@ enabled = true
 # DEPLOYMENT_AND_OPERATIONS 4a listed this as a DEV/PROD difference on the assumption
 # that DEV is only ever a developer's laptop. Since PR HF, DEV is also the deployment
 # real testers use, so DEV names its own origin (FINAL 37).
+#
+# STILL THE STREAMLIT ORIGIN, DELIBERATELY. This file is pushed to whichever project
+# is linked, and the linked DEV project is the one serving the Streamlit app on `dev`
+# right now. Changing this line before the Cloud Run service exists would send every
+# tester's confirmation and password-reset link to a host that is not there.
+#
+# At cutover: replace with the Cloud Run URL, add it to the list below, drop the
+# Streamlit entry, then `supabase config push`. The URL is only knowable after the
+# first deploy, which is why this is a step in docs/DEPLOY_CLOUD_RUN.md rather than
+# a value here.
 site_url = "https://plantcare-ai-fcrp66qd7akvrmrdmwjyga.streamlit.app"
 # The public URL that Auth serves on. Defaults to the API external URL with `/auth/v1` appended.
 # external_url = ""
 # A list of *exact* URLs that auth providers are permitted to redirect to post authentication.
-# Localhost stays allowed so the same project still serves local development.
+# Localhost stays allowed so the same project still serves local development - now on
+# Vite's ports rather than Streamlit's: 5173 is `npm run dev` and 4173 is
+# `npm run preview`, which is the only way to exercise the service worker.
 additional_redirect_urls = [
   "https://plantcare-ai-fcrp66qd7akvrmrdmwjyga.streamlit.app",
-  "http://localhost:8501",
-  "http://127.0.0.1:8501",
+  "http://localhost:5173",
+  "http://127.0.0.1:5173",
+  "http://localhost:4173",
+  "http://127.0.0.1:4173",
 ]
 # How long tokens are valid for, in seconds. Defaults to 3600 (1 hour), maximum 604,800 (1 week).
 #

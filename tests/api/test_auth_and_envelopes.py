@@ -38,7 +38,7 @@ def client(monkeypatch: pytest.MonkeyPatch):
 
 
 def test_health_needs_no_authentication(client: TestClient):
-    response = client.get("/health")
+    response = client.get("/healthz")
 
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}

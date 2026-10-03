@@ -4,7 +4,12 @@ Every rule here is one the specification states plainly and that nothing else ca
 check. A reviewer will not notice the first time an agent imports a repository,
 and once one has, the second is easy to justify. These fail the build instead.
 
-The rules come from PROJECT_STRUCTURE §3, §5 and §7, and FINAL §23.
+The rules come from PROJECT_STRUCTURE §3, §5 and §6, and FINAL §23.
+
+§7's rules about the interface are not here any more: they constrained Python
+pages, and the interface is a separate TypeScript application that this walk
+cannot see. What replaced them is the API boundary itself — the SPA can only
+reach data through `/v1`.
 """
 
 from __future__ import annotations
@@ -97,13 +102,6 @@ DOMAIN_MODULES = modules_under("domain")
 
 
 @pytest.mark.parametrize("path", DOMAIN_MODULES, ids=label)
-def test_the_domain_never_imports_streamlit(path: Path):
-    """PROJECT_STRUCTURE §3: the domain layer must not depend on Streamlit."""
-    for imported in imports_of(path):
-        assert not imported.startswith("streamlit"), f"{label(path)} imports Streamlit"
-
-
-@pytest.mark.parametrize("path", DOMAIN_MODULES, ids=label)
 def test_the_domain_never_imports_fastapi(path: Path):
     """Domain rules are called by the API, not the other way round."""
     for imported in imports_of(path):
@@ -135,46 +133,12 @@ def test_domain_rules_are_pure(path: Path):
         )
 
 
-# --- the UI -------------------------------------------------------------------
-
-UI_MODULES = modules_under("ui")
-
-
-@pytest.mark.parametrize("path", UI_MODULES, ids=label)
-def test_the_ui_never_talks_to_the_database(path: Path):
-    """PROJECT_STRUCTURE §7: pages must not contain SQL or call Supabase for
-    business operations.
-
-    `app/ui/state/session.py` is the single exception and is excluded below:
-    obtaining a credential is not a business operation, and the alternative is
-    proxying auth through the API for no benefit.
-    """
-    if path.name == "session.py":
-        return
-
-    forbidden = ("app.repositories", "app.infrastructure.supabase", "supabase", "psycopg")
-
-    for imported in imports_of(path):
-        assert not imported.startswith(forbidden), (
-            f"{label(path)} reaches the database directly via {imported}"
-        )
-
-
-@pytest.mark.parametrize("path", UI_MODULES, ids=label)
-def test_the_ui_never_calls_an_agent(path: Path):
-    """A page that invokes an agent has business logic in it by definition."""
-    for imported in imports_of(path):
-        assert not imported.startswith(("app.agents", "app.infrastructure.ai")), (
-            f"{label(path)} invokes AI directly: {imported}"
-        )
-
-
 # --- configuration ------------------------------------------------------------
 
 
 @pytest.mark.parametrize(
     "path",
-    modules_under("agents", "api", "domain", "orchestration", "repositories", "ui"),
+    modules_under("agents", "api", "domain", "orchestration", "repositories"),
     ids=label,
 )
 def test_configuration_is_read_in_one_place(path: Path):
@@ -195,7 +159,7 @@ def test_only_the_provider_adapter_imports_the_anthropic_sdk():
     offenders = [
         label(path)
         for path in modules_under(
-            "agents", "api", "domain", "orchestration", "repositories", "ui", "notifications"
+            "agents", "api", "domain", "orchestration", "repositories", "notifications"
         )
         if any(i.startswith("anthropic") for i in imports_of(path))
     ]

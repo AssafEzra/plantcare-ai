@@ -62,9 +62,10 @@ def user_client(access_token: str) -> Client:
 def service_client() -> Client:
     """Server-side client that bypasses RLS.
 
-    Never construct this in a request handler without a written reason. It must
-    never reach the Streamlit process (SETUP §5: service-role credentials are
-    server-side only).
+    Never construct this in a request handler without a written reason, and
+    never let it leave this process: SETUP §5 makes service-role credentials
+    server-side only, and the interface is a browser that cannot be trusted with
+    a key that bypasses RLS.
     """
     settings = get_settings()
     return create_client(

@@ -38,6 +38,7 @@ from app.api.routers import (
     profile,
 )
 from app.api.routers import health as health_router
+from app.api.spa import mount_spa
 from app.common.errors import AppError, ForbiddenError, NotFoundError, ValidationFailedError
 from app.config.logging import configure_logging, get_logger
 from app.config.settings import get_settings
@@ -225,8 +226,16 @@ def create_app() -> FastAPI:
         log.exception("request.unhandled", error_type=type(exc).__name__)
         return _envelope(request, AppError())
 
-    @app.get("/health", include_in_schema=False)
-    async def health() -> dict[str, str]:
+    # `/healthz` and `/readyz`, not `/health` and `/ready`.
+    #
+    # The interface owns `/health` - it is the בריאות screen
+    # (`frontend/src/App.tsx`). While Streamlit was the frontend the two lived on
+    # different ports and could not collide; serving both from one origin, the
+    # probe would win the path and a reader who refreshed that page would be shown
+    # `{"status": "ok"}`. The probe is the one with no users to disappoint, so the
+    # probe moved.
+    @app.get("/healthz", include_in_schema=False)
+    async def healthz() -> dict[str, str]:
         """Liveness: is the process up? Deliberately checks nothing else.
 
         A liveness probe that touches the database restarts a healthy container
@@ -234,8 +243,8 @@ def create_app() -> FastAPI:
         """
         return {"status": "ok"}
 
-    @app.get("/ready", include_in_schema=False)
-    async def ready() -> JSONResponse:
+    @app.get("/readyz", include_in_schema=False)
+    async def readyz() -> JSONResponse:
         """Readiness: can this instance actually serve traffic?
 
         Runs a trivial query so a broken or unreachable database takes the
@@ -265,6 +274,13 @@ def create_app() -> FastAPI:
     app.include_router(care_tasks.router, prefix="/v1")
     app.include_router(health_router.router, prefix="/v1")
     app.include_router(notifications.router, prefix="/v1")
+
+    # Last, and that is load-bearing: the SPA ends in a catch-all, and Starlette
+    # matches in registration order, so anything mounted after it is unreachable.
+    # Unset outside the container - see `spa_dist_dir` in app/config/settings.py.
+    if settings.spa_dist_dir is not None:
+        mount_spa(app, settings.spa_dist_dir)
+
     return app
 
 

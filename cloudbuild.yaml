@@ -1,0 +1,100 @@
+# Build the image and deploy it to Cloud Run.
+#
+# This file exists for one reason: `gcloud run deploy --source .` cannot pass
+# build arguments, and the interface needs three. Vite replaces
+# `import.meta.env.VITE_*` at build time, so the Supabase project a bundle talks
+# to is decided when the image is built, not when the container starts - there is
+# no runtime environment variable that can change it afterwards.
+#
+# Run it with:
+#
+#   gcloud builds submit --config cloudbuild.yaml \
+#     --substitutions=_SUPABASE_URL=https://<ref>.supabase.co,_SUPABASE_ANON_KEY=<anon key>
+#
+# The anon key is public - it ships inside every bundle by design - so passing it
+# on a command line is not a credential leak. The service-role key is not here and
+# must never be: it is a runtime secret, set on the service itself.
+#
+# The flags on the deploy step are load-bearing rather than tuning; each one is
+# explained in docs/DEPLOY_CLOUD_RUN.md.
+
+substitutions:
+  _REGION: europe-west1
+  _SERVICE: plantcare-ai
+  _REPO: plantcare
+  _SUPABASE_URL: ""
+  _SUPABASE_ANON_KEY: ""
+
+images:
+  - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/${_SERVICE}:${SHORT_SHA}
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+
+steps:
+  # Refuse early rather than ship a bundle that cannot reach Supabase. Without
+  # these, `vite build` succeeds, the image deploys, and the first thing any
+  # visitor sees is a blank page with a console error.
+  - id: check-substitutions
+    name: bash
+    args:
+      - -c
+      - |
+        set -euo pipefail
+        test -n "${_SUPABASE_URL}" || { echo "_SUPABASE_URL is required"; exit 1; }
+        test -n "${_SUPABASE_ANON_KEY}" || { echo "_SUPABASE_ANON_KEY is required"; exit 1; }
+        echo "ok"
+
+  - id: build
+    name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - --build-arg=VITE_SUPABASE_URL=${_SUPABASE_URL}
+      - --build-arg=VITE_SUPABASE_ANON_KEY=${_SUPABASE_ANON_KEY}
+      - --tag=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/${_SERVICE}:${SHORT_SHA}
+      - --tag=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/${_SERVICE}:latest
+      - .
+
+  - id: deploy
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - ${_SERVICE}
+      - --image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/${_SERVICE}:${SHORT_SHA}
+      - --region=${_REGION}
+      - --platform=managed
+      - --allow-unauthenticated
+      # CPU allocated for the instance's whole life, not just while a request is
+      # in flight. Every agent run happens in a FastAPI BackgroundTask *after* its
+      # 202 has been sent (app/orchestration/services/agent_requests.py), with
+      # budgets up to 600s for knowledge research. Under the default request-based
+      # allocation those runs are throttled to near zero the moment the response
+      # goes out, and every identification would hang.
+      - --no-cpu-throttling
+      # One instance, because the AI rate limiter keeps its counters in process
+      # memory (app/api/rate_limit.py): N instances would permit N times the
+      # configured limit. See docs/ENVIRONMENTS.md.
+      - --max-instances=1
+      - --min-instances=0
+      - --cpu=1
+      - --memory=1Gi
+      # `POST /v1/internal/tick` runs the sweep synchronously inside the request,
+      # and a full sweep was measured at 6m11s against a populated database
+      # (DEPLOYMENT_AND_OPERATIONS §3). The default 300s would cut it off.
+      - --timeout=900
+      # The four model ids are *required* settings with no defaults - the
+      # application refuses to start without them (app/config/settings.py).
+      #
+      # Google and flash-lite, not Anthropic. The provider defaults in settings
+      # are `anthropic`, so naming a Gemini model without the provider lines would
+      # boot the Anthropic adapter holding a model name it cannot use. This
+      # matches what CI does and for the same reason: every real model call this
+      # project makes outside deliberate production use goes through
+      # google/gemini-3.5-flash-lite, so a tester deployment cannot quietly spend
+      # an Opus budget. Change all eight values together, or not at all.
+      - --set-env-vars=APP_ENV=production,APP_DEBUG=false,INTERNAL_TICK_INTERVAL_SECONDS=0,IDENTIFICATION_PROVIDER=google,KNOWLEDGE_PROVIDER=google,CARE_PROVIDER=google,HEALTH_PROVIDER=google,IDENTIFICATION_MODEL=gemini-3.5-flash-lite,KNOWLEDGE_MODEL=gemini-3.5-flash-lite,CARE_MODEL=gemini-3.5-flash-lite,HEALTH_MODEL=gemini-3.5-flash-lite
+      # Runtime secrets live in Secret Manager, never in this file and never in
+      # the image. Create them once, then this line is all that changes.
+      - --set-secrets=SUPABASE_URL=supabase-url:latest,SUPABASE_ANON_KEY=supabase-anon-key:latest,SUPABASE_SERVICE_ROLE_KEY=supabase-service-role-key:latest,INTERNAL_TICK_SECRET=internal-tick-secret:latest,GOOGLE_API_KEY=google-api-key:latest

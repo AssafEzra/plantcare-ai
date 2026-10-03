@@ -12,6 +12,7 @@ rather than bringing the whole application down.
 from __future__ import annotations
 
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal
 
 from pydantic import Field, ValidationError, field_validator
@@ -47,7 +48,7 @@ class Settings(BaseSettings):
     supabase_url: str = Field(..., description="DEV or PROD Supabase project URL")
     supabase_anon_key: str = Field(..., description="Public anon key; safe for the UI process")
     supabase_service_role_key: str = Field(
-        ..., description="Server-side only. Never exposed to Streamlit browser code."
+        ..., description="Server-side only. Never reaches the browser."
     )
     supabase_storage_bucket: str = "plant-images"
 
@@ -75,9 +76,9 @@ class Settings(BaseSettings):
     google_api_key: str | None = None
     openai_api_key: str | None = None
     # Deprecated single-provider name, kept as a fallback for `anthropic_api_key`
-    # only. The deployed app redeploys on push and its Streamlit secret is still
-    # AI_API_KEY, so removing this would break the tester app between the push and
-    # the secrets edit. Remove once that secret has been renamed.
+    # only. It predates the per-vendor keys above and is accepted so an existing
+    # deployment configured under the old name keeps working across a redeploy.
+    # Remove once no environment sets it.
     ai_api_key: str | None = None
 
     identification_model: str = Field(..., description="Model id for the Identification Agent")
@@ -121,16 +122,18 @@ class Settings(BaseSettings):
     # writes to DEV on its own schedule and makes failures irreproducible.
     internal_tick_interval_seconds: int = 900
 
-    # --- UI → API ---
-    api_base_url: str = "http://localhost:8000"
-    # Run the API inside the Streamlit process instead of beside it.
+    # --- The built single-page application ---
     #
-    # Off everywhere except a single-process host. Streamlit Community Cloud runs
-    # one process from one repository and offers no way to start a second, so the
-    # UI would come up with nothing behind it. With this on, the entry point
-    # starts uvicorn on a daemon thread bound to loopback and `api_base_url`
-    # points at it. See DEPLOYMENT §3 - it is a deviation, not the target shape.
-    embedded_api: bool = False
+    # Where `npm run build` left `frontend/dist`. Set, the API also serves that
+    # directory: the SPA and `/v1` share one origin, which is the arrangement the
+    # frontend already assumes - `VITE_API_BASE_URL` is empty, so the browser asks
+    # for a relative `/v1/...` and no CORS configuration exists anywhere.
+    #
+    # Unset by default, and deliberately. Local development runs Vite's own server
+    # with its `/v1` proxy, and the test suite builds `create_app()` 17 times over -
+    # a catch-all route present in both would shadow routes registered after it.
+    # The container sets it; nothing else does. See DEPLOYMENT §3.
+    spa_dist_dir: Path | None = None
 
     # --- Rate limits for AI-triggering endpoints (A14) ---
     ai_rate_limit_per_hour: int = 10

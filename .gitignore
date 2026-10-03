@@ -23,9 +23,6 @@ dist/
 coverage.xml
 htmlcov/
 
-# Streamlit
-.streamlit/secrets.toml
-
 # Supabase local
 supabase/.branches/
 supabase/.temp/

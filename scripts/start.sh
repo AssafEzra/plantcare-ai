@@ -1,28 +1,20 @@
 #!/usr/bin/env bash
-# Run both halves of PlantCare AI in one container.
+# Run PlantCare AI: one process, serving the API and the built interface.
 #
-# Both binaries come from the virtualenv already on PATH (see the Dockerfile), so
-# there is no `uv run` wrapper process in front of either one.
+# uvicorn comes from the virtualenv already on PATH (see the Dockerfile), so there
+# is no `uv run` wrapper process in front of it.
+#
+# This used to start two processes and publish only Streamlit's. Now there is one
+# server and it binds 0.0.0.0, because the thing being published *is* the API -
+# `app/api/spa.py` serves the interface from the same origin, which is what lets
+# the browser call a relative `/v1` with no CORS configuration anywhere.
+#
+# `exec`, so uvicorn becomes PID 1 and receives SIGTERM directly. Cloud Run sends
+# SIGTERM and allows a grace period before killing the instance; with a bash
+# parent in the way, the signal would reach the shell and uvicorn would be killed
+# mid-request instead of draining.
 set -euo pipefail
 
-API_PORT=8000
-UI_PORT="${PORT:-7860}"
-
-# Loopback, not 0.0.0.0. The container publishes exactly one port and it belongs
-# to Streamlit; the API is reachable only from inside. `API_BASE_URL` points here.
-uvicorn app.api.main:app --host 127.0.0.1 --port "$API_PORT" &
-api=$!
-
-streamlit run app/ui/streamlit_app.py \
-  --server.port "$UI_PORT" \
-  --server.address 0.0.0.0 \
-  --server.headless true &
-ui=$!
-
-# If either half dies, take the container down with it. A Streamlit still serving
-# pages after the API has gone is worse than an outage: every click fails, while
-# the platform sees a healthy process and restarts nothing.
-trap 'kill -TERM "$api" "$ui" 2>/dev/null || true' EXIT INT TERM
-
-wait -n "$api" "$ui"
-exit 1
+exec uvicorn app.api.main:app \
+  --host 0.0.0.0 \
+  --port "${PORT:-8080}"
