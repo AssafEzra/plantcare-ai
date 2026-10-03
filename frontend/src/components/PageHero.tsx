@@ -6,12 +6,46 @@
  *
  * The foliage behind the title is drawn, not photographed. A photograph would have to
  * be shipped, would cost a request on every page load, and would need a different crop
- * at every width; three SVG leaves cost nothing, scale cleanly and tint themselves from
- * the band they sit on. It is `aria-hidden` because it says nothing a reader needs.
+ * at every width; a handful of SVG fronds cost nothing, scale cleanly and tint
+ * themselves from the band they sit on. It is `aria-hidden` because it says nothing a
+ * reader needs.
  */
 
-import type { ReactNode } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
 import './PageHero.css'
+
+/* One leaf, drawn once, planted at the origin and pointing up. Every frond is this
+   shape turned to its own angle — which is what makes a plant rather than six
+   different drawings that happen to be near each other. */
+const LEAF = 'M0 0C26-26 34-74 0-118-34-74-26-26 0 0Z'
+const RIB = 'M0 0C6-30 6-70 0-108'
+
+/* Seven of them, fanned out and each on its own clock.
+ *
+ * The periods are deliberately not multiples of one another: fronds on related clocks
+ * fall back into step within a few seconds of being watched, and a plant that breathes
+ * in unison reads as a loop rather than as a plant. The negative delays start each one
+ * part-way through its own cycle, so nothing lines up on the first frame either.
+ *
+ * Opacity falls off towards the outer fronds, which is what gives the fan depth: the
+ * ones leaning furthest out read as being behind the rest. */
+const FRONDS = [
+  { angle: -78, scale: 0.72, fill: 0.3, period: 10, delay: -5.6, sway: 7 },
+  { angle: -52, scale: 0.92, fill: 0.42, period: 8.5, delay: -3, sway: 6 },
+  { angle: -26, scale: 1.08, fill: 0.5, period: 6.5, delay: -0.8, sway: 5 },
+  { angle: 0, scale: 1.16, fill: 0.56, period: 7.4, delay: -2.2, sway: 4 },
+  { angle: 26, scale: 1.05, fill: 0.46, period: 9, delay: -4.4, sway: 5 },
+  { angle: 52, scale: 0.88, fill: 0.36, period: 8, delay: -6.1, sway: 6 },
+  { angle: 78, scale: 0.68, fill: 0.26, period: 11, delay: -1.7, sway: 7 },
+]
+
+/* Three specks drifting up through the fan. They cost three circles and they are the
+   difference between foliage that sways and air that moves through it. */
+const MOTES = [
+  { cx: 96, cy: 150, r: 3.5, period: 9, delay: 0 },
+  { cx: 168, cy: 118, r: 2.5, period: 12, delay: -4 },
+  { cx: 232, cy: 156, r: 3, period: 10.5, delay: -7 },
+]
 
 export default function PageHero({
   eyebrow,
@@ -33,30 +67,48 @@ export default function PageHero({
   return (
     <header className="pc-hero">
       <span className="pc-hero-art" aria-hidden="true">
-        <svg viewBox="0 0 240 180" fill="none" preserveAspectRatio="xMidYMid meet">
-          <g className="pc-hero-leaf pc-hero-leaf-1">
-            <path
-              d="M120 170C120 120 150 80 205 70c-5 58-42 92-85 100z"
+        <svg viewBox="0 0 320 230" fill="none" preserveAspectRatio="xMidYMid meet">
+          {FRONDS.map((frond) => (
+            <g
+              key={frond.angle}
+              className="pc-hero-leaf"
+              style={
+                {
+                  '--pc-leaf-period': `${frond.period}s`,
+                  '--pc-leaf-delay': `${frond.delay}s`,
+                  '--pc-leaf-sway': `${frond.sway}deg`,
+                } as CSSProperties
+              }
+            >
+              <g transform={`translate(160 224) rotate(${frond.angle}) scale(${frond.scale})`}>
+                <path d={LEAF} fill="currentColor" opacity={frond.fill} />
+                <path
+                  d={RIB}
+                  stroke="currentColor"
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                  opacity={frond.fill * 0.75}
+                />
+              </g>
+            </g>
+          ))}
+
+          {MOTES.map((mote) => (
+            <circle
+              key={mote.cx}
+              className="pc-hero-mote"
+              cx={mote.cx}
+              cy={mote.cy}
+              r={mote.r}
               fill="currentColor"
-              opacity="0.5"
+              style={
+                {
+                  '--pc-mote-period': `${mote.period}s`,
+                  '--pc-mote-delay': `${mote.delay}s`,
+                } as CSSProperties
+              }
             />
-            <path d="M120 170C135 130 160 100 200 78" stroke="currentColor" strokeWidth="2" opacity="0.4" />
-          </g>
-          <g className="pc-hero-leaf pc-hero-leaf-2">
-            <path
-              d="M120 175C120 130 92 96 40 88c5 54 40 84 80 87z"
-              fill="currentColor"
-              opacity="0.38"
-            />
-            <path d="M120 175C106 140 84 114 46 95" stroke="currentColor" strokeWidth="2" opacity="0.3" />
-          </g>
-          <g className="pc-hero-leaf pc-hero-leaf-3">
-            <path
-              d="M118 180C118 140 112 86 128 28c30 48 24 112 4 152z"
-              fill="currentColor"
-              opacity="0.3"
-            />
-          </g>
+          ))}
         </svg>
       </span>
 

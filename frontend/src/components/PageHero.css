@@ -32,13 +32,14 @@
 /* --- the foliage --------------------------------------------------------- */
 
 /* Bled off the end corner and clipped by the band. It is the only thing on the page
-   allowed to be purely decorative, so it stays faint and stays out of the way of the
-   title even at the narrowest width. */
+   allowed to be purely decorative, so it stays out of the way of the title at every
+   width — the hero packs its words and its action to the START edge, which is what
+   leaves this corner to the plant. */
 .pc-hero-art {
   position: absolute;
-  inset-block: -20% -30%;
-  inset-inline-end: -4%;
-  inline-size: 260px;
+  inset-block: -26% -34%;
+  inset-inline-end: -3%;
+  inline-size: 420px;
   color: #fff;
   opacity: 0.45;
   pointer-events: none;
@@ -49,34 +50,52 @@
   block-size: 100%;
 }
 
-/* Each leaf sways on its own clock, around a point at the base of the stem, so the
-   group never returns to the same arrangement twice in a viewing. The three periods
-   are deliberately not multiples of each other — 6.5, 8 and 9.5 seconds — because
-   three leaves on related clocks would visibly fall back into step.
+/* Each frond sways on its own clock, around the point where every one of them is
+   planted. The three periods of the old three-leaf version were close enough to fall
+   back into step; seven fronds on seven unrelated periods never repeat an arrangement
+   in a viewing.
 
    The reduced-motion rule in styles/base.css flattens every animation to 0.01ms, which
-   leaves the leaves exactly where they are drawn. */
+   leaves the fronds exactly where they are drawn — a still plant, not a missing one. */
 .pc-hero-leaf {
-  transform-origin: 120px 175px;
-  animation: pc-leaf-sway 6.5s ease-in-out infinite alternate;
+  transform-origin: 160px 224px;
+  animation: pc-leaf-sway var(--pc-leaf-period, 8s) ease-in-out infinite alternate;
+  animation-delay: var(--pc-leaf-delay, 0s);
 }
 
-.pc-hero-leaf-2 {
-  animation-duration: 8s;
-  animation-delay: -2.5s;
-}
-
-.pc-hero-leaf-3 {
-  animation-duration: 9.5s;
-  animation-delay: -5s;
-}
-
+/* The sway is per-frond: the outer ones travel further, the way a real fan does, and a
+   uniform angle made the whole plant look like one rigid piece being rocked. */
 @keyframes pc-leaf-sway {
   from {
-    transform: rotate(-6deg) translateY(4px) scale(0.98);
+    transform: rotate(calc(var(--pc-leaf-sway, 5deg) * -1)) translateY(3px) scale(0.985);
   }
   to {
-    transform: rotate(6deg) translateY(-12px) scale(1.03);
+    transform: rotate(var(--pc-leaf-sway, 5deg)) translateY(-10px) scale(1.03);
+  }
+}
+
+/* Drifting up and fading out. Not `alternate` — a speck that rises and then retraces
+   its path downwards is a yo-yo, not air. */
+.pc-hero-mote {
+  opacity: 0;
+  animation: pc-mote-drift var(--pc-mote-period, 10s) ease-in-out infinite;
+  animation-delay: var(--pc-mote-delay, 0s);
+}
+
+@keyframes pc-mote-drift {
+  0% {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  30% {
+    opacity: 0.55;
+  }
+  70% {
+    opacity: 0.4;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-46px);
   }
 }
 
@@ -189,9 +208,12 @@
     text-align: center;
   }
 
-  /* Smaller and fainter: at this width the title has nowhere else to go. */
+  /* Smaller, and anchored higher: at this width the action is a full-width button
+     across the foot of the band, so the plant keeps the corner beside the title. */
   .pc-hero-art {
-    inline-size: 190px;
-    opacity: 0.36;
+    inset-block: -18% auto;
+    block-size: 180px;
+    inline-size: 250px;
+    opacity: 0.4;
   }
 }
