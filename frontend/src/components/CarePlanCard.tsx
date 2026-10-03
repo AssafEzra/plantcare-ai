@@ -115,17 +115,25 @@ export default function CarePlanCard({
       <h4>ההמלצות המקצועיות</h4>
       <Recommendations recommendations={plan.professional_recommendations} />
 
-      <h4>התזמון שלך</h4>
-      <RuleList rules={plan.rules} />
+      {/* Folded away, with the one control that changes it inside. The schedule is a
+          list of four or five rules and a form under it — the longest thing on this
+          card, read once when the plan is new and then left alone, and it sat open
+          between the advice above it and whatever came next. Closed, "התזמון שלך" is
+          one line; open, everything about the schedule is in one place, which is also
+          where it is changed from. */}
+      <details className="pc-schedule">
+        <summary>התזמון שלך</summary>
+        <RuleList rules={plan.rules} />
 
-      {canEdit && (
-        <AdjustForm
-          plan={plan}
-          onAdjust={onAdjust}
-          adjusting={adjusting}
-          adjustError={adjustError}
-        />
-      )}
+        {canEdit && (
+          <AdjustForm
+            plan={plan}
+            onAdjust={onAdjust}
+            adjusting={adjusting}
+            adjustError={adjustError}
+          />
+        )}
+      </details>
     </section>
   )
 }

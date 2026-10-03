@@ -124,16 +124,18 @@ function Article({
 }
 
 /**
- * One heading, its first sentence, and the rest behind a disclosure.
+ * One heading, and its first sentence as the handle on the rest.
  *
  * Seven sections of three or four paragraphs each is a document, and it was set out in
  * full on a page that already carries the plant's photographs, its tasks, its plan and
- * its last health check. The opening sentence of each is what a reader scans for —
- * "bright indirect light", "every seven to ten days" — and the rest is there the moment
- * they want it, the same way the source list already works.
+ * its last health check. The opening sentence is what a reader scans for — "bright
+ * indirect light", "every seven to ten days" — so it IS the disclosure's summary. A
+ * first version showed the sentence and put a "להרחבה" bar under it, which spent two
+ * lines per section on saying the same thing twice.
  *
  * Nothing is summarised or rewritten: the split is the text's own first sentence
- * boundary. Where there is no second sentence the disclosure is simply absent.
+ * boundary. Where there is no second sentence there is no disclosure, because a
+ * control that opens onto nothing is worse than a paragraph.
  */
 function Section({ label, text }: { label: string; text: string }) {
   const [first, rest] = splitFirstSentence(text)
@@ -141,12 +143,13 @@ function Section({ label, text }: { label: string; text: string }) {
   return (
     <section className="pc-knowledgesection">
       <h4>{label}</h4>
-      <p>{first}</p>
-      {rest && (
-        <details className="pc-reco">
-          <summary>להרחבה</summary>
+      {rest ? (
+        <details className="pc-reco pc-knowledgemore">
+          <summary>{first}</summary>
           <p>{rest}</p>
         </details>
+      ) : (
+        <p>{first}</p>
       )}
     </section>
   )

@@ -37,9 +37,9 @@
    leaves this corner to the plant. */
 .pc-hero-art {
   position: absolute;
-  inset-block: -26% -34%;
+  inset-block: 0 -40%;
   inset-inline-end: -3%;
-  inline-size: 420px;
+  inline-size: 520px;
   color: #fff;
   opacity: 0.45;
   pointer-events: none;
@@ -105,8 +105,12 @@
   position: relative;
   min-inline-size: 0;
   /* Sized by its own words, so the action sits beside the title rather than being
-     pushed across the banner by a title that grew to fill it. */
+     pushed across the banner by a title that grew to fill it — and capped, so that a
+     long title wraps to a second line instead of pushing the action out over the
+     foliage. A plant's name can be "קלתיאה מקויאנה (צמח הטווס)"; a heading set across
+     a thousand pixels is bad typography before it is a collision. */
   flex: 0 1 auto;
+  max-inline-size: 36ch;
 }
 
 .pc-hero-eyebrow {
@@ -211,9 +215,9 @@
   /* Smaller, and anchored higher: at this width the action is a full-width button
      across the foot of the band, so the plant keeps the corner beside the title. */
   .pc-hero-art {
-    inset-block: -18% auto;
-    block-size: 180px;
-    inline-size: 250px;
+    inset-block: 0 auto;
+    block-size: 100%;
+    inline-size: 300px;
     opacity: 0.4;
   }
 }

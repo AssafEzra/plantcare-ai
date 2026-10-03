@@ -67,7 +67,11 @@ export default function PageHero({
   return (
     <header className="pc-hero">
       <span className="pc-hero-art" aria-hidden="true">
-        <svg viewBox="0 0 320 230" fill="none" preserveAspectRatio="xMidYMid meet">
+        {/* Cropped to start just above the tallest frond's tip, and anchored to the top of
+              its box (`YMin`) rather than centred: that is what puts the top leaf on the
+              band's own top edge at any height the banner happens to be, instead of
+              wherever a centred drawing's padding happens to leave it. */}
+          <svg viewBox="0 72 320 158" fill="none" preserveAspectRatio="xMidYMin meet">
           {FRONDS.map((frond) => (
             <g
               key={frond.angle}

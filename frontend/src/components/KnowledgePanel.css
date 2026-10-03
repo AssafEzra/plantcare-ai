@@ -40,3 +40,17 @@
 .pc-sourcetitle {
   font-weight: 600;
 }
+
+/* The summary is a sentence, not a label, so it is set as prose: ordinary weight and
+   size, wrapping like the paragraph it opens onto, and `plaintext` for the same reason
+   the paragraphs have it — one of these sections is a Latin binomial. */
+.pc-knowledgemore > summary {
+  font-weight: 400;
+  font-size: inherit;
+  unicode-bidi: plaintext;
+}
+
+.pc-knowledgemore > p {
+  margin-block-start: var(--pc-space-2);
+  color: var(--pc-text-muted);
+}

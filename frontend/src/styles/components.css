@@ -189,29 +189,6 @@
 
 /* --- page furniture ------------------------------------------------------ */
 
-.pc-pagehead {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--pc-space-3);
-  flex-wrap: wrap;
-  margin-block-end: var(--pc-space-4);
-}
-
-.pc-pagehead h1 {
-  margin: 0;
-}
-
-/* Display size is for wide screens only. On a phone the h1 is already the largest
-   thing on the page, and a second step up just costs a line. */
-@media (min-width: 900px) {
-  .pc-pagehead h1 {
-    font-size: var(--pc-display);
-    font-weight: var(--pc-display-weight);
-    letter-spacing: var(--pc-display-tracking);
-  }
-}
-
 /* A link styled as a button needs the padding to apply to an inline element. */
 a.pc-btn {
   display: inline-block;

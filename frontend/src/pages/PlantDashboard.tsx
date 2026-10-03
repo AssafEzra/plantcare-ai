@@ -58,6 +58,7 @@ import HealthAssessmentDialog from '../components/HealthAssessmentDialog'
 import HealthCheckDialog from '../components/HealthCheckDialog'
 import EnvironmentForm, { EnvironmentSummary } from '../components/EnvironmentForm'
 import Modal from '../components/Modal'
+import PageHero from '../components/PageHero'
 import Timeline from '../components/Timeline'
 import KnowledgePanel from '../components/KnowledgePanel'
 import IdentificationPrompt from '../components/IdentificationPrompt'
@@ -96,10 +97,14 @@ function Loaded({ plantId, plant }: { plantId: string; plant: Dashboard }) {
 
   return (
     <>
-      <header className="pc-pagehead">
-        <h1>{plant.name || plant.species?.common_name || 'הצמח שלי'}</h1>
-        <Link to="/">לרשימת הצמחים</Link>
-      </header>
+      <PageHero
+        eyebrow={archived ? 'בארכיון' : 'הצמח שלי'}
+        title={plant.name || plant.species?.common_name || 'הצמח שלי'}
+      >
+        <Link to="/" className="pc-btn">
+          לרשימת הצמחים
+        </Link>
+      </PageHero>
 
       {archived && (
         <p className="pc-formnotice" role="status">
@@ -282,7 +287,7 @@ function Details({
 
   return (
     <details className="pc-reco pc-detailsblock">
-      <summary>עריכת פרטי הצמח</summary>
+      <summary>עריכת פרטי הצמח ותנאי הגידול</summary>
       <form
         onSubmit={(event) => {
           event.preventDefault()
