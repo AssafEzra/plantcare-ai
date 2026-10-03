@@ -27,6 +27,7 @@ from app.common.enums import ConfidenceLevel, HealthStatus, HealthTrend
 from app.infrastructure.ai.gateway import AIGateway
 from app.orchestration.services.agent_requests import BackgroundTasksExecutor
 from app.orchestration.workflows import health as workflow
+from app.repositories import plants as plants_repo
 
 router = APIRouter(tags=["health"])
 
@@ -75,6 +76,30 @@ class HistoryEntry(BaseModel):
     trend: HealthTrend
     requires_attention: bool = False
     created_at: datetime
+
+
+class IssueBrief(BaseModel):
+    """A possible issue, cut to what fits on a card — never without its evidence.
+
+    §16 forbids presenting a definitive diagnosis, and the evidence is what keeps an
+    issue arguable rather than pronounced. It travels with the name even here.
+    """
+
+    issue_name: str
+    severity: int | None = None
+    evidence: str | None = None
+
+
+class LatestAssessment(HistoryEntry):
+    insufficient_information_reason: str | None = None
+    issues: list[IssueBrief] = Field(default_factory=list)
+    recommendations: list[str] = Field(default_factory=list)
+
+
+class PlantHealthOverview(BaseModel):
+    plant_id: UUID
+    latest: LatestAssessment
+    history: list[HistoryEntry] = Field(default_factory=list)
 
 
 @router.post(
@@ -147,4 +172,30 @@ async def get_health_history(
     entries = workflow.history(user.client, plant_id=plant_id, limit=limit)
     return DataEnvelope(
         data=[HistoryEntry(**entry) for entry in entries], request_id=request.state.request_id
+    )
+
+
+@router.get("/health/overview", response_model=DataEnvelope[list[PlantHealthOverview]])
+async def get_health_overview(
+    request: Request, user: CurrentUserDep
+) -> DataEnvelope[list[PlantHealthOverview]]:
+    """What every assessed plant's last check found, and when the ones before it ran.
+
+    The בריאות screen draws a card per plant with the last check's finding on it and
+    the dates of the checks before it. Through the per-plant routes that is two round
+    trips a card; here it is four queries for the screen. The plant's name, species and
+    photograph are NOT repeated — the screen already holds the plant list, and a second
+    copy of a thumbnail URL is a second thing to keep true.
+
+    Only plants the user owns, through the repository, so this screen and My Plants
+    cannot disagree about what a plant of theirs is.
+    """
+    plants = plants_repo.list_for_user(user.client, owner_id=user.id)
+    found = workflow.overview(user.client, [str(plant["id"]) for plant in plants])
+    return DataEnvelope(
+        data=[
+            PlantHealthOverview(plant_id=UUID(plant_id), **entry)
+            for plant_id, entry in found.items()
+        ],
+        request_id=request.state.request_id,
     )

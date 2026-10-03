@@ -451,6 +451,90 @@ def history(client: Client, *, plant_id: UUID, limit: int = 20) -> list[Row]:
     )
 
 
+def overview(
+    client: Client, plant_ids: list[str], *, history_limit: int = 8
+) -> dict[str, dict[str, Any]]:
+    """Every plant's assessment history, and the headline of the latest one.
+
+    Four queries for the whole screen, not four per plant. The בריאות tab shows a card
+    per plant that needs looking at, and each card wants the last check's finding, its
+    first recommendation and the dates of the checks before it — which through the
+    per-plant routes is two round trips a card, the fan-out this codebase keeps paying
+    for elsewhere.
+
+    The headline is not a summary the model wrote; there is no such field. It is the
+    assessment's own highest-severity issue and its first recommendation, which are
+    already ordered that way in the database, cut to what fits on a card. §16's framing
+    survives the cut: an issue is a possibility and carries the evidence it rests on.
+
+    Keyed by plant id, and a plant that has never been assessed is simply absent.
+    """
+    if not plant_ids:
+        return {}
+
+    assessments = rows(
+        client.table("health_assessments")
+        .select(
+            "id, plant_id, overall_status, confidence_level, trend, requires_attention, "
+            "insufficient_information_reason, created_at"
+        )
+        .in_("plant_id", plant_ids)
+        .order("created_at", desc=True)
+        .execute()
+    )
+    if not assessments:
+        return {}
+
+    by_plant: dict[str, list[Row]] = {}
+    for row in assessments:
+        by_plant.setdefault(str(row["plant_id"]), []).append(row)
+
+    latest_ids = [str(entries[0]["id"]) for entries in by_plant.values()]
+    issues = _by_assessment(
+        rows(
+            client.table("health_issues")
+            .select("health_assessment_id, issue_name, severity, evidence")
+            .in_("health_assessment_id", latest_ids)
+            .order("severity", desc=True)
+            .execute()
+        )
+    )
+    recommendations = _by_assessment(
+        rows(
+            client.table("health_recommendations")
+            .select("health_assessment_id, recommendation_text, requires_care_plan_adjustment")
+            .in_("health_assessment_id", latest_ids)
+            .order("priority")
+            .execute()
+        )
+    )
+
+    result: dict[str, dict[str, Any]] = {}
+    for plant_id, entries in by_plant.items():
+        latest = entries[0]
+        assessment_id = str(latest["id"])
+        result[plant_id] = {
+            "latest": {
+                **latest,
+                # Two at most. A card is a prompt to look closer, not the assessment.
+                "issues": issues.get(assessment_id, [])[:2],
+                "recommendations": [
+                    row["recommendation_text"] for row in recommendations.get(assessment_id, [])
+                ][:2],
+            },
+            "history": entries[1 : history_limit + 1],
+        }
+    return result
+
+
+def _by_assessment(found: list[Row]) -> dict[str, list[Row]]:
+    """Group child rows by their assessment, preserving the order they came back in."""
+    grouped: dict[str, list[Row]] = {}
+    for row in found:
+        grouped.setdefault(str(row["health_assessment_id"]), []).append(row)
+    return grouped
+
+
 def status_of(client: Client, plant_id: UUID) -> HealthStatus:
     plant = first_row(
         client.table("plants").select("current_health_status").eq("id", str(plant_id)).execute()

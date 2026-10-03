@@ -62,8 +62,8 @@
   position: relative;
   display: grid;
   place-items: center;
-  inline-size: 96px;
-  block-size: 96px;
+  inline-size: 112px;
+  block-size: 112px;
   flex: 0 0 auto;
   overflow: hidden;
   border-radius: var(--pc-radius-control);
@@ -230,8 +230,8 @@
   }
 
   .pc-taskmedia {
-    inline-size: 80px;
-    block-size: 80px;
+    inline-size: 92px;
+    block-size: 92px;
   }
 
   .pc-taskaction {

@@ -19,7 +19,7 @@
  */
 
 import { useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useParams, useSearchParams } from 'react-router-dom'
 import {
   usePlantDashboard,
   usePlantHistory,
@@ -484,9 +484,23 @@ function HealthSection({
   plant: Dashboard
   canEdit: boolean
 }) {
-  const [dialogOpen, setDialogOpen] = useState(false)
+  /* `?health-check=1` opens the dialog on arrival. The בריאות screen lists plants with
+     a "בדיקה חדשה" link on each, and the check itself lives here, where the plant's
+     photographs are — without this the link would land the reader on a long page with
+     the button somewhere down it. Read once, on mount: a user who closes the dialog has
+     closed it, and the parameter is cleared so a reload does not reopen it. */
+  const [params, setParams] = useSearchParams()
+  const [dialogOpen, setDialogOpen] = useState(canEdit && params.get('health-check') === '1')
   const [historyOpen, setHistoryOpen] = useState(false)
   const [watching, setWatching] = useState<string | null>(null)
+
+  function closeDialog() {
+    setDialogOpen(false)
+    if (params.has('health-check')) {
+      params.delete('health-check')
+      setParams(params, { replace: true })
+    }
+  }
 
   const start = useStartHealthCheck(plantId)
   const watched = useAgentRequest(watching)
@@ -526,14 +540,14 @@ function HealthSection({
           gallery={offerable}
           busy={start.isPending}
           error={start.error}
-          onClose={() => setDialogOpen(false)}
+          onClose={closeDialog}
           onSubmit={(files, existingImageIds, note) =>
             start.mutate(
               { files, existingImageIds, note },
               {
                 onSuccess: (accepted) => {
                   setWatching(accepted.agent_request_id)
-                  setDialogOpen(false)
+                  closeDialog()
                 },
               },
             )

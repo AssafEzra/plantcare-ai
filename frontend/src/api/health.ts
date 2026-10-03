@@ -57,6 +57,46 @@ export type HealthHistoryEntry = {
   created_at: string
 }
 
+/* --- the בריאות screen's aggregate ----------------------------------------- */
+
+export type IssueBrief = {
+  issue_name: string
+  severity: number | null
+  evidence: string | null
+}
+
+/** The last check, cut to what a card can carry. See GET /v1/health/overview. */
+export type LatestAssessment = HealthHistoryEntry & {
+  insufficient_information_reason: string | null
+  issues: IssueBrief[]
+  recommendations: string[]
+}
+
+export type PlantHealthOverview = {
+  plant_id: string
+  latest: LatestAssessment
+  /** The checks before the latest one, newest first. */
+  history: HealthHistoryEntry[]
+}
+
+/**
+ * Every assessed plant's last finding, in one request.
+ *
+ * Not one `useHealthHistory` per card plus one `useAssessment` per card: that is two
+ * round trips a plant for a screen whose whole point is the overview, and the server
+ * answers it in four queries however many plants there are. The plant's name, species
+ * and photograph are deliberately NOT in this payload — the screen already has the
+ * plant list, and a second copy of a thumbnail URL is a second thing to keep true.
+ */
+export function useHealthOverview() {
+  const { userId } = useAuth()
+  return useQuery({
+    queryKey: scoped(userId, ['health-overview']),
+    queryFn: () => api.get<PlantHealthOverview[]>('/v1/health/overview'),
+    enabled: Boolean(userId),
+  })
+}
+
 export type HealthCheckAccepted = {
   agent_request_id: string
   status: string

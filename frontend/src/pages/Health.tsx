@@ -1,45 +1,85 @@
-/* בריאות — plants needing attention.
+/* בריאות — what the last check found, per plant.
  *
- * Section 11 puts Health in the primary navigation but never says what the screen
- * is; section 21 places the health *check* on the plant dashboard only, and section
- * 12 bars a health action from Home. The user settled it: this tab lists the plants
- * whose health needs looking at, worst first.
+ * §11 puts Health in the primary navigation but never says what the screen is; §21
+ * places the health *check* on the plant dashboard, and §12 bars a health action from
+ * the day's work. The user settled it: this tab lists the plants whose health needs
+ * looking at, worst first.
  *
- * It starts no health check and offers no action of its own — the check belongs to
- * the plant dashboard (section 21), so every row here is a way in rather than a
- * shortcut past it.
+ * It used to list them as plant tiles — the same card the collection draws, which said
+ * a name, a photograph and a status chip. Everything that makes this screen worth
+ * opening was one navigation away: what the last check actually found, when it ran,
+ * and what the checks before it concluded. All of that is on the card now, and every
+ * date opens the assessment in full over the list.
+ *
+ * It still starts no check of its own. The check belongs to the plant dashboard, where
+ * the plant's photographs are, so "בדיקה חדשה" is a link that opens it there.
  */
 
+import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { usePlants } from '../api/plants'
+import { usePlants, plantName, type Plant } from '../api/plants'
+import { useHealthOverview, type PlantHealthOverview } from '../api/health'
 import { STATUS_SEVERITY } from '../lib/status'
-import PlantCard from '../components/PlantCard'
+import HealthPlantCard from '../components/HealthPlantCard'
+import HealthAssessmentDialog from '../components/HealthAssessmentDialog'
 import Async from '../components/Async'
 import PageHero from '../components/PageHero'
-import '../components/PlantCard.css'
+import '../components/HealthPlantCard.css'
 
 export default function Health() {
   const query = usePlants()
-  const plants = query.data ?? []
+  const overview = useHealthOverview()
+
+  /* Which assessment is open, and whose. The plant's name goes in the dialog title:
+     this list holds several, and a check with no plant on it is a check about nothing
+     in particular. */
+  const [open, setOpen] = useState<{ id: string; plant: string } | null>(null)
+
+  const byPlant = useMemo(() => {
+    const map = new Map<string, PlantHealthOverview>()
+    for (const entry of overview.data ?? []) map.set(entry.plant_id, entry)
+    return map
+  }, [overview.data])
 
   /* One request, filtered here rather than three calls with health_status=. The
      endpoint takes a single value, and "needs attention" is two of them plus the
      unknowns worth chasing. */
-  const needing = plants
-    .filter(
-      (p) =>
-        p.status === 'ACTIVE' &&
-        (p.current_health_status === 'CRITICAL' ||
-          p.current_health_status === 'NEEDS_ATTENTION'),
-    )
-    .sort(
-      (a, b) =>
-        (STATUS_SEVERITY[a.current_health_status] ?? 9) -
-        (STATUS_SEVERITY[b.current_health_status] ?? 9),
-    )
+  /* Both cuts depend on `query.data`, not on a local `?? []` — that default builds a
+     new array every render and the memo would never hold. */
+  const needing = useMemo(
+    () =>
+      (query.data ?? [])
+        .filter(
+          (p) =>
+            p.status === 'ACTIVE' &&
+            (p.current_health_status === 'CRITICAL' ||
+              p.current_health_status === 'NEEDS_ATTENTION'),
+        )
+        .sort(
+          (a, b) =>
+            (STATUS_SEVERITY[a.current_health_status] ?? 9) -
+            (STATUS_SEVERITY[b.current_health_status] ?? 9),
+        ),
+    [query.data],
+  )
 
-  const unassessed = plants.filter(
-    (p) => p.status === 'ACTIVE' && p.current_health_status === 'UNKNOWN',
+  const unassessed = useMemo(
+    () =>
+      (query.data ?? []).filter(
+        (p) => p.status === 'ACTIVE' && p.current_health_status === 'UNKNOWN',
+      ),
+    [query.data],
+  )
+
+  const total = query.data?.length ?? 0
+
+  const card = (plant: Plant) => (
+    <HealthPlantCard
+      key={plant.id}
+      plant={plant}
+      health={byPlant.get(plant.id)}
+      onOpenAssessment={(id) => setOpen({ id, plant: plantName(plant) })}
+    />
   )
 
   return (
@@ -59,7 +99,7 @@ export default function Health() {
         query={query}
         empty={needing.length === 0 && unassessed.length === 0}
         emptyState={
-          plants.length === 0 ? (
+          total === 0 ? (
             <div className="pc-empty">
               <span className="pc-emptyart" aria-hidden="true">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
@@ -96,11 +136,7 @@ export default function Health() {
                   </h2>
                 </div>
               </div>
-              <div className="pc-plantgrid">
-                {needing.map((plant, i) => (
-                  <PlantCard key={plant.id} plant={plant} index={i} />
-                ))}
-              </div>
+              <div className="pc-healthlist">{needing.map(card)}</div>
             </>
           )}
 
@@ -114,18 +150,19 @@ export default function Health() {
                   </h2>
                 </div>
               </div>
-              <p className="pc-placeholder-note">
-                לצמחים האלה עדיין אין בדיקת בריאות. אפשר להריץ בדיקה מדף הצמח.
-              </p>
-              <div className="pc-plantgrid">
-                {unassessed.map((plant, i) => (
-                  <PlantCard key={plant.id} plant={plant} index={i} />
-                ))}
-              </div>
+              <div className="pc-healthlist">{unassessed.map(card)}</div>
             </>
           )}
         </>
       </Async>
+
+      {open && (
+        <HealthAssessmentDialog
+          assessmentId={open.id}
+          plantName={open.plant}
+          onClose={() => setOpen(null)}
+        />
+      )}
     </section>
   )
 }
