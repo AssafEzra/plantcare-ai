@@ -16,6 +16,41 @@ before inviting anyone and treat `scripts/scrub_dev_database.py` as the reset bu
 > **Local Docker is not needed.** `gcloud builds submit` uploads the source and builds
 > in Cloud Build. Only the `gcloud` CLI has to be installed.
 
+## The live deployment
+
+Stood up on 2026-10-03 and serving.
+
+| | |
+|---|---|
+| URL | <https://plantcare-ai-mv5irloskq-ey.a.run.app> |
+| Project | `plantcare-ai-174016` ("PlantCare AI"), billing account `01AC07-9768D2-DAD60C` |
+| Region | `europe-west3` (Frankfurt) |
+| Service | `plantcare-ai`, `--max-instances=1 --min-instances=0 --no-cpu-throttling` |
+| Image | `europe-west3-docker.pkg.dev/plantcare-ai-174016/plantcare/plantcare-ai` |
+| Scheduler | job `plantcare-tick`, `*/15 * * * *`, Asia/Jerusalem |
+| Database | **DEV** Supabase (`ckwvjyxeennrknwjsujl`) |
+
+Redeploy with the command in §2; nothing in §0 or §1 needs repeating.
+
+### Three things that went wrong the first time
+
+Recorded because none of them announce themselves:
+
+1. **`WORKDIR` creates its directory as root**, whatever `USER` is current, so
+   `uv sync` could not create `.venv`. The Dockerfile now `mkdir`s and `chown`s
+   before switching user. This bug had been latent since the file was written for
+   Hugging Face Spaces, which went paid before anything was built from it.
+2. **`.gcloudignore` uses .gitignore syntax, where patterns are not anchored** —
+   unlike `.dockerignore`, where they are. A bare `supabase` line also matched
+   `app/infrastructure/supabase/`, and the container died on
+   `ModuleNotFoundError` before binding a port. Every pattern in that file now
+   carries a leading slash, and a bare `*.md` would have taken `prompts/` with it.
+3. **Cloud Build pushes `images:` only after every step finishes**, so a deploy
+   step in the same build cannot find the tag. The push is its own step now.
+
+And one that only shows up in production: **Google Frontend answers `/healthz`
+itself**, so the liveness probe is `/livez`. See `docs/ENVIRONMENTS.md`.
+
 ## 0. Once per project
 
 ```bash
@@ -125,7 +160,7 @@ gcloud scheduler jobs create http plantcare-tick \
   --time-zone=Asia/Jerusalem \
   --uri="${SERVICE_URL}/v1/internal/tick" \
   --http-method=POST \
-  --update-headers="X-Internal-Secret=<the internal-tick-secret value>" \
+  --headers="X-Internal-Secret=<the internal-tick-secret value>" \
   --attempt-deadline=900s
 ```
 
