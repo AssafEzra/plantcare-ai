@@ -42,14 +42,20 @@
   --pc-border: #e2e3e0;
 
   /* --- status palette --------------------------------------------------- */
-  /* Drives plant health everywhere. Each has a foreground and a wash. The washes are
-     unchanged; the foregrounds were darkened to clear 4.5:1 at badge size. */
+  /* Drives plant health everywhere. Each has a foreground and a wash.
+   *
+   * Warning used to be an amber (#8f5c1c, hue 35) and read as brown rather than as an
+   * alert. It is now a red-orange at hue 15, and danger moved to a deeper, more
+   * saturated red at hue 2 to stay apart from it: 13° of hue and 11% of lightness
+   * between them. That is not a wide gap, which is exactly why the rule that a status
+   * is never colour alone matters — every badge carries its glyph and its word, and
+   * "!" and "!!" are what actually separate the two. */
   --pc-success: #3a7550;
   --pc-success-bg: #e8f3eb;
-  --pc-warning: #8f5c1c;
-  --pc-warning-bg: #f8eedc;
-  --pc-danger: #a94a43;
-  --pc-danger-bg: #f7e8e6;
+  --pc-warning: #b5451f;
+  --pc-warning-bg: #fceee7;
+  --pc-danger: #8f1410;
+  --pc-danger-bg: #fbe7e5;
   --pc-neutral: #5f6e65;
   --pc-neutral-bg: #eceeea;
 
