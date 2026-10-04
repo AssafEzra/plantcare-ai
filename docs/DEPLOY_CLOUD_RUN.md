@@ -27,7 +27,7 @@ Stood up on 2026-10-03 and serving.
 | Region | `europe-west3` (Frankfurt) |
 | Service | `plantcare-ai`, `--max-instances=1 --min-instances=0 --no-cpu-throttling` |
 | Image | `europe-west3-docker.pkg.dev/plantcare-ai-174016/plantcare/plantcare-ai` |
-| Scheduler | job `plantcare-tick`, `*/15 * * * *`, Asia/Jerusalem |
+| Scheduler | job `plantcare-tick`, `0 8 */3 * *`, Asia/Jerusalem — see **What this actually costs** |
 | Database | **DEV** Supabase (`ckwvjyxeennrknwjsujl`) |
 
 Redeploy with the command in §2; nothing in §0 or §1 needs repeating.
@@ -135,9 +135,41 @@ in this repository.
 | `--timeout=900` | The scheduler tick is cut off. `POST /v1/internal/tick` runs the sweep synchronously inside the request and a full sweep was measured at 6m11s against a populated database (DEPLOYMENT §3); the default is 300s. |
 | `INTERNAL_TICK_INTERVAL_SECONDS=0` | Two schedulers, for no benefit. The in-process timer cannot be relied on here (§3 below), and the cron is the one that works. |
 
-`--min-instances=0` is the cost decision: nothing runs, and nothing is billed, while
-nobody is using it. The price is a few seconds on the first request after an idle
-period.
+`--min-instances=0` is the cost decision, and on its own it is not enough — see
+**What this actually costs** below. Nothing is billed only while the instance is
+genuinely gone, and what keeps it alive is traffic of any kind, including the cron.
+The price of scaling to zero is a few seconds on the first request after idle.
+
+## What this actually costs
+
+Read this before changing the cron frequency, because the first version of this
+document got it wrong and the bill proved it.
+
+`--no-cpu-throttling` moves the service to **instance-based billing**: charged for
+the instance's whole life, not per request. So the bill follows how long the
+container is *awake*, and awake is decided by traffic — a page load, a bot, a
+probe, or the cron.
+
+Measured on 2026-10-03 with the cron at `*/15 * * * *`: **one instance stayed alive
+4 hours 39 minutes continuously.** A 15-minute poke never lets Cloud Run reclaim
+it, so the container was awake 24/7.
+
+| | |
+|---|---|
+| Awake | ~730 h/month |
+| Free allowance | 240,000 vCPU-s ≈ **67 h/month** (plus 450,000 GiB-s) |
+| Billable | 2,388,000 vCPU-s × $0.000018 + memory |
+| **Total** | **≈ $47/month** |
+
+There is no configuration fix: no release track of `gcloud run deploy` has an
+idle-timeout flag, so a warm instance cannot be made cheaper. The only lever is how
+often something wakes it.
+
+**`--no-cpu-throttling` is not what costs the money.** During a real session the
+instance is alive anyway, so always-on CPU is free then and it is what keeps agent
+runs working. The cost was entirely the cron waking a container nobody was using.
+
+Hence the cadence below.
 
 ## 3. The scheduler
 
@@ -156,7 +188,7 @@ SERVICE_URL=$(gcloud run services describe plantcare-ai \
 
 gcloud scheduler jobs create http plantcare-tick \
   --location=europe-west3 \
-  --schedule='*/15 * * * *' \
+  --schedule='0 8 */3 * *' \
   --time-zone=Asia/Jerusalem \
   --uri="${SERVICE_URL}/v1/internal/tick" \
   --http-method=POST \
@@ -164,9 +196,38 @@ gcloud scheduler jobs create http plantcare-tick \
   --attempt-deadline=900s
 ```
 
-Fifteen minutes because `app/notifications/service.py` treats the send window as a
-window rather than an instant on that assumption — a reminder that required the clock
-to land exactly on 08:00 would silently not arrive on a day a deploy overlapped it.
+**Once every 3 days, at 08:00** — `0 8 */3 * *`. Not fifteen minutes, and the
+reasoning that used to be here was wrong.
+
+That reasoning said fifteen minutes was needed because the send window is a window
+rather than an instant. Reading `_within_send_window`
+(`app/notifications/service.py:186-200`) shows it is an open-ended `>=` comparison:
+true from the user's preferred hour until local midnight, a 16-hour span for the
+default 08:00. There is no 15-minute band to hit. **Cadence is a latency setting,
+not a correctness one** — the unique index on `notification_deliveries.dedupe_key`
+is what prevents a double send, and it does that at any frequency.
+
+08:00 rather than midnight so the tick lands exactly when the reminder window
+opens. `*/3` on day-of-month restarts each month, so one gap per month is 1–2 days
+instead of 3; cron cannot express a true 72-hour period.
+
+What 3 days costs, stated plainly:
+
+- **Nothing for task creation.** `HORIZON_DAYS = 14`
+  (`app/domain/rules/recurrence.py:34`) materialises up to a fortnight ahead.
+- **Nothing for the task list.** `today_care` is computed live per request from
+  `due_at_utc` (`app/api/routers/care_tasks.py:186`), so a due task appears on
+  משימות whether or not a sweep has run.
+- **A late task keeps its `PENDING` label** for up to 3 days instead of flipping to
+  `OVERDUE`, so the "late" band under-reports. The task is still listed and still
+  actionable.
+- **Reminders arrive up to 3 days late**, and the daily digest only lands on days a
+  tick runs, because its key is `digest:{user}:{local day}`.
+- **A stuck "analysing" spinner** waits up to 3 days for `reap_abandoned`, which
+  only matters if a container died mid-run.
+
+Raise the frequency and the bill rises with it, roughly in proportion to how often
+the container is woken. Hourly is in the single-digit dollars; 15 minutes is $47.
 
 Calling it twice changes nothing: `run_tick` is idempotent by construction —
 materialisation skips a rule that already holds an open task, the database refuses a
@@ -174,8 +235,9 @@ second one regardless, and reminders deduplicate on
 `notification_deliveries.dedupe_key`.
 
 Cloud Scheduler's free tier is 3 jobs per billing account, and frequency does not
-affect the price. The job doubles as the keep-warm, which is why cold starts are
-rarely visible in practice.
+affect *its* price — but it very much affects Cloud Run's, which is the trap the
+section above exists to document. At this cadence the job is no longer a keep-warm,
+so expect a cold start of a few seconds on the first request after a quiet spell.
 
 Check it:
 
@@ -239,7 +301,9 @@ The service is `--allow-unauthenticated`, so anyone with the URL can open it.
 - **One instance, so one failure.** `--max-instances=1` is there to keep the rate
   limiter honest, and it means there is no redundancy at all.
 - **The free Supabase project pauses** after inactivity, independently of this.
-- **Instance-based billing.** `--no-cpu-throttling` bills for the instance's whole
-  life rather than per request, against a monthly free allowance. With
-  `--min-instances=0` an idle week costs nothing, but a busy one is the thing to watch
-  if a bill appears.
+- **Instance-based billing, and it has already bitten once.**
+  `--no-cpu-throttling` bills for the instance's whole life rather than per
+  request. `--min-instances=0` makes an idle week free only if the instance is
+  actually allowed to go idle — a 15-minute cron kept it awake 24/7 and cost
+  $47/month. The cron frequency is the cost control; see **What this actually
+  costs**. Check the bill after any change to it.

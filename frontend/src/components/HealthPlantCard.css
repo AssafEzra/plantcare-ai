@@ -121,8 +121,12 @@
 
 @media (max-width: 639px) {
   .pc-healthcard {
-    /* The photograph keeps the reader's place in a list of plants, so it stays beside
-       the name rather than becoming a banner — just smaller. */
+    /* One column, so the photograph is the first row and the text starts under it.
+       This card carries the longest prose in the product — a finding, the evidence
+       under it, two recommendations, a date and the checks before this one — and
+       beside an 84px column on a phone that prose had about 250px to live in.
+       Width is worth more to it than the photograph's place in the line. */
+    grid-template-columns: minmax(0, 1fr);
     gap: var(--pc-space-3);
     padding: var(--pc-space-3);
   }
@@ -130,6 +134,10 @@
   .pc-healthphoto {
     inline-size: 84px;
     block-size: 84px;
+    /* Stated rather than inherited. A definite inline-size already stops the grid
+       stretching it, but saying so keeps the intent legible: the photograph sits at
+       the inline start, which in Hebrew is the right-hand edge. */
+    justify-self: start;
   }
 
   .pc-healthwho h3 {
