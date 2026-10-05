@@ -127,6 +127,8 @@ export type PlantDashboard = {
   upcoming_tasks: CareTask[]
   care_plan: CarePlanVersion | null
   open_proposals: number
+  /** A care proposal already queued or running, raised by anything, including the tick. */
+  care_request_id: string | null
   care_schedule: CareScheduleSummary | null
 }
 

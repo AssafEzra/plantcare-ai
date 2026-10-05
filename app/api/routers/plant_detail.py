@@ -112,6 +112,11 @@ class PlantDashboardResponse(BaseModel):
     upcoming_tasks: list[dict[str, Any]] = Field(default_factory=list)
     care_plan: dict[str, Any] | None = None
     open_proposals: int = 0
+    # A care proposal already queued or running for this plant, if there is one.
+    # The screen cannot otherwise know: a proposal raised by the tick after
+    # identification leaves no trace in any of the fields above until it lands, so
+    # the empty state offered a button that `start_proposal` then refused.
+    care_request_id: UUID | None = None
     # Which schedule this plant follows and what it would cost (care intensity):
     # override, owner_intensity, effective, care_days, warnings.
     care_schedule: dict[str, Any] | None = None
@@ -260,6 +265,7 @@ async def get_plant_dashboard(
 
     plan = care_workflow.plan_for_plant(user.client, plant_id=plant_id)
     proposals = care_workflow.proposals_for_plant(user.client, plant_id=plant_id)
+    in_flight = care_workflow.request_in_flight(user.client, str(plant_id))
     care_schedule = care_intensity.plant_summary(
         scheduler.owner_settings(user.client, str(plant["user_id"])),
         plant_override=plant.get("care_intensity"),
@@ -290,6 +296,7 @@ async def get_plant_dashboard(
             upcoming_tasks=open_tasks,
             care_plan=plan,
             open_proposals=len(proposals),
+            care_request_id=(in_flight or {}).get("id"),
             care_schedule=care_schedule,
         ),
         request_id=request.state.request_id,

@@ -673,7 +673,7 @@ def reconcile_missing_plans(*, executor, agent: CareAgent, limit: int = 25) -> i
         )
         if plan and (active_version(admin, plan["id"]) or _pending_proposal(admin, plan["id"])):
             continue
-        if _request_in_flight(admin, plant["id"]):
+        if request_in_flight(admin, plant["id"]):
             # A proposal already being generated. Without this the tick would
             # start a second model call every fifteen minutes for as long as the
             # first one ran - and care takes ~100 seconds.
@@ -709,10 +709,17 @@ def reconcile_missing_plans(*, executor, agent: CareAgent, limit: int = 25) -> i
     return queued
 
 
-def _request_in_flight(admin: Client, plant_id: str) -> Row | None:
-    """A care proposal already queued or running for this plant."""
+def request_in_flight(client: Client, plant_id: str) -> Row | None:
+    """A care proposal already queued or running for this plant.
+
+    Public, and takes whichever client the caller holds. The tick asks as the
+    service, to avoid starting a second model call behind the first; the plant
+    dashboard asks as the user, so the screen can say a proposal is on its way
+    instead of offering a button that the guard in `start_proposal` will refuse.
+    RLS answers the second correctly - a user sees their own requests.
+    """
     return first_row(
-        admin.table("agent_requests")
+        client.table("agent_requests")
         .select("id")
         .eq("plant_id", plant_id)
         .eq("agent_type", AgentType.CARE.value)

@@ -18,7 +18,7 @@
  * a health check and nothing happened".
  */
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 import {
   usePlantDashboard,
@@ -371,6 +371,18 @@ function CareSection({
   const watched = useAgentRequest(watching)
   const settled = watched.data?.status
   const waiting = Boolean(watching) && settled !== 'SUCCEEDED' && settled !== 'FAILED'
+
+  /* Adopt a proposal this page did not start. Approving an identification publishes
+     the species' research, which queues an INITIAL_PLAN for every plant waiting on it —
+     so by the time the user reaches this screen a proposal is usually already being
+     prepared, and nothing above would have told them. The card then offered "הכנת
+     תוכנית", and pressing it got the error from `start_proposal`'s guard rather than a
+     second plan. Watching the request the server reports turns that button back into
+     the sentence it should have been. */
+  const inFlight = plant.care_request_id
+  useEffect(() => {
+    if (inFlight) setWatching((current) => current ?? inFlight)
+  }, [inFlight])
 
   const shown = proposals.find((proposal) => proposal.id === openProposal)
   const upcoming = plant.upcoming_tasks.slice(0, 5)
