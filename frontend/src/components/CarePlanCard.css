@@ -143,3 +143,27 @@
   color: var(--pc-text-muted);
   font-size: var(--pc-h5);
 }
+
+/* Care intensity. The schedule line sits under the plan head in the muted register of
+   a note: it explains the dates, it is not an instruction. */
+.pc-scheduleline {
+  margin: 0 0 var(--pc-space-3);
+  color: var(--pc-text-muted);
+}
+
+.pc-intensity {
+  margin-block: var(--pc-space-3) var(--pc-space-4);
+}
+
+.pc-intensitywarn {
+  margin-block-start: var(--pc-space-2);
+  padding: var(--pc-space-3);
+  border-inline-start: 3px solid var(--pc-warning);
+  background: var(--pc-warning-bg);
+  border-radius: var(--pc-radius-sm);
+}
+
+.pc-intensitywarn ul {
+  margin: 0 0 var(--pc-space-2);
+  padding-inline-start: var(--pc-space-4);
+}

@@ -91,3 +91,42 @@
   color: var(--pc-text-muted);
   font-size: var(--pc-h6);
 }
+
+/* Care intensity. The three levels are radio rows using the same hit target as the
+   reminder toggles; the warning box borrows the plan card's warning treatment. */
+.pc-intensitylevels {
+  margin: 0 0 var(--pc-space-3);
+  padding: 0;
+  border: 0;
+}
+
+.pc-daypair {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: var(--pc-space-3);
+}
+
+.pc-daypair .pc-formerror {
+  grid-column: 1 / -1;
+}
+
+.pc-settings .pc-intensitywarn {
+  margin-block: var(--pc-space-3);
+  padding: var(--pc-space-3);
+  border-inline-start: 3px solid var(--pc-warning);
+  border-radius: var(--pc-radius-sm);
+  background: var(--pc-warning-bg);
+}
+
+.pc-settings .pc-intensitywarn p {
+  margin: 0 0 var(--pc-space-2);
+}
+
+.pc-settings .pc-intensitywarn ul {
+  margin: 0;
+  padding-inline-start: var(--pc-space-4);
+}
+
+.pc-settings .pc-intensitywarn > ul > li {
+  margin-block-end: var(--pc-space-3);
+}

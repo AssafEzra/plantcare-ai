@@ -9,6 +9,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../lib/api'
 import { scoped } from '../lib/queryKeys'
 import { useAuth } from '../auth/context'
+import type { CareIntensity, CareWarning, Weekday } from '../lib/careSchedule'
 
 /** Mirrors ProfileResponse in app/api/schemas. */
 export type Profile = {
@@ -20,6 +21,17 @@ export type Profile = {
   locale: string
   is_active: boolean
   created_at: string
+  care_intensity: CareIntensity
+  care_day_low: Weekday
+  care_days_medium: Weekday[]
+}
+
+export type ProfileChanges = {
+  display_name?: string | null
+  timezone?: string
+  care_intensity?: CareIntensity
+  care_day_low?: Weekday
+  care_days_medium?: Weekday[]
 }
 
 export function useMe() {
@@ -48,12 +60,39 @@ export function useUpdateProfile() {
   const { userId } = useAuth()
 
   return useMutation({
-    mutationFn: (changes: { display_name?: string | null; timezone?: string }) =>
-      api.patch<Profile>('/v1/me', { json: changes }),
+    mutationFn: (changes: ProfileChanges) => api.patch<Profile>('/v1/me', { json: changes }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: scoped(userId, ['me']) })
       queryClient.invalidateQueries({ queryKey: scoped(userId, ['dashboard']) })
       queryClient.invalidateQueries({ queryKey: scoped(userId, ['plants']) })
+      // Care intensity re-dates tasks on every plant that follows it.
+      queryClient.invalidateQueries({ queryKey: scoped(userId, ['plant']) })
     },
+  })
+}
+
+/** A plant a proposed care setting would leave short, before it is saved. */
+export type CareImpact = {
+  plant_id: string
+  plant_name: string | null
+  tasks: CareWarning[]
+}
+
+export function useCareImpact(
+  choice: { intensity: CareIntensity; care_day_low: Weekday; care_days_medium: Weekday[] },
+  enabled: boolean,
+) {
+  const { userId } = useAuth()
+  return useQuery({
+    queryKey: scoped(userId, ['care-impact', choice]),
+    queryFn: () =>
+      api.get<CareImpact[]>('/v1/care-intensity/impact', {
+        params: {
+          intensity: choice.intensity,
+          care_day_low: choice.care_day_low,
+          care_days_medium: choice.care_days_medium.join(','),
+        },
+      }),
+    enabled: Boolean(userId) && enabled,
   })
 }

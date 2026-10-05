@@ -9,9 +9,9 @@ PATCH /v1/plants/{id}. Both re-date pending tasks at once.
 
 from __future__ import annotations
 
-from typing import Annotated, Any
+from typing import Any
 
-from fastapi import APIRouter, Query, Request
+from fastapi import APIRouter, Request
 
 from app.api.dependencies import CurrentUserDep
 from app.api.schemas.common import DataEnvelope
@@ -28,9 +28,14 @@ async def get_impact(
     user: CurrentUserDep,
     intensity: CareIntensity,
     care_day_low: Weekday = Weekday.FRIDAY,
-    care_days_medium: Annotated[list[Weekday] | None, Query()] = None,
+    care_days_medium: str = "TUESDAY,FRIDAY",
 ) -> DataEnvelope[list[dict[str, Any]]]:
-    medium = care_days_medium or [Weekday.TUESDAY, Weekday.FRIDAY]
+    """`care_days_medium` is comma-separated ("TUESDAY,FRIDAY"): one value in the
+    query string, which is what the client's request helper sends."""
+    try:
+        medium = [Weekday(day.strip()) for day in care_days_medium.split(",") if day.strip()]
+    except ValueError as exc:
+        raise ValidationFailedError("יום לא מוכר.") from exc
     if len(medium) != 2 or medium[0] == medium[1]:
         raise ValidationFailedError("לרמה בינונית יש לבחור שני ימים שונים.")
 

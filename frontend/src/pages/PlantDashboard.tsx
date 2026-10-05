@@ -28,6 +28,7 @@ import {
   useRenamePlant,
   useSaveEnvironment,
   useLogHistoryEvent,
+  useSetPlantIntensity,
   isPortrait,
   type PlantDashboard as Dashboard,
 } from '../api/plantDetail'
@@ -361,6 +362,7 @@ function CareSection({
   const approve = useApproveProposal(plantId)
   const reject = useRejectProposal(plantId)
   const adjust = useAdjustPlan(plantId)
+  const setIntensity = useSetPlantIntensity()
   const requestPlan = useRequestProposal(plantId)
 
   /* Stay with a queued proposal until it exists. Care took 105 seconds on its first
@@ -451,6 +453,11 @@ function CareSection({
             canEdit={canEdit}
             adjusting={adjust.isPending}
             adjustError={adjust.error}
+            schedule={plant.care_schedule}
+            onSetIntensity={(intensity) => setIntensity.mutate({ plantId: plant.id, intensity })}
+            settingIntensity={setIntensity.isPending}
+            intensitySaved={setIntensity.isSuccess}
+            intensityError={setIntensity.error}
             onAdjust={(overrides, summary) =>
               adjust.mutate(
                 { versionId: plant.care_plan!.id, overrides, summary },

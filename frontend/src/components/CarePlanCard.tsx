@@ -21,6 +21,13 @@ import {
   clockTime,
   intervalText,
 } from '../lib/careVocab'
+import {
+  INTENSITY_LABELS,
+  scheduleLine,
+  warningText,
+  type CareIntensity,
+  type CareScheduleSummary,
+} from '../lib/careSchedule'
 import { ApiError } from '../lib/errors'
 import ReviewBadge from './ReviewBadge'
 import './CarePlanCard.css'
@@ -94,19 +101,34 @@ export default function CarePlanCard({
   adjusting,
   adjustError,
   canEdit,
+  schedule = null,
+  onSetIntensity,
+  settingIntensity = false,
+  intensitySaved = false,
+  intensityError = null,
 }: {
   plan: CarePlanVersion
   onAdjust: (overrides: Record<string, { interval_days: number }>, summary: string) => void
   adjusting: boolean
   adjustError: unknown
   canEdit: boolean
+  schedule?: CareScheduleSummary | null
+  onSetIntensity?: (intensity: CareIntensity | null) => void
+  settingIntensity?: boolean
+  intensitySaved?: boolean
+  intensityError?: unknown
 }) {
+  const grouped = schedule && schedule.effective !== 'HIGH' && schedule.care_days.length > 0
+
   return (
     <section className="pc-card pc-planCard">
       <div className="pc-planhead">
         <h3>תוכנית הטיפול</h3>
         <ReviewBadge review={plan.knowledge_review} />
       </div>
+      {/* One sentence, outside the fold: the rules below still say "every 3 days",
+          and this is what reconciles them with tasks that arrive on care days. */}
+      {grouped && <p className="pc-scheduleline">{scheduleLine(schedule.care_days)}</p>}
       <p className="pc-placeholder-note">
         גרסה <span className="pc-num">{plan.version_number}</span> ·{' '}
         {SOURCE_LABELS[plan.source_type] ?? plan.source_type}
@@ -125,6 +147,16 @@ export default function CarePlanCard({
         <summary>התזמון שלך</summary>
         <RuleList rules={plan.rules} />
 
+        {canEdit && schedule && onSetIntensity && (
+          <IntensityControl
+            schedule={schedule}
+            onChange={onSetIntensity}
+            saving={settingIntensity}
+            saved={intensitySaved}
+            error={intensityError}
+          />
+        )}
+
         {canEdit && (
           <AdjustForm
             plan={plan}
@@ -135,6 +167,87 @@ export default function CarePlanCard({
         )}
       </details>
     </section>
+  )
+}
+
+const FOLLOW = 'FOLLOW'
+
+/**
+ * This plant's care intensity: follow Settings (the default), or pin it.
+ *
+ * Deliberately not part of the frequency form below it. That form makes a proposal to
+ * approve; this applies the moment it changes, and the caption says so, because two
+ * controls that look alike and behave differently is the confusion to avoid.
+ */
+function IntensityControl({
+  schedule,
+  onChange,
+  saving,
+  saved,
+  error,
+}: {
+  schedule: CareScheduleSummary
+  onChange: (intensity: CareIntensity | null) => void
+  saving: boolean
+  saved: boolean
+  error: unknown
+}) {
+  const value = schedule.override ?? FOLLOW
+
+  return (
+    <div className="pc-intensity">
+      <label className="pc-field">
+        <span>ימי טיפול</span>
+        <select
+          value={value}
+          disabled={saving}
+          onChange={(event) =>
+            onChange(
+              event.target.value === FOLLOW ? null : (event.target.value as CareIntensity),
+            )
+          }
+        >
+          <option value={FOLLOW}>
+            לפי ההגדרות ({INTENSITY_LABELS[schedule.owner_intensity]})
+          </option>
+          {(['HIGH', 'MEDIUM', 'LOW'] as const).map((level) => (
+            <option key={level} value={level}>
+              {INTENSITY_LABELS[level]}
+            </option>
+          ))}
+        </select>
+        <small>חל מיד, בלי אישור. ימי הטיפול עצמם נקבעים בהגדרות.</small>
+      </label>
+
+      {saved && !saving && (
+        <p className="pc-formnotice" role="status">
+          עודכן.
+        </p>
+      )}
+      {error ? (
+        <p className="pc-formerror" role="alert">
+          {error instanceof ApiError ? error.message : 'השינוי לא נשמר.'}
+        </p>
+      ) : null}
+
+      {schedule.warnings.length > 0 && (
+        <div className="pc-intensitywarn" role="note">
+          <ul>
+            {schedule.warnings.map((warning) => (
+              <li key={warning.action_type}>{warningText(warning)}</li>
+            ))}
+          </ul>
+          <button
+            type="button"
+            className="pc-btn pc-btn-sm"
+            disabled={saving}
+            onClick={() => onChange('HIGH')}
+          >
+            להשאיר את הצמח הזה על גבוהה
+          </button>
+        </div>
+      )}
+    </div>
   )
 }
 

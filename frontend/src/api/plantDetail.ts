@@ -18,6 +18,7 @@ import { useAuth } from '../auth/context'
 import type { CareTask } from './careTasks'
 import type { PlantStatus } from './plants'
 import type { HealthStatus, HealthTrend } from '../lib/status'
+import type { CareIntensity, CareScheduleSummary } from '../lib/careSchedule'
 
 /* --- types ---------------------------------------------------------------- */
 
@@ -126,6 +127,7 @@ export type PlantDashboard = {
   upcoming_tasks: CareTask[]
   care_plan: CarePlanVersion | null
   open_proposals: number
+  care_schedule: CareScheduleSummary | null
 }
 
 export type HistoryEntry = {
@@ -193,6 +195,28 @@ export function useRenamePlant(plantId: string | undefined) {
     mutationFn: (body: { name: string | null; notes: string | null }) =>
       api.patch(`/v1/plants/${plantId}`, { json: body }),
     onSuccess: invalidate,
+  })
+}
+
+/**
+ * Pin a plant to its own care intensity, or `null` to follow Settings again.
+ *
+ * Unlike a frequency change this is not a proposal: it applies at once, and the plant's
+ * pending tasks move before the response returns. Takes the plant id per call so the
+ * Settings warning list can pin any plant it shows.
+ */
+export function useSetPlantIntensity() {
+  const queryClient = useQueryClient()
+  const { userId } = useAuth()
+  return useMutation({
+    mutationFn: ({ plantId, intensity }: { plantId: string; intensity: CareIntensity | null }) =>
+      api.patch(`/v1/plants/${plantId}`, { json: { care_intensity: intensity } }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: scoped(userId, ['plant']) })
+      queryClient.invalidateQueries({ queryKey: scoped(userId, ['plants']) })
+      queryClient.invalidateQueries({ queryKey: scoped(userId, ['dashboard']) })
+      queryClient.invalidateQueries({ queryKey: scoped(userId, ['care-impact']) })
+    },
   })
 }
 

@@ -241,3 +241,28 @@ async def test_changing_a_plants_override_reschedules_that_plant(env, monkeypatc
 
     assert calls == [(OWNER, row["id"])]
     assert db.store["plants"][0]["care_intensity"] == "HIGH"
+
+
+async def test_impact_reads_two_comma_separated_days_and_refuses_one(env, monkeypatch):
+    from app.api.routers import care_intensity as route
+    from app.common.errors import ValidationFailedError
+
+    seen: list[list[str]] = []
+    monkeypatch.setattr(
+        route.care_intensity,
+        "impact",
+        lambda _c, *, care_days_medium, **_k: (
+            seen.append([d.value for d in care_days_medium]) or []
+        ),
+    )
+
+    await route.get_impact(
+        _Request(), _User(FakeDB()), intensity="MEDIUM", care_days_medium="SUNDAY,WEDNESDAY"
+    )
+    assert seen == [["SUNDAY", "WEDNESDAY"]]
+
+    for bad in ("FRIDAY", "FRIDAY,FRIDAY", "FRIDAY,FUNDAY"):
+        with pytest.raises(ValidationFailedError):
+            await route.get_impact(
+                _Request(), _User(FakeDB()), intensity="MEDIUM", care_days_medium=bad
+            )
