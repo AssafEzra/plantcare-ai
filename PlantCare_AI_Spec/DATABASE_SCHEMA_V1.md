@@ -375,6 +375,18 @@ the Settings wireframe). A user must never exist without a preferences row, or
 For that reason this table is created in the foundation migration alongside `profiles`,
 not with the other notification tables.
 
+**Migration 0022 (Today / Due / Evening).** Adds `due_reminder_days smallint` (0-3, default 1),
+`evening_enabled boolean` (default false) and `evening_time_local time` (default `19:00`).
+`preferred_time_local` now defaults to, and was reset to, `07:30`. `daily_digest` is retired
+(per-task emails no longer exist): forced true and no longer read.
+
+### `push_subscriptions`
+`id`, `user_id FK`, `endpoint UNIQUE` (https), `p256dh`, `auth`, `device_label`, `platform`
+(`ios|android|other`), `enabled` (pause without losing the registration), `created_at`,
+`updated_at`, `last_sent_at`. One row per phone or tablet that allowed notifications. RLS: own-row
+select/insert/update/delete, admin select. The dispatcher deletes a row whose push service
+answers 404/410.
+
 ### `notification_deliveries`
 `id`, `user_id`, `care_task_id nullable`, `channel`, `status`, `dedupe_key UNIQUE`, `scheduled_at`, `sent_at`, `provider_message_id`, `error_message`, `created_at`.
 
@@ -383,7 +395,7 @@ Use idempotency/unique logical notification keys to prevent duplicate sends.
 **Amended during implementation (MVP), per FINAL §37:** this document mandated duplicate-send
 prevention but defined no column for it (A12). `dedupe_key` is `text UNIQUE`, formatted
 `{scope}:{identifier}:{local_date}` - for example `digest:<user_id>:2026-09-05` or
-`task:<care_task_id>:reminder`. The date component is the **local** date of the recipient, so
+`push-today:<user_id>:2026-09-05`. `channel` is `EMAIL` or `PUSH` (migration 0022). The date component is the **local** date of the recipient, so
 changing timezone cannot produce two sends on one local day. A duplicate fails on insert, before
 any provider call, so re-running the scheduler tick is safe.
 

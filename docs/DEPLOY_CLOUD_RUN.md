@@ -27,7 +27,7 @@ Stood up on 2026-10-03 and serving.
 | Region | `europe-west3` (Frankfurt) |
 | Service | `plantcare-ai`, `--max-instances=1 --min-instances=0 --no-cpu-throttling` |
 | Image | `europe-west3-docker.pkg.dev/plantcare-ai-174016/plantcare/plantcare-ai` |
-| Scheduler | job `plantcare-tick`, `0 8 */3 * *`, Asia/Jerusalem — see **What this actually costs** |
+| Scheduler | jobs `plantcare-tick-morning` (`30 7 * * *`) and `plantcare-tick-evening` (`0 19 * * *`), Asia/Jerusalem — see **3. The scheduler** |
 | Database | **DEV** Supabase (`ckwvjyxeennrknwjsujl`) |
 
 Redeploy with the command in §2; nothing in §0 or §1 needs repeating.
@@ -107,6 +107,27 @@ done
 `RESEND_API_KEY` and `RESEND_FROM_EMAIL` together enable email. Without both the app
 runs with a null provider rather than failing, so they are optional — add them the
 same way and extend `--set-secrets` when you want reminders actually sent.
+
+### Phone push (VAPID)
+
+Push needs one key pair, generated once and never rotated casually: every phone's
+subscription is bound to the public key, so a new pair means every user has to turn
+reminders on again.
+
+```bash
+npx web-push generate-vapid-keys      # prints a Public Key and a Private Key
+```
+
+Put all three in `.env` and let `scripts/deploy.py` reconcile them:
+
+```
+VAPID_PUBLIC_KEY=<public key>          # plain env var - it is sent to every browser
+VAPID_PRIVATE_KEY=<private key>        # Secret Manager: vapid-private-key
+VAPID_SUBJECT=mailto:<your address>    # a contact for the push services
+```
+
+Without the pair the app uses a null push provider: Settings says push is not set up
+on the server, and deliveries are recorded as SKIPPED.
 
 ## 2. Build and deploy
 
@@ -222,15 +243,45 @@ zero times no matter what. Hence `INTERNAL_TICK_INTERVAL_SECONDS=0` and a real c
 SERVICE_URL=$(gcloud run services describe plantcare-ai \
   --region=europe-west3 --format='value(status.url)')
 
-gcloud scheduler jobs create http plantcare-tick \
+# Morning: Today and Due by email and push, at 07:30.
+gcloud scheduler jobs create http plantcare-tick-morning \
   --location=europe-west3 \
-  --schedule='0 8 */3 * *' \
+  --schedule='30 7 * * *' \
   --time-zone=Asia/Jerusalem \
   --uri="${SERVICE_URL}/v1/internal/tick" \
   --http-method=POST \
   --headers="X-Internal-Secret=<the internal-tick-secret value>" \
   --attempt-deadline=900s
+
+# Evening: the optional push for today's tasks still open, at 19:00.
+gcloud scheduler jobs create http plantcare-tick-evening \
+  --location=europe-west3 \
+  --schedule='0 19 * * *' \
+  --time-zone=Asia/Jerusalem \
+  --uri="${SERVICE_URL}/v1/internal/tick" \
+  --http-method=POST \
+  --headers="X-Internal-Secret=<the internal-tick-secret value>" \
+  --attempt-deadline=900s
+
+# The old every-3-days job is replaced by these two:
+gcloud scheduler jobs delete plantcare-tick --location=europe-west3
 ```
+
+**Since the notifications change (migration 0022): twice a day, at 07:30 and 19:00.**
+The reminders are now daily - Today and Due each morning, an optional evening push -
+and a reminder can only go out on a run, so the every-3-days cadence below would
+deliver them up to three days late. The runs sit exactly on the reminder times
+because the send window is "at or after the time, until midnight": a 07:30 run sends
+the 07:30 reminders, and a later run the same day would catch up anything it missed.
+
+Cost: each run keeps an instance awake for roughly its idle timeout - on the order of
+fifteen minutes - so two runs a day is about 15 hours a month, inside the 67-hour free
+allowance described above. That figure is an estimate; the billing report is the
+check. The times are Jerusalem time: a user in another timezone is reminded at the
+first run after their own 07:30.
+
+The history of the previous cadence is kept below because its reasoning about cost
+still holds.
 
 **Once every 3 days, at 08:00** — `0 8 */3 * *`. Not fifteen minutes, and the
 reasoning that used to be here was wrong.

@@ -483,10 +483,42 @@ Designed to render Home without many sequential calls.
 
 `PUT /v1/notification-preferences`
 ```json
-{"email_enabled":true,"preferred_time_local":"08:00","daily_digest":true}
+{"email_enabled":true,"due_reminder_days":1,"evening_enabled":false}
 ```
 
-MVP channel is Email.
+**Changed by migration 0022 (Today / Due / Evening, email + push).** The response also carries
+`preferred_time_local` (07:30), `evening_time_local` (19:00) and `daily_digest` (always true).
+The times are fixed for now and are **not** accepted in the request, nor is `daily_digest`:
+`extra="forbid"` answers either with a 422. `due_reminder_days` is 0-3 (default 1).
+
+What is sent, at most once each per local day, only when there is something to say:
+
+| Notification | When | Contains | Email | Push |
+|---|---|---|---|---|
+| Today | `preferred_time_local` | open tasks due today (user's calendar) | one message, green "Today" section | its own notification, 🟢 |
+| Due | `preferred_time_local` | open tasks 1..`due_reminder_days` days late | same message, red "Overdue" section | its own notification, 🔴 |
+| Evening | `evening_time_local`, if `evening_enabled` | today's tasks still open | - | its own notification, 🌙 |
+
+Per-task emails no longer exist. Tapping a push opens `/tasks`.
+
+### Push devices
+Phone and tablet only, standard Web Push (VAPID). Registration must happen on the device; after
+that any device can pause, resume or remove it.
+
+- `GET /v1/push/config` → `{"configured": true, "public_key": "<VAPID public key>"}`
+- `GET /v1/push/subscriptions` → this user's devices: `id, device_label, platform, enabled,
+  created_at, last_sent_at, endpoint`. The encryption keys are never returned.
+- `POST /v1/push/subscriptions` - the browser's `PushSubscription.toJSON()` plus
+  `device_label`, `platform` (`ios|android|other`) and `resume` (default true). Upserts by
+  endpoint; `resume: false` (the app re-sending on open) never un-pauses a device. A device
+  that is new, or resumed, gets one confirmation push. An endpoint still registered to a
+  previous user of the phone is released to the caller.
+- `PATCH /v1/push/subscriptions/{id}` `{"enabled": false}` - pause / resume.
+- `DELETE /v1/push/subscriptions/{id}` - remove.
+- `POST /v1/push/subscriptions/unsubscribe` `{"endpoint": "..."}` - remove this device; called on
+  sign-out.
+
+A device whose push service answers 404/410 is deleted by the dispatcher.
 
 `GET /v1/notification-deliveries`
 
@@ -515,14 +547,11 @@ fails on the insert and never reaches Resend. The obvious alternative (look, sen
 window in which two ticks both pass the read and the user gets two emails. The worst case here is
 a row stuck in `QUEUED`, not a duplicate message.
 
-Key formats: `digest:<user_id>:<local_date>` and `task:<care_task_id>:reminder`. The digest key
-carries the user's **local** date, so changing timezone cannot yield two digests on one of their
-days. The task key carries no date at all — a task overdue for a week belongs in the digest, not
-in a fresh email every morning, and `FINAL §14` lists missed-reminder emails as Future.
-
-*`daily_digest` is honoured as the preference it is.* `true` sends one message for the day;
-`false` sends one per task. The plan's first draft chose by task count, which made the user's
-setting inert.
+Key formats: `digest:<user_id>:<local_date>` for the morning email, and
+`push-today|push-due|push-evening:<user_id>:<local_date>` for push - one per kind per user per day,
+across all their devices. Every key carries the user's **local** date, so changing timezone cannot
+yield two sends on one of their days. (`task:<care_task_id>:reminder` belonged to the retired
+per-task emails.)
 
 *A failed send is recorded, never swallowed* (`FINAL §30`), and the task is untouched — still
 outstanding, still on the dashboard. It is not retried the same day: hammering a provider that is

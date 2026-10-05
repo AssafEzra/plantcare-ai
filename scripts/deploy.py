@@ -73,6 +73,10 @@ ALLOWLIST = (
     "HEALTH_TIMEOUT_SECONDS",
     "AI_MAX_STRUCTURED_RETRIES",
     "RESEND_FROM_EMAIL",
+    # Web Push: the public half of the key pair goes to every browser anyway, and
+    # the subject is a contact address. The private half is in SECRETS.
+    "VAPID_PUBLIC_KEY",
+    "VAPID_SUBJECT",
     "AI_RATE_LIMIT_PER_HOUR",
     "AI_RATE_LIMIT_PER_MINUTE",
 )
@@ -95,6 +99,7 @@ SECRETS = {
     "INTERNAL_TICK_SECRET": "internal-tick-secret",
     "GOOGLE_API_KEY": "google-api-key",
     "RESEND_API_KEY": "resend-api-key",
+    "VAPID_PRIVATE_KEY": "vapid-private-key",
 }
 
 #: Not tuning. Each prevents a specific failure; see docs/DEPLOY_CLOUD_RUN.md.
