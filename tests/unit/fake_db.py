@@ -13,9 +13,16 @@ from uuid import uuid4
 
 
 class FakeQuery:
-    def __init__(self, store: dict[str, list[dict[str, Any]]], table: str):
+    def __init__(
+        self,
+        store: dict[str, list[dict[str, Any]]],
+        table: str,
+        unique: dict[str, str] | None = None,
+    ):
         self.store = store
         self.table = table
+        self.unique = unique or {}
+        self.pending_delete = False
         self.filters: list[tuple[str, str, Any]] = []
         self.ordering: tuple[str, bool] | None = None
         self.max_rows: int | None = None
@@ -51,6 +58,10 @@ class FakeQuery:
         self.pending_insert = values
         return self
 
+    def delete(self) -> FakeQuery:
+        self.pending_delete = True
+        return self
+
     # --- running ----------------------------------------------------------------
 
     def _matches(self, row: dict[str, Any]) -> bool:
@@ -65,11 +76,19 @@ class FakeQuery:
         table = self.store.setdefault(self.table, [])
 
         if self.pending_insert is not None:
+            column = self.unique.get(self.table)
+            if column and any(r.get(column) == self.pending_insert.get(column) for r in table):
+                # What the unique index does: the second insert fails.
+                raise RuntimeError(f"duplicate key value violates unique constraint on {column}")
             row = {"id": str(uuid4()), **self.pending_insert}
             table.append(row)
             return _Result([row])
 
         found = [row for row in table if self._matches(row)]
+
+        if self.pending_delete:
+            self.store[self.table] = [row for row in table if row not in found]
+            return _Result(found)
 
         if self.pending_update is not None:
             for row in found:
@@ -90,8 +109,16 @@ class _Result:
 
 
 class FakeDB:
-    def __init__(self, store: dict[str, list[dict[str, Any]]] | None = None):
+    """`unique` maps a table to one column the fake enforces like a unique index."""
+
+    def __init__(
+        self,
+        store: dict[str, list[dict[str, Any]]] | None = None,
+        *,
+        unique: dict[str, str] | None = None,
+    ):
         self.store: dict[str, list[dict[str, Any]]] = store or {}
+        self.unique = unique or {}
 
     def table(self, name: str) -> FakeQuery:
-        return FakeQuery(self.store, name)
+        return FakeQuery(self.store, name, self.unique)

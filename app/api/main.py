@@ -37,6 +37,7 @@ from app.api.routers import (
     plant_images,
     plants,
     profile,
+    push,
 )
 from app.api.routers import health as health_router
 from app.api.spa import mount_spa
@@ -285,6 +286,7 @@ def create_app() -> FastAPI:
     app.include_router(care_tasks.router, prefix="/v1")
     app.include_router(health_router.router, prefix="/v1")
     app.include_router(notifications.router, prefix="/v1")
+    app.include_router(push.router, prefix="/v1")
 
     # Last, and that is load-bearing: the SPA ends in a catch-all, and Starlette
     # matches in registration order, so anything mounted after it is unreachable.

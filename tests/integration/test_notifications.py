@@ -23,6 +23,7 @@ from postgrest.exceptions import APIError
 
 from app.common.enums import CareRuleActionType
 from app.infrastructure.email.provider import EmailMessage, EmailSendError
+from app.infrastructure.push.provider import NullPushProvider
 from app.notifications import service
 from tests.integration.conftest import delete_accounts, unique_species_name
 
@@ -205,6 +206,7 @@ def dispatch(admin_sdk, user_id: str, provider, when: datetime | None = None):
         admin_sdk,
         now_utc=when or datetime.now(UTC),
         provider=provider,
+        push_provider=NullPushProvider(),
         user_id=user_id,
     )
 
@@ -316,12 +318,9 @@ def test_nothing_is_sent_to_a_user_who_turned_email_off(admin_sdk, with_a_due_ta
     assert deliveries(admin_sdk, with_a_due_task["user_id"]) == []
 
 
-def test_daily_digest_false_sends_one_email_per_task(admin_sdk, with_a_due_task):
-    """The audit's correction, asserted.
-
-    The plan's first draft chose digest-or-single by task count, which made the
-    user's setting inert. It is a preference, and it is honoured.
-    """
+def test_per_task_emails_are_gone_even_for_a_user_who_had_chosen_them(admin_sdk, with_a_due_task):
+    """Migration 0022 retired per-task emails. A row still carrying
+    daily_digest=false gets the one morning email like everyone else."""
     admin_sdk.table("notification_preferences").update({"daily_digest": False}).eq(
         "user_id", with_a_due_task["user_id"]
     ).execute()
@@ -329,21 +328,8 @@ def test_daily_digest_false_sends_one_email_per_task(admin_sdk, with_a_due_task)
     provider = Recorder()
     result = dispatch(admin_sdk, with_a_due_task["user_id"], provider)
 
-    assert result.sent == 2
-    assert len(provider.sent) == 2
-    assert len(deliveries(admin_sdk, with_a_due_task["user_id"])) == 2
-
-
-def test_per_task_sends_are_also_deduplicated(admin_sdk, with_a_due_task):
-    admin_sdk.table("notification_preferences").update({"daily_digest": False}).eq(
-        "user_id", with_a_due_task["user_id"]
-    ).execute()
-
-    provider = Recorder()
-    dispatch(admin_sdk, with_a_due_task["user_id"], provider)
-    dispatch(admin_sdk, with_a_due_task["user_id"], provider)
-
-    assert len(provider.sent) == 2
+    assert result.sent == 1
+    assert len(provider.sent) == 1
 
 
 def test_nothing_is_sent_before_the_users_preferred_hour(admin_sdk, with_a_due_task):
@@ -380,12 +366,23 @@ def test_a_user_reads_and_updates_their_preferences(api, with_a_due_task):
     updated = api.put(
         "/v1/notification-preferences",
         headers=with_a_due_task["auth"],
-        json={"daily_digest": False, "preferred_time_local": "07:30"},
+        json={"due_reminder_days": 3, "evening_enabled": True},
     )
     assert updated.status_code == 200
     body = updated.json()["data"]
-    assert body["daily_digest"] is False
-    assert body["preferred_time_local"].startswith("07:30")
+    assert body["due_reminder_days"] == 3
+    assert body["evening_enabled"] is True
+
+
+def test_the_fixed_time_cannot_be_changed_yet(api, with_a_due_task):
+    """07:30 for everyone until the time becomes a choice; a client sending one
+    is told so."""
+    response = api.put(
+        "/v1/notification-preferences",
+        headers=with_a_due_task["auth"],
+        json={"preferred_time_local": "09:00"},
+    )
+    assert response.status_code == 422
 
 
 def test_the_preferences_endpoint_refuses_an_unknown_field(api, with_a_due_task):

@@ -15,7 +15,7 @@ from datetime import datetime, time
 from uuid import UUID
 
 from fastapi import APIRouter, Query, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.api.dependencies import CurrentUserDep
 from app.api.schemas.common import DataEnvelope
@@ -29,22 +29,30 @@ router = APIRouter(tags=["notifications"])
 class PreferencesResponse(BaseModel):
     user_id: UUID
     email_enabled: bool
+    # When the morning Today and Due notifications go out. Fixed at 07:30 for now
+    # and returned so the screen can say so; not accepted from clients yet.
     preferred_time_local: time
-    daily_digest: bool
+    # Retired by migration 0022 (no per-task emails); always true.
+    daily_digest: bool = True
+    due_reminder_days: int = 1
+    evening_enabled: bool = False
+    evening_time_local: time = time(19, 0)
 
 
 class PreferencesRequest(BaseModel):
-    """A10: this is the time we may *write*, not the time a task is due.
+    """What a user may change about their reminders.
 
-    A user who waters in the evening still wants their reminder in the morning,
-    so the two are separate settings that answer different questions.
+    The times are absent on purpose: they are fixed for now (07:30 and 19:00) and
+    stored per user so they can become a choice later. `daily_digest` is gone
+    with per-task emails. `extra="forbid"` makes a client still sending either
+    get a 422 rather than a silent no-op.
     """
 
     model_config = {"extra": "forbid"}
 
     email_enabled: bool | None = None
-    preferred_time_local: time | None = None
-    daily_digest: bool | None = None
+    due_reminder_days: int | None = Field(default=None, ge=0, le=3)
+    evening_enabled: bool | None = None
 
 
 class DeliveryResponse(BaseModel):
@@ -72,9 +80,6 @@ async def put_preferences(
     changes = payload.model_dump(exclude_none=True)
     if not changes:
         raise ValidationFailedError("לא נשלחה העדפה לעדכון.")
-
-    if "preferred_time_local" in changes:
-        changes["preferred_time_local"] = changes["preferred_time_local"].isoformat()
 
     updated = service.update_preferences(user.client, str(user.id), changes)
     return DataEnvelope(data=PreferencesResponse(**updated), request_id=request.state.request_id)

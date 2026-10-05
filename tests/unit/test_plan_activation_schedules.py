@@ -156,7 +156,7 @@ def test_the_tick_is_callable_without_an_http_request(env, monkeypatch):
     monkeypatch.setattr(
         tick.notifications,
         "dispatch_due",
-        lambda *_a, **_k: type("D", (), {"sent": 1, "skipped": 0, "failed": 0})(),
+        lambda *_a, **_k: tick.notifications.DispatchResult(sent=1, push_sent=2),
     )
 
     outcome = tick.run_tick(now_utc=datetime.now(UTC))
@@ -165,6 +165,7 @@ def test_the_tick_is_callable_without_an_http_request(env, monkeypatch):
     assert outcome.marked_overdue == 2
     assert outcome.missed == 1
     assert outcome.emails_sent == 1
+    assert outcome.pushes_sent == 2
 
 
 def test_the_tick_never_builds_its_own_agent_when_given_one(env, monkeypatch):

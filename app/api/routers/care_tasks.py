@@ -126,6 +126,9 @@ class TickResponse(BaseModel):
     emails_sent: int = 0
     emails_skipped: int = 0
     emails_failed: int = 0
+    pushes_sent: int = 0
+    pushes_skipped: int = 0
+    pushes_failed: int = 0
 
 
 # --- helpers ------------------------------------------------------------------

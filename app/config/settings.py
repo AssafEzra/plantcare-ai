@@ -111,6 +111,16 @@ class Settings(BaseSettings):
     resend_api_key: str | None = None
     resend_from_email: str | None = None
 
+    # --- Web Push (optional; see `push_configured`) ---
+    # The VAPID key pair identifies this server to the browsers' push services. The
+    # public half is handed to the browser when it subscribes; the private half
+    # signs every push and is a secret. Generate once with
+    # `npx web-push generate-vapid-keys` (both are base64url strings).
+    vapid_public_key: str | None = None
+    vapid_private_key: str | None = None
+    # A contact the push services can reach about abuse: "mailto:..." or an https URL.
+    vapid_subject: str = "mailto:admin@plantcare.app"
+
     # --- Internal scheduler tick ---
     internal_tick_secret: str = Field(
         ..., description="Shared secret guarding POST /v1/internal/tick"
@@ -158,6 +168,11 @@ class Settings(BaseSettings):
     def email_enabled(self) -> bool:
         """Resend is optional. Without it the app runs with a null email provider."""
         return bool(self.resend_api_key and self.resend_from_email)
+
+    @property
+    def push_configured(self) -> bool:
+        """Push is optional. Without a key pair the app runs with a null push provider."""
+        return bool(self.vapid_public_key and self.vapid_private_key)
 
     @property
     def is_production(self) -> bool:

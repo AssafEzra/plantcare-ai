@@ -25,13 +25,23 @@ and the specification never says how they relate. Resolved:
 They are different questions. A user who waters in the evening still wants their
 reminder in the morning, and a user with six plants wants one message at a time
 they choose, not six at whatever hours their rules happen to specify.
+
+Today, Due and Evening (migration 0022)
+---------------------------------------
+At the morning time (07:30 for now) two things may go out: **Today** - tasks due
+today - and **Due** - open tasks one to `due_reminder_days` days late. Email
+carries both as one message with two sections; push sends them as two
+notifications. In the evening, if the user turned it on, one push for today's
+tasks still open. Per-task emails are gone. What goes into each is decided in
+`selection.py`, which has no I/O.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import UTC, date, datetime, time
+from datetime import UTC, date, datetime
 from typing import Any
+from uuid import UUID
 
 from app.common.enums import NotificationChannel, NotificationDeliveryStatus
 from app.config.logging import get_logger
@@ -42,6 +52,13 @@ from app.infrastructure.email.provider import (
     EmailSendError,
     NullProvider,
 )
+from app.infrastructure.push.provider import (
+    PushProvider,
+    PushResult,
+    PushTarget,
+    build_push_provider,
+)
+from app.notifications import selection
 from app.orchestration.services import scheduler
 from app.repositories.base import Row, first_row, rows
 from supabase import Client
@@ -69,15 +86,23 @@ def build_provider() -> EmailProvider:
 
 @dataclass(frozen=True)
 class DispatchResult:
+    """What one dispatch run did. `sent/skipped/failed` count emails."""
+
     sent: int = 0
     skipped: int = 0
     failed: int = 0
+    push_sent: int = 0
+    push_skipped: int = 0
+    push_failed: int = 0
 
     def merged(self, other: DispatchResult) -> DispatchResult:
         return DispatchResult(
             sent=self.sent + other.sent,
             skipped=self.skipped + other.skipped,
             failed=self.failed + other.failed,
+            push_sent=self.push_sent + other.push_sent,
+            push_skipped=self.push_skipped + other.push_skipped,
+            push_failed=self.push_failed + other.push_failed,
         )
 
 
@@ -85,26 +110,26 @@ class DispatchResult:
 
 
 def digest_key(user_id: str, local_day: date) -> str:
-    """One digest per user per **local** day.
+    """One morning email per user per **local** day.
 
     The date component is the user's own, so moving timezone cannot produce two
-    digests on one of their days — which is the failure the schema comment calls
-    out and the reason the key is not built from a UTC date.
+    emails on one of their days. The format predates migration 0022 and is kept,
+    so a user already emailed on the day of the change is not emailed again.
     """
     return f"digest:{user_id}:{local_day.isoformat()}"
 
 
-def task_key(task_id: str) -> str:
-    """One reminder per task, ever.
-
-    Not per day: a task that stays overdue for a week should be mentioned in the
-    digest, not emailed again every morning. FINAL §14 lists missed-reminder
-    emails as **Future**, and this key is what keeps that promise.
-    """
-    return f"task:{task_id}:reminder"
+def push_key(kind: str, user_id: str, local_day: date) -> str:
+    """One push of each kind per user per local day, across all their devices."""
+    return f"push-{kind}:{user_id}:{local_day.isoformat()}"
 
 
 # --- dispatch -------------------------------------------------------------------
+
+PREFERENCE_COLUMNS = (
+    "user_id, email_enabled, preferred_time_local, due_reminder_days, "
+    "evening_enabled, evening_time_local"
+)
 
 
 def dispatch_due(
@@ -112,114 +137,146 @@ def dispatch_due(
     *,
     now_utc: datetime,
     provider: EmailProvider | None = None,
+    push_provider: PushProvider | None = None,
     user_id: str | None = None,
 ) -> DispatchResult:
-    """Send reminders to every user whose send window has arrived.
+    """Send whatever is due to every user whose time has arrived.
 
     Called from the scheduler tick, after materialisation and the overdue sweep,
-    so the tasks it reports on are the ones that run has just settled.
+    so the tasks it reports on are the ones that run has just settled. Nothing is
+    remembered between runs: each one asks, per user, "has my time come today, is
+    there anything to say, and has it not been said yet?" A missed run is caught
+    up by the next one the same day; a missed day is not sent afterwards.
     """
     sender = provider or build_provider()
+    pusher = push_provider or build_push_provider()
     result = DispatchResult()
 
     for preferences in _recipients(client, user_id=user_id):
-        result = result.merged(_dispatch_for_user(client, preferences, now_utc, sender))
+        result = result.merged(_dispatch_for_user(client, preferences, now_utc, sender, pusher))
 
     return result
 
 
 def _recipients(client: Client, *, user_id: str | None) -> list[Row]:
-    query = client.table("notification_preferences").select(
-        "user_id, email_enabled, preferred_time_local, daily_digest"
-    )
+    """Users with email on, or with at least one push device switched on."""
+    query = client.table("notification_preferences").select(PREFERENCE_COLUMNS)
     if user_id:
         query = query.eq("user_id", user_id)
-    # Disabled is a user's decision and is respected here rather than by
-    # discarding the message later; nothing is built for someone who opted out.
-    return [row for row in rows(query.execute()) if row.get("email_enabled")]
+
+    devices = client.table("push_subscriptions").select("user_id").eq("enabled", True)
+    if user_id:
+        devices = devices.eq("user_id", user_id)
+    with_push = {str(row["user_id"]) for row in rows(devices.execute())}
+
+    return [
+        row
+        for row in rows(query.execute())
+        if row.get("email_enabled") or str(row["user_id"]) in with_push
+    ]
 
 
 def _dispatch_for_user(
-    client: Client, preferences: Row, now_utc: datetime, provider: EmailProvider
+    client: Client,
+    preferences: Row,
+    now_utc: datetime,
+    provider: EmailProvider,
+    pusher: PushProvider,
 ) -> DispatchResult:
-    user_id = preferences["user_id"]
+    user_id = str(preferences["user_id"])
     timezone_name = scheduler.timezone_of(client, user_id)
     local_now = now_utc.astimezone(recurrence.zone(timezone_name))
+    today = local_now.date()
 
-    if not _within_send_window(preferences, local_now):
+    morning_at = selection.parse_time(
+        preferences.get("preferred_time_local"), selection.MORNING_DEFAULT
+    )
+    evening_at = selection.parse_time(
+        preferences.get("evening_time_local"), selection.EVENING_DEFAULT
+    )
+    morning = selection.window_open(local_now, morning_at)
+    evening = bool(preferences.get("evening_enabled")) and selection.window_open(
+        local_now, evening_at
+    )
+    if not (morning or evening):
         return DispatchResult()
 
-    tasks = _outstanding(client, user_id=user_id, now_utc=now_utc, timezone_name=timezone_name)
-    if not tasks:
+    tasks = _decorate(client, scheduler.tasks_for_user(client, user_id=UUID(user_id)))
+    due_today = selection.today_tasks(tasks, today=today, timezone_name=timezone_name)
+    late = selection.due_tasks(
+        tasks,
+        today=today,
+        timezone_name=timezone_name,
+        days=int(preferences.get("due_reminder_days", 1) or 0),
+    )
+    if not (due_today or late):
         return DispatchResult()
 
-    profile = first_row(client.table("profiles").select("display_name").eq("id", user_id).execute())
-    email = _email_of(client, user_id)
-    if not email:
-        # No address to send to. Not an error worth retrying every fifteen
-        # minutes; the in-app list still shows the work.
-        return DispatchResult(skipped=1)
-
-    if preferences.get("daily_digest", True):
-        return _send_digest(
-            client,
-            provider,
-            user_id=user_id,
-            email=email,
-            display_name=(profile or {}).get("display_name"),
-            tasks=tasks,
-            local_day=local_now.date(),
-            now_utc=now_utc,
-        )
-
-    # A10 and the audit's correction: `daily_digest` is a preference the user
-    # set, not a hint to be overridden by task count. The first draft of the plan
-    # chose by how many tasks there were, which made the setting inert.
+    devices = _devices(client, user_id)
     result = DispatchResult()
-    for task in tasks:
+
+    if morning:
+        if preferences.get("email_enabled"):
+            result = result.merged(
+                _email_morning(
+                    client,
+                    provider,
+                    user_id=user_id,
+                    today=today,
+                    now_utc=now_utc,
+                    due_today=due_today,
+                    late=late,
+                )
+            )
+        if devices and due_today:
+            result = result.merged(
+                _push(
+                    client,
+                    pusher,
+                    user_id=user_id,
+                    devices=devices,
+                    now_utc=now_utc,
+                    key=push_key("today", user_id, today),
+                    message=selection.today_push(due_today, day=today),
+                )
+            )
+        if devices and late:
+            result = result.merged(
+                _push(
+                    client,
+                    pusher,
+                    user_id=user_id,
+                    devices=devices,
+                    now_utc=now_utc,
+                    key=push_key("due", user_id, today),
+                    message=selection.due_push(late, day=today),
+                )
+            )
+
+    if evening and devices and due_today:
         result = result.merged(
-            _send_single(client, provider, user_id=user_id, email=email, task=task, now_utc=now_utc)
+            _push(
+                client,
+                pusher,
+                user_id=user_id,
+                devices=devices,
+                now_utc=now_utc,
+                key=push_key("evening", user_id, today),
+                message=selection.evening_push(due_today, day=today),
+            )
         )
+
     return result
 
 
-def _within_send_window(preferences: Row, local_now: datetime) -> bool:
-    """Has the user's preferred hour arrived today?
-
-    A window rather than an instant: the tick runs every fifteen minutes and can
-    be late, and a reminder that requires the clock to land exactly on 08:00
-    would silently not arrive on the day a deploy overlapped it. Once past the
-    hour, the dedupe key is what stops it sending twice.
-    """
-    raw = str(preferences.get("preferred_time_local") or "08:00")
-    try:
-        preferred = time.fromisoformat(raw if len(raw) > 5 else f"{raw}:00")
-    except ValueError:  # pragma: no cover - a CHECK constrains the column
-        preferred = time(8, 0)
-
-    return local_now.timetz().replace(tzinfo=None) >= preferred
-
-
-def _outstanding(
-    client: Client, *, user_id: str, now_utc: datetime, timezone_name: str
-) -> list[Row]:
-    """What the user is being reminded about.
-
-    The same query the dashboard uses, so an email cannot disagree with the
-    screen it is telling someone to go and look at.
-    """
-    from uuid import UUID
-
-    today = recurrence.local_date(now_utc, timezone_name)
-    _, day_end = recurrence.day_bounds_utc(today, timezone_name)
-
-    open_tasks = scheduler.tasks_for_user(client, user_id=UUID(user_id))
-    due_now = [
-        task
-        for task in open_tasks
-        if (parsed := scheduler.parse_timestamp(task["due_at_utc"])) and parsed < day_end
-    ]
-    return _decorate(client, due_now)
+def _devices(client: Client, user_id: str) -> list[Row]:
+    return rows(
+        client.table("push_subscriptions")
+        .select("id, endpoint, p256dh, auth")
+        .eq("user_id", user_id)
+        .eq("enabled", True)
+        .execute()
+    )
 
 
 def _decorate(client: Client, tasks: list[Row]) -> list[Row]:
@@ -271,49 +328,115 @@ def _email_of(client: Client, user_id: str) -> str | None:
         return None
 
 
-# --- the two shapes of message ---------------------------------------------------
+# --- email ----------------------------------------------------------------------
 
 
-def _send_digest(
+def _email_morning(
     client: Client,
     provider: EmailProvider,
     *,
     user_id: str,
-    email: str,
-    display_name: str | None,
-    tasks: list[Row],
-    local_day: date,
+    today: date,
     now_utc: datetime,
+    due_today: list[Row],
+    late: list[Row],
 ) -> DispatchResult:
-    key = digest_key(user_id, local_day)
-    delivery = _reserve(client, user_id=user_id, dedupe_key=key, care_task_id=None)
+    email = _email_of(client, user_id)
+    if not email:
+        # No address to send to. Not an error worth retrying every run; the
+        # in-app list still shows the work.
+        return DispatchResult(skipped=1)
+
+    delivery = _reserve(
+        client,
+        user_id=user_id,
+        dedupe_key=digest_key(user_id, today),
+        channel=NotificationChannel.EMAIL,
+    )
     if delivery is None:
         return DispatchResult(skipped=1)
 
-    message = render_digest(email=email, display_name=display_name, tasks=tasks)
+    profile = first_row(client.table("profiles").select("display_name").eq("id", user_id).execute())
+    message = render_digest(
+        email=email,
+        display_name=(profile or {}).get("display_name"),
+        due_today=due_today,
+        late=late,
+    )
     return _deliver(client, provider, delivery_id=delivery["id"], message=message, now_utc=now_utc)
 
 
-def _send_single(
+# --- push -----------------------------------------------------------------------
+
+
+def _push(
     client: Client,
-    provider: EmailProvider,
+    pusher: PushProvider,
     *,
     user_id: str,
-    email: str,
-    task: Row,
+    devices: list[Row],
     now_utc: datetime,
+    key: str,
+    message: selection.PushMessage,
 ) -> DispatchResult:
-    key = task_key(str(task["id"]))
-    delivery = _reserve(client, user_id=user_id, dedupe_key=key, care_task_id=str(task["id"]))
-    if delivery is None:
-        return DispatchResult(skipped=1)
+    """One notification to every enabled device, recorded as one delivery.
 
-    message = render_single(email=email, task=task)
-    return _deliver(client, provider, delivery_id=delivery["id"], message=message, now_utc=now_utc)
+    Reserved first, like email, so a second run the same day is refused by the
+    unique key before anything is pushed. A device its push service reports as
+    gone is deleted: the user blocked notifications or removed the app, and an
+    address that will never answer is not worth asking again.
+    """
+    delivery = _reserve(client, user_id=user_id, dedupe_key=key, channel=NotificationChannel.PUSH)
+    if delivery is None:
+        return DispatchResult(push_skipped=1)
+
+    payload = message.payload()
+    delivered = 0
+    for device in devices:
+        outcome = pusher.send(
+            PushTarget(endpoint=device["endpoint"], p256dh=device["p256dh"], auth=device["auth"]),
+            payload,
+        )
+        if outcome is PushResult.GONE:
+            client.table("push_subscriptions").delete().eq("id", device["id"]).execute()
+            log.info("push.subscription_gone", subscription_id=device["id"])
+        elif outcome is PushResult.OK:
+            delivered += 1
+            client.table("push_subscriptions").update({"last_sent_at": now_utc.isoformat()}).eq(
+                "id", device["id"]
+            ).execute()
+
+    if pusher.suppresses:
+        status, counted = NotificationDeliveryStatus.SKIPPED, DispatchResult(push_skipped=1)
+        changes: dict[str, Any] = {"status": status.value}
+    elif delivered:
+        status, counted = NotificationDeliveryStatus.SENT, DispatchResult(push_sent=1)
+        changes = {"status": status.value, "sent_at": now_utc.isoformat()}
+    else:
+        status, counted = NotificationDeliveryStatus.FAILED, DispatchResult(push_failed=1)
+        changes = {"status": status.value, "error_message": "no device accepted the push"}
+
+    client.table("notification_deliveries").update(changes).eq("id", delivery["id"]).execute()
+    return counted
+
+
+def send_confirmation(pusher: PushProvider, device: Row) -> PushResult:
+    """The one push sent when a device is registered, so the user sees it work.
+
+    Not recorded as a delivery: it is a reply to the user's own tap, not a
+    reminder, and there is nothing to deduplicate.
+    """
+    return pusher.send(
+        PushTarget(endpoint=device["endpoint"], p256dh=device["p256dh"], auth=device["auth"]),
+        selection.confirmation_push().payload(),
+    )
+
+
+# --- the delivery log -----------------------------------------------------------
 
 
 def _reserve(
-    client: Client, *, user_id: str, dedupe_key: str, care_task_id: str | None
+    client: Client, *, user_id: str, dedupe_key: str, channel: NotificationChannel
 ) -> Row | None:
     """Claim the right to send, or return None because someone already has.
 
@@ -328,8 +451,8 @@ def _reserve(
             .insert(
                 {
                     "user_id": user_id,
-                    "care_task_id": care_task_id,
-                    "channel": NotificationChannel.EMAIL.value,
+                    "care_task_id": None,
+                    "channel": channel.value,
                     "status": NotificationDeliveryStatus.QUEUED.value,
                     "dedupe_key": dedupe_key,
                 }
@@ -395,60 +518,67 @@ def _deliver(
 
 # --- rendering ------------------------------------------------------------------
 
-ACTION_LABELS: dict[str, str] = {
-    "WATERING": "השקיה",
-    "FERTILIZING": "דישון",
-    "REPOTTING": "החלפת עציץ",
-    "PRUNING": "גיזום",
-    "MISTING": "ריסוס",
-    "ROTATING": "סיבוב",
-    "INSPECTION": "בדיקה",
-}
+# The app's own tokens (frontend/src/styles/tokens.css): today in green, late in
+# red. Inline, because mail clients ignore stylesheets.
+GREEN, GREEN_BG = "#3a7550", "#e8f3eb"
+RED, RED_BG = "#8f1410", "#fbe7e5"
 
 
 def _line(task: Row) -> str:
-    action = ACTION_LABELS.get(str(task.get("action_type")), str(task.get("action_type") or ""))
+    action = selection.action_label(task.get("action_type"))
     plant = task.get("plant_name") or "הצמח שלך"
-    late = " (באיחור)" if task.get("status") == "OVERDUE" else ""
-    return f"{action} — {plant}{late}"
+    return f"{action} — {plant}"
 
 
-def render_digest(*, email: str, display_name: str | None, tasks: list[Row]) -> EmailMessage:
-    """One message for the day's work (FINAL §14).
+def _count(n: int, one: str, many: str) -> str:
+    return one if n == 1 else f"{n} {many}"
+
+
+def _html_section(title: str, tasks: list[Row], *, colour: str, background: str) -> str:
+    items = "".join(f"<li>{_line(task)}</li>" for task in tasks)
+    return (
+        f'<div style="border-inline-start:4px solid {colour};background:{background};'
+        f'padding:8px 12px;margin:12px 0;border-radius:6px">'
+        f'<p style="margin:0 0 4px;color:{colour};font-weight:bold">{title}</p>'
+        f'<ul style="margin:0;padding-inline-start:20px">{items}</ul></div>'
+    )
+
+
+def render_digest(
+    *, email: str, display_name: str | None, due_today: list[Row], late: list[Row]
+) -> EmailMessage:
+    """The morning email: what is due today, and what is late (FINAL §14).
 
     Deliberately short. An email is a prompt to open the app, not a place to do
     the work: there is no Done button here, because acting on a task has to
     record an immutable event against an authenticated user.
     """
     greeting = f"שלום {display_name}," if display_name else "שלום,"
-    overdue = [t for t in tasks if t.get("status") == "OVERDUE"]
+    today_title = "היום: " + _count(len(due_today), "משימת טיפול אחת", "משימות טיפול")
+    late_title = "באיחור: " + _count(len(late), "משימה אחת", "משימות")
 
-    heading = f"{len(tasks)} משימות טיפול היום" if len(tasks) != 1 else "משימת טיפול אחת היום"
-    lines = [greeting, "", heading, ""]
-    lines.extend(f"• {_line(task)}" for task in tasks)
-    if overdue:
-        lines.extend(["", f"{len(overdue)} מהן ממתינות כבר מזמן."])
-    lines.extend(["", "אפשר לסמן אותן כבוצעו באפליקציה.", "", "PlantCare AI"])
+    parts = []
+    if due_today:
+        parts.append(_count(len(due_today), "משימת טיפול אחת היום", "משימות טיפול היום"))
+    if late:
+        parts.append(_count(len(late), "משימה אחת באיחור", "משימות באיחור"))
+    subject = "PlantCare — " + ", ".join(parts)
 
-    text = "\n".join(lines)
-    items = "".join(f"<li>{_line(task)}</li>" for task in tasks)
-    html = (
-        f'<div dir="rtl" style="font-family:sans-serif">'
-        f"<p>{greeting}</p><p><strong>{heading}</strong></p><ul>{items}</ul>"
-        f"<p>אפשר לסמן אותן כבוצעו באפליקציה.</p><p>PlantCare AI</p></div>"
-    )
+    lines = [greeting, ""]
+    if due_today:
+        lines += [today_title, *(f"• {_line(t)}" for t in due_today), ""]
+    if late:
+        lines += [late_title, *(f"• {_line(t)}" for t in late), ""]
+    lines += ["אפשר לסמן אותן כבוצעו באפליקציה.", "", "PlantCare AI"]
 
-    return EmailMessage(to=email, subject=f"PlantCare — {heading}", text_body=text, html_body=html)
+    html = f'<div dir="rtl" style="font-family:sans-serif"><p>{greeting}</p>'
+    if due_today:
+        html += _html_section(today_title, due_today, colour=GREEN, background=GREEN_BG)
+    if late:
+        html += _html_section(late_title, late, colour=RED, background=RED_BG)
+    html += "<p>אפשר לסמן אותן כבוצעו באפליקציה.</p><p>PlantCare AI</p></div>"
 
-
-def render_single(*, email: str, task: Row) -> EmailMessage:
-    line = _line(task)
-    text = "\n".join(["שלום,", "", f"תזכורת: {line}.", "", "PlantCare AI"])
-    html = (
-        f'<div dir="rtl" style="font-family:sans-serif">'
-        f"<p>שלום,</p><p>תזכורת: <strong>{line}</strong>.</p><p>PlantCare AI</p></div>"
-    )
-    return EmailMessage(to=email, subject=f"PlantCare — {line}", text_body=text, html_body=html)
+    return EmailMessage(to=email, subject=subject, text_body="\n".join(lines), html_body=html)
 
 
 # --- reads ----------------------------------------------------------------------
@@ -458,7 +588,10 @@ def preferences_for(client: Client, user_id: str) -> Row:
     """The user's preferences, which the signup trigger guarantees exist (A27)."""
     found = first_row(
         client.table("notification_preferences")
-        .select("user_id, email_enabled, preferred_time_local, daily_digest, updated_at")
+        .select(
+            "user_id, email_enabled, preferred_time_local, daily_digest, due_reminder_days, "
+            "evening_enabled, evening_time_local, updated_at"
+        )
         .eq("user_id", user_id)
         .execute()
     )
@@ -469,7 +602,15 @@ def preferences_for(client: Client, user_id: str) -> Row:
     # have no row and no way to get one.
     return first_row(
         client.table("notification_preferences").insert({"user_id": user_id}).execute()
-    ) or {"user_id": user_id, "email_enabled": True, "daily_digest": True}
+    ) or {
+        "user_id": user_id,
+        "email_enabled": True,
+        "daily_digest": True,
+        "preferred_time_local": "07:30",
+        "due_reminder_days": 1,
+        "evening_enabled": False,
+        "evening_time_local": "19:00",
+    }
 
 
 def update_preferences(client: Client, user_id: str, changes: dict[str, Any]) -> Row:

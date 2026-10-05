@@ -29,6 +29,10 @@ REQUIRED_ENV = {
 OPTIONAL_ENV = (
     "RESEND_API_KEY",
     "RESEND_FROM_EMAIL",
+    # A developer with push configured must not have the notification tests send
+    # real pushes; without these the app falls back to the null push provider.
+    "VAPID_PUBLIC_KEY",
+    "VAPID_PRIVATE_KEY",
     # Same reasoning, found the same way: `test_the_provider_defaults_to_anthropic_
     # for_every_agent` asserts the *default*, and a developer whose `.env` selects a
     # provider per agent - which the deployed app does - made it fail on their

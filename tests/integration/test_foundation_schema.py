@@ -42,15 +42,20 @@ def test_signup_creates_notification_preferences(db: psycopg.Connection, make_us
     user_id = make_user()
 
     row = db.execute(
-        "select email_enabled, preferred_time_local, daily_digest "
+        "select email_enabled, preferred_time_local, daily_digest, due_reminder_days, "
+        "evening_enabled "
         "from public.notification_preferences where user_id = %s",
         (user_id,),
     ).fetchone()
 
     assert row is not None, "signup trigger did not create notification preferences"
     assert row[0] is True
-    assert str(row[1]) == "08:00:00"
+    # Migration 0022: the morning notifications go out at 07:30, Due covers one
+    # day after a task's due date, and the evening push starts off.
+    assert str(row[1]) == "07:30:00"
     assert row[2] is True
+    assert row[3] == 1
+    assert row[4] is False
 
 
 def test_profile_without_display_name_is_null_not_empty(db: psycopg.Connection, make_user):

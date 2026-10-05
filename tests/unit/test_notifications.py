@@ -11,13 +11,13 @@ recording stub, which is the same default CI runs under.
 
 from __future__ import annotations
 
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, time
 from zoneinfo import ZoneInfo
 
 import pytest
 
 from app.infrastructure.email.provider import EmailMessage, EmailSendError, NullProvider
-from app.notifications import service
+from app.notifications import selection, service
 
 JERUSALEM = ZoneInfo("Asia/Jerusalem")
 
@@ -38,35 +38,25 @@ def task(action: str = "WATERING", *, status: str = "PENDING", plant: str = "ה�
 
 
 def test_nothing_is_sent_before_the_users_preferred_hour():
-    """A10: the preference governs when we may *write*, not when a task is due.
-
-    A user asking to be told at 08:00 must not be emailed at 06:00 because a rule
-    happened to fall due then.
-    """
+    """A10: the preference governs when we may *write*, not when a task is due."""
     early = datetime(2026, 9, 5, 6, 30, tzinfo=JERUSALEM)
-    assert not service._within_send_window({"preferred_time_local": "08:00"}, early)
+    assert not selection.window_open(early, time(7, 30))
 
 
 def test_the_window_opens_at_the_preferred_hour():
-    at_time = datetime(2026, 9, 5, 8, 0, tzinfo=JERUSALEM)
-    assert service._within_send_window({"preferred_time_local": "08:00"}, at_time)
+    assert selection.window_open(datetime(2026, 9, 5, 7, 30, tzinfo=JERUSALEM), time(7, 30))
 
 
 def test_the_window_stays_open_for_the_rest_of_the_day():
-    """A window, not an instant.
-
-    The tick runs every fifteen minutes and can be late; a reminder that required
-    the clock to land exactly on 08:00 would silently not arrive on the day a
-    deploy overlapped it. The dedupe key is what stops the open window sending
-    twice.
-    """
+    """A window, not an instant: a run at 08:00 still sends the 07:30 reminder.
+    The dedupe key is what stops the open window sending twice."""
     later = datetime(2026, 9, 5, 21, 0, tzinfo=JERUSALEM)
-    assert service._within_send_window({"preferred_time_local": "08:00"}, later)
+    assert selection.window_open(later, time(7, 30))
 
 
-def test_a_missing_preference_falls_back_to_eight():
-    assert service._within_send_window({}, datetime(2026, 9, 5, 9, 0, tzinfo=JERUSALEM))
-    assert not service._within_send_window({}, datetime(2026, 9, 5, 7, 0, tzinfo=JERUSALEM))
+def test_a_missing_time_falls_back_to_half_past_seven():
+    assert selection.parse_time(None, selection.MORNING_DEFAULT) == time(7, 30)
+    assert selection.parse_time("19:00:00", selection.EVENING_DEFAULT) == time(19, 0)
 
 
 # --- dedupe keys ----------------------------------------------------------------
@@ -74,7 +64,7 @@ def test_a_missing_preference_falls_back_to_eight():
 
 def test_the_digest_key_is_keyed_on_the_users_local_day():
     """The schema comment's requirement: changing timezone must not yield two
-    digests on one of the user's days."""
+    emails on one of the user's days. The format predates migration 0022."""
     key = service.digest_key("user-1", date(2026, 9, 5))
     assert key == "digest:user-1:2026-09-05"
 
@@ -84,64 +74,72 @@ def test_two_users_on_the_same_day_get_different_keys():
     assert service.digest_key("a", day) != service.digest_key("b", day)
 
 
-def test_a_task_reminder_is_keyed_once_ever_not_once_a_day():
-    """FINAL §14 lists missed-reminder emails as Future.
-
-    A task overdue for a week should appear in the digest, not be emailed every
-    morning — so the key carries no date at all.
-    """
-    key = service.task_key("task-1")
-    assert key == "task:task-1:reminder"
-    assert "2026" not in key
+def test_each_kind_of_push_has_its_own_daily_key():
+    day = date(2026, 9, 5)
+    keys = {service.push_key(kind, "u", day) for kind in ("today", "due", "evening")}
+    assert len(keys) == 3
+    assert service.push_key("today", "u", day) == "push-today:u:2026-09-05"
 
 
 # --- rendering ------------------------------------------------------------------
 
 
-def test_the_digest_names_every_task():
+def test_the_email_names_every_task_in_its_section():
     message = service.render_digest(
         email="a@example.com",
         display_name="דנה",
-        tasks=[task("WATERING"), task("FERTILIZING")],
+        due_today=[task("WATERING"), task("FERTILIZING")],
+        late=[task("PRUNING", status="OVERDUE")],
     )
 
     assert "דנה" in message.text_body
-    assert "השקיה" in message.text_body
-    assert "דישון" in message.text_body
+    assert "היום" in message.text_body and "באיחור" in message.text_body
+    assert "השקיה" in message.text_body and "גיזום" in message.text_body
     assert message.html_body and 'dir="rtl"' in message.html_body
 
 
-def test_one_task_is_not_described_in_the_plural():
-    message = service.render_digest(email="a@example.com", display_name=None, tasks=[task()])
-    assert "משימת טיפול אחת" in message.text_body
-
-
-def test_overdue_work_is_called_out_in_the_digest():
+def test_today_is_green_and_late_is_red_in_the_email():
     message = service.render_digest(
         email="a@example.com",
         display_name=None,
-        tasks=[task("WATERING", status="OVERDUE")],
+        due_today=[task()],
+        late=[task("PRUNING", status="OVERDUE")],
     )
-    assert "באיחור" in message.text_body
+    html = message.html_body or ""
+    assert service.GREEN in html and service.RED in html
+    assert html.index(service.GREEN) < html.index(service.RED)
+
+
+def test_a_section_with_nothing_in_it_is_left_out():
+    message = service.render_digest(
+        email="a@example.com", display_name=None, due_today=[task()], late=[]
+    )
+    assert "באיחור" not in message.text_body
+    assert service.RED not in (message.html_body or "")
+
+
+def test_one_task_is_not_described_in_the_plural():
+    message = service.render_digest(
+        email="a@example.com", display_name=None, due_today=[task()], late=[]
+    )
+    assert "משימת טיפול אחת" in message.text_body
 
 
 def test_the_email_carries_no_action_buttons():
     """Acting on a task writes an immutable event against an authenticated user,
     which an email link cannot do. The message is a prompt to open the app."""
-    message = service.render_digest(email="a@example.com", display_name=None, tasks=[task()])
+    message = service.render_digest(
+        email="a@example.com", display_name=None, due_today=[task()], late=[]
+    )
     assert "http" not in message.text_body
-
-
-def test_a_single_reminder_names_the_plant_and_the_action():
-    message = service.render_single(email="a@example.com", task=task("PRUNING"))
-    assert "גיזום" in message.subject
-    assert "המונסטרה" in message.text_body
 
 
 def test_rendering_survives_an_unknown_action_type():
     """A new action added to the enum must not produce a blank line in an email
     before the label dictionary catches up."""
-    message = service.render_single(email="a@example.com", task=task("SOMETHING_NEW"))
+    message = service.render_digest(
+        email="a@example.com", display_name=None, due_today=[task("SOMETHING_NEW")], late=[]
+    )
     assert "SOMETHING_NEW" in message.text_body
 
 

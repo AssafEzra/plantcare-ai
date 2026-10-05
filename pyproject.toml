@@ -24,6 +24,7 @@ dependencies = [
     "pyjwt[crypto]>=2.9",
     # Required for zoneinfo on Windows — the scheduler depends on IANA tz data.
     "tzdata>=2024.2",
+    "pywebpush>=2.5.0",
 ]
 
 [dependency-groups]

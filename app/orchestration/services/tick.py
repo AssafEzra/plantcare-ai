@@ -52,6 +52,9 @@ class TickOutcome:
     emails_sent: int = 0
     emails_skipped: int = 0
     emails_failed: int = 0
+    pushes_sent: int = 0
+    pushes_skipped: int = 0
+    pushes_failed: int = 0
 
 
 def run_tick(*, now_utc: datetime, care_agent: CareAgent | None = None) -> TickOutcome:
@@ -102,6 +105,9 @@ def run_tick(*, now_utc: datetime, care_agent: CareAgent | None = None) -> TickO
         emails_sent=dispatched.sent,
         emails_skipped=dispatched.skipped,
         emails_failed=dispatched.failed,
+        pushes_sent=dispatched.push_sent,
+        pushes_skipped=dispatched.push_skipped,
+        pushes_failed=dispatched.push_failed,
     )
 
     log.info(
@@ -114,6 +120,8 @@ def run_tick(*, now_utc: datetime, care_agent: CareAgent | None = None) -> TickO
         plans_queued=outcome.plans_queued,
         emails_sent=outcome.emails_sent,
         emails_failed=outcome.emails_failed,
+        pushes_sent=outcome.pushes_sent,
+        pushes_failed=outcome.pushes_failed,
     )
 
     return outcome
