@@ -165,6 +165,47 @@ def flag_value(pairs: dict[str, str]) -> str:
     return body
 
 
+def runtime_service_account(gcloud: str) -> str:
+    """The identity a revision runs as, which is what has to read the secrets.
+
+    Derived rather than written down: the address is built from the project
+    *number*, not its id, and a wrong constant would only fail at deploy time.
+    """
+    code, out = run(gcloud, ["projects", "describe", PROJECT, "--format=value(projectNumber)"])
+    if code != 0:
+        sys.exit(f"could not read the project number: {out[:300]}")
+    return f"{out.strip()}-compute@developer.gserviceaccount.com"
+
+
+def grant_access(gcloud: str, secret: str, account: str) -> None:
+    """Let the revision read a secret this script has just created.
+
+    Storing a secret and granting access to it are two operations, and skipping
+    the second is invisible until the deploy: Cloud Run refuses the revision with
+    `Permission denied on secret ...` *after* the image has been built and pushed,
+    so the failure costs a full build. That is how `resend-api-key` and
+    `vapid-private-key` failed on the notifications deploy; the five secrets that
+    predate it had been granted by hand and so hid the gap.
+
+    Only for secrets created here. An existing secret keeps whatever policy it
+    has, because widening access to something already in use is not this script's
+    decision to make.
+    """
+    code, out = run(
+        gcloud,
+        [
+            "secrets",
+            "add-iam-policy-binding",
+            secret,
+            f"--member=serviceAccount:{account}",
+            "--role=roles/secretmanager.secretAccessor",
+            f"--project={PROJECT}",
+        ],
+    )
+    if code != 0:
+        sys.exit(f"could not grant the service account access to {secret}: {out[:300]}")
+
+
 def sync_secrets(gcloud: str, env: dict[str, str | None], *, apply: bool) -> list[str]:
     """Push any secret whose `.env` value differs from the stored one.
 
@@ -172,6 +213,8 @@ def sync_secrets(gcloud: str, env: dict[str, str | None], *, apply: bool) -> lis
     does not leave a trail of identical secret versions. Values are never printed.
     """
     present = []
+    # Looked up once, and only if something actually has to be created.
+    account: str | None = None
     for name, secret in SECRETS.items():
         value = (env.get(name) or "").strip()
         if not value:
@@ -191,7 +234,7 @@ def sync_secrets(gcloud: str, env: dict[str, str | None], *, apply: bool) -> lis
             ],
         )
         if code != 0:
-            print(f"  {secret:28} MISSING in Secret Manager - will be created")
+            print(f"  {secret:28} MISSING in Secret Manager - will be created and granted")
             if apply:
                 run(
                     gcloud,
@@ -208,6 +251,9 @@ def sync_secrets(gcloud: str, env: dict[str, str | None], *, apply: bool) -> lis
                     ["secrets", "versions", "add", secret, "--data-file=-", f"--project={PROJECT}"],
                     stdin=value.encode("utf-8"),
                 )
+                if account is None:
+                    account = runtime_service_account(gcloud)
+                grant_access(gcloud, secret, account)
             continue
 
         if stored.strip() == value:
