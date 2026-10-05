@@ -67,6 +67,9 @@ class CarePlanVersionSourceType(StrEnum):
     ENVIRONMENT_CHANGE = "ENVIRONMENT_CHANGE"
     HEALTH_DRIVEN = "HEALTH_DRIVEN"
     RE_IDENTIFICATION = "RE_IDENTIFICATION"
+    # Added to the SQL enum by the provisional-knowledge migration; the mirror was
+    # never updated because the parity test only read `create type`.
+    KNOWLEDGE_REVISED = "KNOWLEDGE_REVISED"
 
 
 class CareRuleActionType(StrEnum):
@@ -143,6 +146,7 @@ class AgentStage(StrEnum):
 
 class NotificationChannel(StrEnum):
     EMAIL = "EMAIL"
+    PUSH = "PUSH"
 
 
 class NotificationDeliveryStatus(StrEnum):

@@ -87,6 +87,12 @@ def _sql_enums() -> dict[str, list[str]]:
     found: dict[str, list[str]] = {}
     for name, body in re.findall(r"create type (\w+) as enum\s*\((.*?)\)\s*;", sql, re.I | re.S):
         found[name.lower()] = re.findall(r"'([^']+)'", body)
+    # A later migration extends an enum with `alter type ... add value`, which is
+    # the only way Postgres allows; those values are part of the type too.
+    for name, value in re.findall(
+        r"alter type (\w+) add value (?:if not exists )?'([^']+)'", sql, re.I
+    ):
+        found.setdefault(name.lower(), []).append(value)
     return found
 
 
