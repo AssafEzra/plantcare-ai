@@ -111,14 +111,50 @@ same way and extend `--set-secrets` when you want reminders actually sent.
 ## 2. Build and deploy
 
 ```bash
-gcloud builds submit --config cloudbuild.yaml \
-  --substitutions=_SUPABASE_URL=https://<ref>.supabase.co,_SUPABASE_ANON_KEY=<anon key>
+uv run python scripts/deploy.py            # report what would be deployed
+uv run python scripts/deploy.py --deploy   # build, push and deploy
 ```
 
-Both substitutions are required and the build refuses without them. They are *build*
-inputs, not runtime ones: Vite replaces `import.meta.env.VITE_*` at build time, so the
-Supabase project a bundle talks to is fixed when the image is built. One image is one
-environment, and pointing a deployment at a different project means rebuilding.
+Reporting by default, like the other scripts in `scripts/`. **Read the report** — see
+the warning at the end of this section.
+
+### `.env` is the source of truth
+
+The service's settings come from `.env` and are reconciled on every deploy. They used
+to live in a `--set-env-vars` line in `cloudbuild.yaml` as well, and because that flag
+*replaces* the whole set, the two copies could disagree in silence. They did:
+`KNOWLEDGE_MODEL` was changed to `gemini-3.6-flash` in the console while this
+repository still said `gemini-3.5-flash-lite`, and the next build would have reverted
+it without a word. Do not reintroduce hard-coded settings for convenience.
+
+Three kinds of setting are deliberately not copied from `.env`:
+
+- **Secrets** go to Secret Manager and are referenced by name. A value passed through
+  `--set-env-vars` is readable in `gcloud run services describe` and in the console,
+  and `SUPABASE_SERVICE_ROLE_KEY` bypasses RLS. The script compares each secret
+  against `.env` and adds a new version only where they differ, so a deploy that
+  changes nothing leaves no trail of identical versions.
+- **Three production overrides**, where the local value is wrong rather than merely
+  different: `APP_ENV=production` (disables `/docs`), `APP_DEBUG=false`, and
+  `INTERNAL_TICK_INTERVAL_SECONDS=0` (Cloud Scheduler drives the sweep).
+- **Container facts** — `SPA_DIST_DIR` is set by the `Dockerfile`, `PORT` by Cloud
+  Run. Neither should come from a developer's machine.
+
+The copied list is an allowlist in `scripts/deploy.py`, not a denylist, so a new
+secret added to `.env` cannot reach the service's plain configuration because somebody
+forgot to exclude it.
+
+`cloudbuild.yaml` now only builds and pushes. The three `VITE_` values stay there
+because they are genuinely build inputs: Vite replaces `import.meta.env.VITE_*` at
+build time, so the Supabase project a bundle talks to is fixed when the image is
+built. One image is one environment, and pointing a deployment at a different project
+means rebuilding.
+
+> **`.env` is what ships.** An experiment left in it reaches the service on the next
+> deploy — that is the point of one source of truth, and also its sharp edge. The
+> report prints the resolved settings and the Supabase project before anything runs,
+> and warns when the working tree is dirty, because `gcloud builds submit` uploads the
+> working tree rather than the commit.
 
 `VITE_API_BASE_URL` stays empty. The browser asks for a relative `/v1`, which is the
 same origin the page came from — which is why there is no CORS configuration anywhere
@@ -126,7 +162,7 @@ in this repository.
 
 ### The flags that are not tuning
 
-`cloudbuild.yaml` passes four that each prevent a specific failure:
+`scripts/deploy.py` passes four that each prevent a specific failure:
 
 | Flag | Without it |
 |---|---|
