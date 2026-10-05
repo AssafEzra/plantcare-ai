@@ -28,7 +28,7 @@ from app.api.schemas.common import DataEnvelope
 from app.common.enums import IdentificationStatus, PlantStatus, SystemEventType
 from app.common.errors import ValidationFailedError
 from app.infrastructure.storage import plant_images as storage
-from app.orchestration.services import plant_history, scheduler
+from app.orchestration.services import care_intensity, plant_history, scheduler
 from app.orchestration.workflows import care as care_workflow
 from app.repositories import plants as repo
 from app.repositories.base import first_row, rows
@@ -112,6 +112,9 @@ class PlantDashboardResponse(BaseModel):
     upcoming_tasks: list[dict[str, Any]] = Field(default_factory=list)
     care_plan: dict[str, Any] | None = None
     open_proposals: int = 0
+    # Which schedule this plant follows and what it would cost (care intensity):
+    # override, owner_intensity, effective, care_days, warnings.
+    care_schedule: dict[str, Any] | None = None
 
 
 class HistoryEntryResponse(BaseModel):
@@ -257,6 +260,11 @@ async def get_plant_dashboard(
 
     plan = care_workflow.plan_for_plant(user.client, plant_id=plant_id)
     proposals = care_workflow.proposals_for_plant(user.client, plant_id=plant_id)
+    care_schedule = care_intensity.plant_summary(
+        scheduler.owner_settings(user.client, str(plant["user_id"])),
+        plant_override=plant.get("care_intensity"),
+        rules=(plan or {}).get("rules") or [],
+    )
 
     return DataEnvelope(
         data=PlantDashboardResponse(
@@ -282,6 +290,7 @@ async def get_plant_dashboard(
             upcoming_tasks=open_tasks,
             care_plan=plan,
             open_proposals=len(proposals),
+            care_schedule=care_schedule,
         ),
         request_id=request.state.request_id,
     )

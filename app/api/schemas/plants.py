@@ -8,6 +8,7 @@ from uuid import UUID
 from pydantic import BaseModel, Field, field_validator
 
 from app.common.enums import (
+    CareIntensity,
     CareRuleActionType,
     CareTaskStatus,
     HealthStatus,
@@ -42,6 +43,9 @@ class PlantCreateRequest(BaseModel):
 
     name: str | None = Field(default=None, max_length=120)
     notes: str | None = Field(default=None, max_length=2000)
+    # Explicit null means "follow my Settings" and is distinct from leaving the field
+    # out, which is why the route dumps with exclude_unset rather than exclude_none.
+    care_intensity: CareIntensity | None = None
 
     _normalise = field_validator("name", "notes")(clean_text)
 
@@ -58,6 +62,9 @@ class PlantUpdateRequest(BaseModel):
 
     name: str | None = Field(default=None, max_length=120)
     notes: str | None = Field(default=None, max_length=2000)
+    # Explicit null means "follow my Settings" and is distinct from leaving the field
+    # out, which is why the route dumps with exclude_unset rather than exclude_none.
+    care_intensity: CareIntensity | None = None
 
     _normalise = field_validator("name", "notes")(clean_text)
 
@@ -82,6 +89,7 @@ class PlantResponse(BaseModel):
     archived_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
+    care_intensity: CareIntensity | None = None
 
     # The three fields `PROGRESS §10` asks the card to show. All optional and all
     # absent from a single-plant read: they are filled in by the list endpoint,

@@ -30,7 +30,7 @@ from supabase import Client
 
 PLANT_COLUMNS = (
     "id, user_id, name, species_id, status, current_health_status, "
-    "main_image_id, notes, archived_at, created_at, updated_at"
+    "main_image_id, notes, archived_at, created_at, updated_at, care_intensity"
 )
 
 IMAGE_COLUMNS = (

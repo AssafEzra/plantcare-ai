@@ -6,6 +6,7 @@ every statement runs through the caller's client so RLS applies underneath.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import Annotated
 from uuid import UUID
 
@@ -33,6 +34,7 @@ from app.domain.rules.plant_lifecycle import (
     status_after_restore,
 )
 from app.infrastructure.storage import plant_images as storage
+from app.orchestration.services import scheduler
 from app.repositories import plants as repo
 from app.repositories.base import rows
 
@@ -217,12 +219,18 @@ async def get_plant(
 async def update_plant(
     request: Request, plant_id: UUID, payload: PlantUpdateRequest, user: CurrentUserDep
 ) -> DataEnvelope[PlantResponse]:
-    changes = payload.model_dump(exclude_unset=True)
+    changes = payload.model_dump(mode="json", exclude_unset=True)
     if not changes:
         return await get_plant(request, plant_id, user)
 
     before = repo.get(user.client, plant_id, owner_id=user.id)
     plant = repo.update(user.client, plant_id, changes)
+
+    if "care_intensity" in changes and changes["care_intensity"] != before.get("care_intensity"):
+        # Takes effect at once: this plant's pending tasks move to the new schedule.
+        scheduler.reschedule_pending(
+            user.client, user_id=str(user.id), plant_id=str(plant_id), now_utc=datetime.now(UTC)
+        )
 
     if "name" in changes and changes["name"] != before.get("name"):
         repo.record_event(
