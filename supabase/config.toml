@@ -165,16 +165,15 @@ enabled = true
 # that DEV is only ever a developer's laptop. Since PR HF, DEV is also the deployment
 # real testers use, so DEV names its own origin (FINAL 37).
 #
-# STILL THE STREAMLIT ORIGIN, DELIBERATELY. This file is pushed to whichever project
-# is linked, and the linked DEV project is the one serving the Streamlit app on `dev`
-# right now. Changing this line before the Cloud Run service exists would send every
-# tester's confirmation and password-reset link to a host that is not there.
+# CUT OVER TO CLOUD RUN. Until the React app was deployed this read the Streamlit
+# origin deliberately, because a link sent to a host that does not exist is worse
+# than one sent to the old app. The service now exists, so confirmation and
+# password-reset links land on it.
 #
-# At cutover: replace with the Cloud Run URL, add it to the list below, drop the
-# Streamlit entry, then `supabase config push`. The URL is only knowable after the
-# first deploy, which is why this is a step in docs/DEPLOY_CLOUD_RUN.md rather than
-# a value here.
-site_url = "https://plantcare-ai-fcrp66qd7akvrmrdmwjyga.streamlit.app"
+# The Streamlit entry stays in the list below rather than being dropped: that app
+# is still deployed on `dev` and its own links have to keep resolving until it is
+# retired. Removing it is the last step of the cutover, not this one.
+site_url = "https://plantcare-ai-mv5irloskq-ey.a.run.app"
 # The public URL that Auth serves on. Defaults to the API external URL with `/auth/v1` appended.
 # external_url = ""
 # A list of *exact* URLs that auth providers are permitted to redirect to post authentication.
@@ -182,6 +181,15 @@ site_url = "https://plantcare-ai-fcrp66qd7akvrmrdmwjyga.streamlit.app"
 # Vite's ports rather than Streamlit's: 5173 is `npm run dev` and 4173 is
 # `npm run preview`, which is the only way to exercise the service worker.
 additional_redirect_urls = [
+  "https://plantcare-ai-mv5irloskq-ey.a.run.app",
+  # Cloud Run answers on two hostnames for the same service: the older form above,
+  # which `site_url`, the scheduler jobs and the runbook all use, and this newer
+  # one, which `gcloud run deploy` now prints. A user who followed a link to
+  # either must be able to come back to it.
+  "https://plantcare-ai-795808899055.europe-west3.run.app",
+  # The Streamlit app on `dev` is still deployed and testers still use it. Kept
+  # until it is retired: removing it would break its confirmation and reset links
+  # the moment this is pushed, and nothing is gained by doing that early.
   "https://plantcare-ai-fcrp66qd7akvrmrdmwjyga.streamlit.app",
   "http://localhost:5173",
   "http://127.0.0.1:5173",
@@ -211,14 +219,16 @@ enable_refresh_token_rotation = true
 refresh_token_reuse_interval = 10
 # Allow/disallow new user signups to your project.
 #
-# Off. The deployed tester app is reachable by anyone holding its URL, and an open
-# registration on a project that also serves the admin panel is a wider door than a
-# tester deploy needs. Accounts are created deliberately - `scripts/create_admin.py`
-# is the same call without the role promotion.
+# ON, and that is the owner's decision rather than a default. People have to be able
+# to register for the deployed app to be of any use to anyone but its author.
 #
-# This mirrors what the linked project already had; the file said `true` and reality
-# said `false`, which is the disagreement `supabase config push` exists to end.
-enable_signup = false
+# This line read `false` until 2026-10-05, with a comment claiming it matched the
+# linked project. It did not: the project had signup enabled, and the first
+# `supabase config push` after the Cloud Run cutover - run to change `site_url` -
+# applied this line too and closed registration without anyone deciding to. Whatever
+# is written here is what the next push does, so a value nobody wants must not sit
+# in the file waiting for an unrelated change to carry it.
+enable_signup = true
 # Allow/disallow anonymous sign-ins to your project.
 enable_anonymous_sign_ins = false
 # Allow/disallow testing manual linking of accounts
