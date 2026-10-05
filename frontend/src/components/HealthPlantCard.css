@@ -121,27 +121,46 @@
 
 @media (max-width: 639px) {
   .pc-healthcard {
-    /* One column, so the photograph is the first row and the text starts under it.
-       This card carries the longest prose in the product — a finding, the evidence
-       under it, two recommendations, a date and the checks before this one — and
-       beside an 84px column on a phone that prose had about 250px to live in.
-       Width is worth more to it than the photograph's place in the line. */
-    grid-template-columns: minmax(0, 1fr);
     gap: var(--pc-space-3);
     padding: var(--pc-space-3);
+  }
+
+  /* The photograph keeps its place in the line beside the name; the prose does not stay
+     in the column beside it. `display: contents` lifts the body's own children into the
+     card's grid, so the header can take column two while everything after it spans both
+     columns. This card carries the longest prose in the product - a finding, the
+     evidence under it, two recommendations, a date and the checks before this one - and
+     beside an 84px column on a phone that prose had about 250px to live in. */
+  .pc-healthbody {
+    display: contents;
+  }
+
+  .pc-healthbody > :not(.pc-healthhead) {
+    grid-column: 1 / -1;
   }
 
   .pc-healthphoto {
     inline-size: 84px;
     block-size: 84px;
-    /* Stated rather than inherited. A definite inline-size already stops the grid
-       stretching it, but saying so keeps the intent legible: the photograph sits at
-       the inline start, which in Hebrew is the right-hand edge. */
-    justify-self: start;
+  }
+
+  /* Beside an 84px photograph there is no far edge to push the badges to, so they stack
+     under the name rather than compete with it for the line. */
+  .pc-healthhead {
+    flex-direction: column;
+    justify-content: flex-start;
+    gap: var(--pc-space-2);
   }
 
   .pc-healthwho h3 {
     font-size: var(--pc-h3);
+  }
+
+  /* `align-self: flex-start` kept this pill at its own width as a flex child. Its
+     children are grid items now, where that property is the block axis - so the inline
+     one has to be said. */
+  .pc-healthdate {
+    justify-self: start;
   }
 
   .pc-healthactions .pc-btn {
