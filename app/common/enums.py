@@ -231,6 +231,19 @@ class LightDirection(StrEnum):
     UNKNOWN = "UNKNOWN"
 
 
+class CareIntensity(StrEnum):
+    """How tightly care is grouped (migration 0021).
+
+    HIGH schedules every task at its own optimal time. MEDIUM and LOW move each due
+    date onto the user's two or one weekly care days. A scheduling preference only:
+    plans and their rules are never rewritten for it.
+    """
+
+    HIGH = "HIGH"
+    MEDIUM = "MEDIUM"
+    LOW = "LOW"
+
+
 class Weekday(StrEnum):
     """Anchors which weekday a recurrence lands on; only honoured when
     ``interval_days % 7 == 0`` (A7)."""

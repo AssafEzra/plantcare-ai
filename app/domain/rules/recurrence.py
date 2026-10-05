@@ -23,11 +23,13 @@ across an Israeli DST boundary it moves the reminder to 07:00 or 09:00.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta
+from itertools import pairwise
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from app.common.enums import CareEventType, Weekday
+from app.common.enums import CareEventType, CareIntensity, Weekday
 
 # How far ahead a task may be materialised. FINAL §13: "do not pre-generate
 # excessive future tasks", and the database enforces one PENDING task per rule.
@@ -187,21 +189,50 @@ def is_overdue(*, due_at_utc: datetime, now_utc: datetime) -> bool:
     return now_utc > due_at_utc
 
 
-def overdue_deadline(rule: Rule, *, due_at_utc: datetime) -> datetime:
+def overdue_deadline(
+    rule: Rule,
+    *,
+    due_at_utc: datetime,
+    schedule: CareSchedule | None = None,
+    timezone_name: str = "UTC",
+) -> datetime:
     """When an overdue task stops being actionable (A9).
 
     `min(interval_days, MAX_OVERDUE_DAYS)`: a daily task a fortnight late is
     meaningless, while a monthly one is still worth doing at two weeks. Bounding
     by the interval keeps the window proportional to the rhythm, and the ceiling
     stops a yearly repotting task lingering for months.
+
+    On care days the window runs to the end of the **next care day** instead. A
+    watering every two days for someone who cares on Fridays would otherwise be
+    written off on Sunday, two days before they could have done it, and every week
+    would add a MISSED entry for a task they were never going to see in time. Kept
+    open, it waits for Friday; done then, `align_to_care_days` keeps the following
+    one from coming too soon. Missed on that Friday too, it expires and the rhythm
+    restarts.
     """
+    if schedule is not None and schedule.groups:
+        due_day = local_date(due_at_utc, timezone_name)
+        care_day = _next_care_day(due_day + timedelta(days=1), schedule.care_days)
+        return day_bounds_utc(care_day, timezone_name)[1]
+
     days = min(rule.interval_days, MAX_OVERDUE_DAYS)
     return due_at_utc + timedelta(days=days)
 
 
-def has_expired(rule: Rule, *, due_at_utc: datetime, now_utc: datetime) -> bool:
+def has_expired(
+    rule: Rule,
+    *,
+    due_at_utc: datetime,
+    now_utc: datetime,
+    schedule: CareSchedule | None = None,
+    timezone_name: str = "UTC",
+) -> bool:
     """Has this overdue task passed the point of being worth doing? (A9)"""
-    return now_utc > overdue_deadline(rule, due_at_utc=due_at_utc)
+    deadline = overdue_deadline(
+        rule, due_at_utc=due_at_utc, schedule=schedule, timezone_name=timezone_name
+    )
+    return now_utc > deadline
 
 
 def catch_up(rule: Rule, due_at_utc: datetime, *, now_utc: datetime) -> datetime:
@@ -257,6 +288,172 @@ def day_bounds_utc(day: date, timezone_name: str) -> tuple[datetime, datetime]:
     start = _at_local_time(day, time(0, 0), tz)
     end = _at_local_time(day + timedelta(days=1), time(0, 0), tz)
     return start, end
+
+
+# --- care intensity: grouping care onto fixed weekdays (migration 0021) -----------
+
+# Rule B: a task may move *earlier* onto a care day only once this share of its
+# interval has passed since it was last done. Below it, the move goes forward.
+EARLIEST_SHARE_OF_INTERVAL = 0.75
+
+# A task is flagged when the user's care days leave it at most half as often as its
+# plan asks: the longest gap between care days is at least this multiple of the
+# task's interval. Every-3-days on Tuesday/Friday (gaps of 3 and 4) passes;
+# every-2-days does not, and nor does every-3-days on a single day a week.
+WARNING_GAP_RATIO = 2
+
+
+@dataclass(frozen=True)
+class CareSchedule:
+    """Which days care is grouped onto, if any.
+
+    HIGH, or a level with no days, groups nothing and leaves every date exactly as
+    the rule produced it - the scheduler's behaviour before this existed.
+    """
+
+    intensity: CareIntensity = CareIntensity.HIGH
+    care_days: tuple[Weekday, ...] = ()
+
+    @property
+    def groups(self) -> bool:
+        return self.intensity is not CareIntensity.HIGH and bool(self.care_days)
+
+
+def care_schedule(
+    *,
+    profile_intensity: CareIntensity | str | None,
+    care_day_low: Weekday | str | None,
+    care_days_medium: list[Weekday] | list[str] | tuple[Weekday, ...] | None,
+    plant_override: CareIntensity | str | None = None,
+) -> CareSchedule:
+    """The schedule one plant follows: its own override, else its owner's setting.
+
+    Care days always come from the owner. A plant pinned to MEDIUM uses the owner's
+    two days, because per-plant days would scatter the tasks again and the grouping
+    is the whole point.
+    """
+    chosen = plant_override or profile_intensity or CareIntensity.HIGH
+    intensity = CareIntensity(chosen)
+
+    if intensity is CareIntensity.LOW and care_day_low:
+        return CareSchedule(intensity, (Weekday(care_day_low),))
+    if intensity is CareIntensity.MEDIUM and care_days_medium:
+        days = tuple(dict.fromkeys(Weekday(day) for day in care_days_medium))
+        return CareSchedule(intensity, days)
+    return CareSchedule(intensity)
+
+
+def _is_care_day(day: date, care_days: tuple[Weekday, ...]) -> bool:
+    return day.weekday() in {_WEEKDAY_INDEX[d] for d in care_days}
+
+
+def _next_care_day(day: date, care_days: tuple[Weekday, ...]) -> date:
+    """The first care day on or after `day`."""
+    for offset in range(7):
+        candidate = day + timedelta(days=offset)
+        if _is_care_day(candidate, care_days):
+            return candidate
+    raise ValueError("a care schedule needs at least one care day")  # pragma: no cover
+
+
+def _previous_care_day(day: date, care_days: tuple[Weekday, ...]) -> date:
+    """The last care day on or before `day`."""
+    for offset in range(7):
+        candidate = day - timedelta(days=offset)
+        if _is_care_day(candidate, care_days):
+            return candidate
+    raise ValueError("a care schedule needs at least one care day")  # pragma: no cover
+
+
+def align_to_care_days(
+    due_utc: datetime,
+    *,
+    schedule: CareSchedule,
+    timezone_name: str,
+    interval_days: int,
+    last_done_utc: datetime | None,
+    now_utc: datetime,
+) -> datetime:
+    """Move a due date onto the user's care days (rule B).
+
+    The nearest care day wins, so a task lands as close to its real rhythm as the
+    user's week allows. Moving *earlier* has one condition: at least
+    `EARLIEST_SHARE_OF_INTERVAL` of the interval must have passed since the task was
+    last done. Without it, a weekly task done late on a Tuesday would come due again
+    on the Saturday before the following Tuesday - four days later, which is
+    over-watering made routine. When the earlier day fails that test, the task moves
+    forward instead. Ties go earlier: under-care is the failure a user notices too
+    late, and the guard already stops early from becoming over-care.
+
+    Never into the past: a care day that has already gone by is not a date anyone
+    can act on, so the next one is used.
+
+    The local wall-clock time of the original due date is kept. Only the day moves.
+    """
+    if not schedule.groups:
+        return due_utc
+
+    tz = zone(timezone_name)
+    local = due_utc.astimezone(tz)
+    day = local.date()
+    at = local.time().replace(tzinfo=None)
+
+    if _is_care_day(day, schedule.care_days):
+        chosen = day
+    else:
+        earlier = _previous_care_day(day, schedule.care_days)
+        later = _next_care_day(day, schedule.care_days)
+
+        earliest_allowed: date | None = None
+        if last_done_utc is not None:
+            minimum = math.ceil(interval_days * EARLIEST_SHARE_OF_INTERVAL)
+            earliest_allowed = local_date(last_done_utc, timezone_name) + timedelta(days=minimum)
+
+        earlier_is_nearer = (day - earlier) <= (later - day)
+        earlier_is_allowed = earliest_allowed is None or earlier >= earliest_allowed
+        chosen = earlier if earlier_is_nearer and earlier_is_allowed else later
+
+    moved = _at_local_time(chosen, at, tz)
+    if moved >= now_utc:
+        return moved
+
+    # Gone by. The next care day whose slot is still ahead.
+    today = local_date(now_utc, timezone_name)
+    candidate = _next_care_day(today, schedule.care_days)
+    moved = _at_local_time(candidate, at, tz)
+    if moved < now_utc:
+        moved = _at_local_time(
+            _next_care_day(candidate + timedelta(days=1), schedule.care_days), at, tz
+        )
+    return moved
+
+
+def max_gap_days(care_days: tuple[Weekday, ...] | list[Weekday]) -> int:
+    """The longest stretch between consecutive care days, wrapping the week.
+
+    One care day is seven. Tuesday and Friday are three and four, so four. Sunday and
+    Monday are one and six, so six - uneven days count against the user, which is
+    what they should do: the worst week is the one the plant has to survive.
+    """
+    indices = sorted({_WEEKDAY_INDEX[Weekday(day)] for day in care_days})
+    if not indices:
+        return 0
+    if len(indices) == 1:
+        return 7
+    gaps = [b - a for a, b in pairwise(indices)]
+    gaps.append(indices[0] + 7 - indices[-1])
+    return max(gaps)
+
+
+def needs_warning(interval_days: int, schedule: CareSchedule) -> bool:
+    """Would this schedule leave the task at most half as often as its plan asks?
+
+    A ratio rather than a fixed number of days: a day late is a lot for a task due
+    every two days and nothing for a monthly one.
+    """
+    if not schedule.groups or interval_days <= 0:
+        return False
+    return max_gap_days(schedule.care_days) >= WARNING_GAP_RATIO * interval_days
 
 
 # --- overdue summarisation (FINAL §13, PROGRESS §14) ---------------------------

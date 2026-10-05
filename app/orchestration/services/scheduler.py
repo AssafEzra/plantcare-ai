@@ -79,6 +79,49 @@ def timezone_of(client: Client, user_id: str) -> str:
     return (profile or {}).get("timezone") or get_settings().default_timezone
 
 
+@dataclass(frozen=True)
+class OwnerCareSettings:
+    """What scheduling needs from a profile: the zone, and how care is grouped."""
+
+    timezone: str
+    intensity: str | None = None
+    care_day_low: str | None = None
+    care_days_medium: list[str] | None = None
+
+    def schedule_for(self, plant_override: str | None) -> recurrence.CareSchedule:
+        return recurrence.care_schedule(
+            profile_intensity=self.intensity,
+            care_day_low=self.care_day_low,
+            care_days_medium=self.care_days_medium,
+            plant_override=plant_override,
+        )
+
+
+def owner_settings(client: Client, user_id: str) -> OwnerCareSettings:
+    profile = (
+        first_row(
+            client.table("profiles")
+            .select("timezone, care_intensity, care_day_low, care_days_medium")
+            .eq("id", str(user_id))
+            .execute()
+        )
+        or {}
+    )
+    return OwnerCareSettings(
+        timezone=profile.get("timezone") or get_settings().default_timezone,
+        intensity=profile.get("care_intensity"),
+        care_day_low=profile.get("care_day_low"),
+        care_days_medium=profile.get("care_days_medium"),
+    )
+
+
+def _plant_override(client: Client, plant_id: str) -> str | None:
+    plant = first_row(
+        client.table("plants").select("care_intensity").eq("id", str(plant_id)).execute()
+    )
+    return (plant or {}).get("care_intensity")
+
+
 # --- materialisation ------------------------------------------------------------
 
 
@@ -98,20 +141,26 @@ def materialise(client: Client, *, now_utc: datetime, user_id: str | None = None
     tasks.
     """
     created = 0
+    owners: dict[str, OwnerCareSettings] = {}
 
     for rule, plan_version, plant in _active_rules(client, user_id=user_id):
         if _open_task_for(client, rule["id"]):
             continue
 
-        timezone_name = timezone_of(client, plant["user_id"])
+        owner_id = str(plant["user_id"])
+        if owner_id not in owners:
+            owners[owner_id] = owner_settings(client, owner_id)
+        owner = owners[owner_id]
+
         domain_rule = _rule_of(rule)
         due = _next_occurrence(
             client,
             rule_row=rule,
             domain_rule=domain_rule,
             plan_version=plan_version,
-            timezone_name=timezone_name,
+            timezone_name=owner.timezone,
             now_utc=now_utc,
+            schedule=owner.schedule_for(plant.get("care_intensity")),
         )
 
         if not recurrence.within_horizon(due, now_utc=now_utc):
@@ -148,13 +197,84 @@ def _next_occurrence(
     plan_version: Row,
     timezone_name: str,
     now_utc: datetime,
+    schedule: recurrence.CareSchedule | None = None,
 ) -> datetime:
     """When this rule is next due, from whatever happened last.
 
     A rule that has never produced an event uses :func:`recurrence.first_due`
     from the plan's activation, so an approved plan starts reminding today or
     tomorrow rather than after a full interval.
+
+    With a grouping `schedule` the result is then moved onto the owner's care days
+    (:func:`recurrence.align_to_care_days`). The rule's own rhythm is computed first
+    and moved second, so switching back to HIGH restores it exactly.
     """
+    natural = _natural_occurrence(
+        client,
+        rule_row=rule_row,
+        domain_rule=domain_rule,
+        plan_version=plan_version,
+        timezone_name=timezone_name,
+        now_utc=now_utc,
+    )
+    if schedule is None or not schedule.groups:
+        return natural
+
+    return _aligned(
+        client,
+        natural,
+        schedule=schedule,
+        plant_id=str(plan_version["plant_id"]),
+        action_type=str(rule_row["action_type"]),
+        interval_days=domain_rule.interval_days,
+        timezone_name=timezone_name,
+        now_utc=now_utc,
+    )
+
+
+def _aligned(
+    client: Client,
+    due: datetime,
+    *,
+    schedule: recurrence.CareSchedule,
+    plant_id: str,
+    action_type: str,
+    interval_days: int,
+    timezone_name: str,
+    now_utc: datetime,
+    last_done_utc: datetime | None = None,
+) -> datetime:
+    """`due` moved onto the care days, with rule B's "never too soon" guard.
+
+    The guard needs when this kind of care was last actually *done* - not skipped,
+    not missed - which is looked up unless the caller already knows it.
+    """
+    if last_done_utc is None:
+        last_done = _last_event_for_action(
+            client, plant_id=plant_id, action_type=action_type, event_types=[CareEventType.DONE]
+        )
+        last_done_utc = parse_timestamp((last_done or {}).get("event_at"))
+
+    return recurrence.align_to_care_days(
+        due,
+        schedule=schedule,
+        timezone_name=timezone_name,
+        interval_days=interval_days,
+        last_done_utc=last_done_utc,
+        now_utc=now_utc,
+    )
+
+
+def _natural_occurrence(
+    client: Client,
+    *,
+    rule_row: Row,
+    domain_rule: recurrence.Rule,
+    plan_version: Row,
+    timezone_name: str,
+    now_utc: datetime,
+) -> datetime:
+    """The rule's own next date, before any grouping onto care days."""
     last = _last_event_for_action(
         client,
         plant_id=str(plan_version["plant_id"]),
@@ -252,7 +372,7 @@ def _active_rules(client: Client, *, user_id: str | None = None) -> list[tuple[R
         plant["id"]: plant
         for plant in rows(
             client.table("plants")
-            .select("id, user_id, status, name")
+            .select("id, user_id, status, name, care_intensity")
             .in_("id", [p["plant_id"] for p in plans])
             .execute()
         )
@@ -333,6 +453,8 @@ def sweep_overdue(client: Client, *, now_utc: datetime, user_id: str | None = No
     """
     marked = 0
     missed = 0
+    owners: dict[str, OwnerCareSettings] = {}
+    overrides: dict[str, str | None] = {}
 
     open_query = (
         client.table("care_tasks")
@@ -357,7 +479,19 @@ def sweep_overdue(client: Client, *, now_utc: datetime, user_id: str | None = No
             continue
         domain_rule = _rule_of(rule_row)
 
-        if recurrence.has_expired(domain_rule, due_at_utc=due, now_utc=now_utc):
+        owner_id, plant_id = str(task["user_id"]), str(task["plant_id"])
+        if owner_id not in owners:
+            owners[owner_id] = owner_settings(client, owner_id)
+        if plant_id not in overrides:
+            overrides[plant_id] = _plant_override(client, plant_id)
+
+        if recurrence.has_expired(
+            domain_rule,
+            due_at_utc=due,
+            now_utc=now_utc,
+            schedule=owners[owner_id].schedule_for(overrides[plant_id]),
+            timezone_name=owners[owner_id].timezone,
+        ):
             _record_missed(client, task, now_utc=now_utc)
             missed += 1
             continue
@@ -499,20 +633,37 @@ def _schedule_next(
     """
     rule_row = first_row(
         client.table("care_rules")
-        .select("id, interval_days, preferred_time_local, preferred_weekday, is_active")
+        .select(
+            "id, action_type, interval_days, preferred_time_local, preferred_weekday, is_active"
+        )
         .eq("id", task["care_rule_id"])
         .execute()
     )
     if rule_row is None or not rule_row.get("is_active", True):
         return None
 
+    owner = owner_settings(client, str(task["user_id"]))
+    domain_rule = _rule_of(rule_row)
+
     due = parse_timestamp(task["due_at_utc"]) or event_at
     anchor = recurrence.anchor_for(event_type, due_at_utc=due, event_at_utc=event_at)
-    upcoming = recurrence.next_due(
-        _rule_of(rule_row),
-        anchor_utc=anchor,
-        timezone_name=timezone_of(client, task["user_id"]),
-    )
+    upcoming = recurrence.next_due(domain_rule, anchor_utc=anchor, timezone_name=owner.timezone)
+
+    schedule = owner.schedule_for(_plant_override(client, str(task["plant_id"])))
+    if schedule.groups:
+        upcoming = _aligned(
+            client,
+            upcoming,
+            schedule=schedule,
+            plant_id=str(task["plant_id"]),
+            action_type=str(rule_row["action_type"]),
+            interval_days=domain_rule.interval_days,
+            timezone_name=owner.timezone,
+            now_utc=event_at,
+            # Just done: no need to look it up. Skipped: the guard counts from the
+            # last time it was actually done, which the lookup finds.
+            last_done_utc=event_at if event_type is CareEventType.DONE else None,
+        )
 
     if not recurrence.within_horizon(upcoming, now_utc=event_at):
         return upcoming
@@ -531,6 +682,81 @@ def _schedule_next(
         log.info("scheduler.next_task_exists", error_type=type(exc).__name__)
 
     return upcoming
+
+
+# --- care intensity changes -------------------------------------------------------
+
+
+def reschedule_pending(
+    client: Client, *, user_id: str, now_utc: datetime, plant_id: str | None = None
+) -> int:
+    """Re-date a user's PENDING tasks after their care intensity or days changed.
+
+    Each task's date is recomputed from its rule's own rhythm and then grouped under
+    the *current* settings, so switching to HIGH restores the original dates and
+    switching between levels moves everything at once. No proposal, no model call:
+    the plans themselves are untouched.
+
+    OVERDUE tasks are left where they are. Moving a task the user is already late
+    on to a later day would hide the lateness rather than resolve it.
+
+    Returns how many tasks moved.
+    """
+    query = (
+        client.table("care_tasks")
+        .select(TASK_COLUMNS)
+        .eq("user_id", str(user_id))
+        .eq("status", CareTaskStatus.PENDING.value)
+    )
+    if plant_id:
+        query = query.eq("plant_id", str(plant_id))
+
+    owner = owner_settings(client, str(user_id))
+    overrides: dict[str, str | None] = {}
+    moved = 0
+
+    for task in rows(query.execute()):
+        rule_row = first_row(
+            client.table("care_rules")
+            .select(
+                "id, care_plan_version_id, action_type, interval_days, "
+                "preferred_time_local, preferred_weekday, is_active"
+            )
+            .eq("id", task["care_rule_id"])
+            .execute()
+        )
+        version = first_row(
+            client.table("care_plan_versions")
+            .select("id, created_at")
+            .eq("id", (rule_row or {}).get("care_plan_version_id"))
+            .execute()
+        )
+        if rule_row is None or version is None:  # pragma: no cover - FKs guarantee both
+            continue
+
+        task_plant = str(task["plant_id"])
+        if task_plant not in overrides:
+            overrides[task_plant] = _plant_override(client, task_plant)
+
+        due = _next_occurrence(
+            client,
+            rule_row=rule_row,
+            domain_rule=_rule_of(rule_row),
+            plan_version={**version, "plant_id": task_plant},
+            timezone_name=owner.timezone,
+            now_utc=now_utc,
+            schedule=owner.schedule_for(overrides[task_plant]),
+        )
+        if due == parse_timestamp(task["due_at_utc"]):
+            continue
+
+        client.table("care_tasks").update({"due_at_utc": due.isoformat()}).eq(
+            "id", task["id"]
+        ).execute()
+        moved += 1
+
+    log.info("scheduler.rescheduled", user_id=str(user_id), plant_id=plant_id, moved=moved)
+    return moved
 
 
 # --- reads ----------------------------------------------------------------------
