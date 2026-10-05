@@ -54,6 +54,7 @@ All major product decisions are closed.
 - [x] Minimal onboarding
 - [x] Testing / Acceptance Criteria
 - [x] Care Level excluded from MVP
+- [x] Care intensity (High / Medium / Low care days) added post-MVP — a scheduling preference, distinct from Care Level (migration 0021)
 - [x] Social Login excluded from MVP
 
 ---

@@ -147,7 +147,8 @@ def test_every_security_definer_function_pins_search_path():
 
 
 def test_profiles_has_no_care_level_column():
-    """FINAL §2 and §36 exclude care_level from MVP; DATABASE_SCHEMA says do not reintroduce it."""
+    """FINAL §2 and §36 exclude care_level (the user's expertise level). Care intensity
+    (migration 0021) is a different, scheduling-only setting and does not reintroduce it."""
     assert "care_level" not in all_sql_without_comments().lower()
 
 

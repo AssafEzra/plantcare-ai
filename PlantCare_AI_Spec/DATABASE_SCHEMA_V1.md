@@ -49,12 +49,16 @@ weekday = MONDAY | TUESDAY | WEDNESDAY | THURSDAY | FRIDAY | SATURDAY | SUNDAY
 ## Core tables
 
 ### `profiles`
-`id uuid PK` (same as `auth.users.id`), `email`, `display_name`, `role` (`user_role`), `timezone`, `locale`, `is_active`, `anonymized_at`, `created_at`, `updated_at`.
+`id uuid PK` (same as `auth.users.id`), `email`, `display_name`, `role` (`user_role`), `timezone`, `locale`, `is_active`, `anonymized_at`, `care_intensity`, `care_day_low`, `care_days_medium`, `created_at`, `updated_at`.
 
-`care_level` is explicitly excluded from MVP (see FINAL_SPECIFICATION §2, §36) and is intentionally not a column here. Do not reintroduce it without updating that decision.
+**Care intensity (migration 0021, post-MVP).** `care_intensity care_intensity` (`HIGH | MEDIUM | LOW`, default `HIGH`) groups the user's care onto weekdays: HIGH keeps every task at its own optimal time, MEDIUM moves due dates onto two care days a week, LOW onto one. `care_day_low weekday` (default `FRIDAY`) and `care_days_medium weekday[]` (default `{TUESDAY,FRIDAY}`, CHECK exactly two distinct) are kept as separate columns so switching levels keeps each choice. It is a scheduling preference only: care plans, rules and advice are never rewritten for it, and it never reaches an agent. The scheduler moves each date to the nearest care day, earlier only once 75% of the interval has passed since the task was last done, never into the past; on care days an overdue task stays open until the end of the next care day.
+
+`care_level` — the user's expertise level (FINAL_SPECIFICATION §2, §36) — remains excluded and is not a column. Care intensity is a different concept and does not reintroduce it.
 
 ### `plants`
-`id`, `user_id FK`, `name nullable`, `species_id FK nullable`, `status`, `current_health_status`, `main_image_id nullable`, `notes`, `archived_at`, `created_at`, `updated_at`.
+`id`, `user_id FK`, `name nullable`, `species_id FK nullable`, `status`, `current_health_status`, `main_image_id nullable`, `notes`, `archived_at`, `care_intensity nullable`, `created_at`, `updated_at`.
+
+`care_intensity` (migration 0021) is a per-plant override of `profiles.care_intensity`. Null means "follow the owner's setting", so a plant left alone follows every later change in Settings. Care days always come from the owner.
 
 **Clarified in PR 16, per FINAL §37:** `plants_select_admin` grants administrators SELECT on every plant, which the Admin Panel needs. It also means **RLS alone does not scope a user-facing query**: a read that leans only on the policy returns the whole table when an administrator runs it, and that is exactly what happened — an admin's own "My Plants" page listed 590 plants belonging to other users. Every user-facing plant read now filters on `user_id` explicitly, with the owner passed as a required argument so a call site cannot quietly omit it. The policy is right; the query was wrong to rely on it alone.
 

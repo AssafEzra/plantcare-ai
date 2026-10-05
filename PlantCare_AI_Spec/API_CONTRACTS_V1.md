@@ -44,9 +44,15 @@ AI-triggering POST endpoints accept `Idempotency-Key`.
 
 `PATCH /v1/me`
 ```json
-{"display_name":"My Name","timezone":"Asia/Jerusalem"}
+{"display_name":"My Name","timezone":"Asia/Jerusalem","care_intensity":"MEDIUM","care_day_low":"FRIDAY","care_days_medium":["TUESDAY","FRIDAY"]}
 ```
-(`care_level` is out of MVP scope — see FINAL_SPECIFICATION §2, §36 — and is not accepted here.)
+Every field optional. `care_days_medium` must be exactly two different days (422 otherwise). A change to `care_intensity`, either day field or `timezone` re-dates the user's PENDING tasks immediately; OVERDUE tasks are left as they are. (`care_level`, the user's expertise level, is still excluded — FINAL_SPECIFICATION §2, §36 — and is not accepted here.)
+
+`GET /v1/care-intensity/impact?intensity=MEDIUM&care_day_low=FRIDAY&care_days_medium=TUESDAY,FRIDAY`
+Plants a proposed setting would leave at most half as often as their plan asks (longest gap between care days ≥ 2 × a task's interval), before the user saves it. Plants with their own override are excluded.
+```json
+{"data":[{"plant_id":"uuid","plant_name":"Fern","tasks":[{"action_type":"WATERING","interval_days":2,"max_gap_days":4}]}],"request_id":"uuid"}
+```
 
 ## Plants
 `POST /v1/plants`
@@ -59,7 +65,9 @@ Creates `PENDING_IDENTIFICATION`.
 
 `GET /v1/plants/{plant_id}` — complete Plant Dashboard view model.
 
-`PATCH /v1/plants/{plant_id}` — personal fields such as `name`, `notes`.
+`PATCH /v1/plants/{plant_id}` — personal fields such as `name`, `notes`, and `care_intensity` (`HIGH | MEDIUM | LOW`, or explicit `null` to follow the owner's setting; leaving the field out leaves it unchanged). Changing `care_intensity` re-dates that plant's PENDING tasks immediately — no proposal.
+
+`GET /v1/plants/{plant_id}/dashboard` also returns `care_schedule`: `{"override": null, "owner_intensity": "LOW", "effective": "LOW", "care_days": ["FRIDAY"], "warnings": [{"action_type": "WATERING", "interval_days": 3, "max_gap_days": 7}]}`. `care_days` is empty when `effective` is `HIGH`.
 
 `POST /v1/plants/{plant_id}/archive`
 
