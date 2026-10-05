@@ -17,10 +17,21 @@ import { useAuth } from '../auth/context'
 export type NotificationPreferences = {
   user_id: string
   email_enabled: boolean
-  /** `HH:MM:SS` from Postgres. A10: the time we may *write*, not when a task is due. */
+  /** `HH:MM:SS`. When the morning Today and Due go out; fixed at 07:30 for now. */
   preferred_time_local: string
+  /** Retired by migration 0022 (no per-task emails); always true. */
   daily_digest: boolean
+  /** Days after a task's due date it is still in the Due notification. 0-3. */
+  due_reminder_days: number
+  /** Evening push for today's tasks still open. Push only. */
+  evening_enabled: boolean
+  evening_time_local: string
 }
+
+/** What the user may change. The times are fixed for now and not accepted. */
+export type PreferenceChanges = Partial<
+  Pick<NotificationPreferences, 'email_enabled' | 'due_reminder_days' | 'evening_enabled'>
+>
 
 export type DeliveryStatus = 'QUEUED' | 'SENT' | 'FAILED' | 'SKIPPED'
 
@@ -55,7 +66,7 @@ export function useUpdatePreferences() {
   const { userId } = useAuth()
 
   return useMutation({
-    mutationFn: (changes: Partial<Omit<NotificationPreferences, 'user_id'>>) =>
+    mutationFn: (changes: PreferenceChanges) =>
       api.put<NotificationPreferences>('/v1/notification-preferences', { json: changes }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: scoped(userId, ['notification-preferences']) })

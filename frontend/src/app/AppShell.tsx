@@ -14,6 +14,8 @@ import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { useEffect, useState } from 'react'
 import { navFor } from './nav'
 import { useMe } from '../api/profile'
+import { resyncThisDevice } from '../api/push'
+import { useIsReadOnly } from '../lib/viewAs'
 import Header from './Header'
 import ViewAsBanner from './ViewAsBanner'
 import './AppShell.css'
@@ -30,6 +32,14 @@ export default function AppShell() {
   useEffect(() => {
     localStorage.setItem(COLLAPSED_KEY, collapsed ? '1' : '0')
   }, [collapsed])
+
+  /* Once per app open: if this phone is already registered for reminders, send its
+     subscription again so a key the browser renewed reaches the server. Not while
+     an administrator is viewing someone else's account - that is read-only. */
+  const readOnly = useIsReadOnly()
+  useEffect(() => {
+    if (!readOnly) resyncThisDevice().catch(() => undefined)
+  }, [readOnly])
 
   /* Which entries exist is a courtesy, never the control: every admin route is gated
      server-side and every admin table has its own RLS policy. `navFor` explains why an

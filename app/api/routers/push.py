@@ -15,7 +15,7 @@ so Settings on any device can pause or remove it.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Request, status
@@ -55,6 +55,9 @@ class SubscribeRequest(BaseModel):
     keys: SubscriptionKeys
     device_label: str | None = Field(default=None, max_length=80)
     platform: Literal["ios", "android", "other"] = "other"
+    # True when the user tapped "turn on"; False when the app is only re-sending its
+    # subscription on open, which must not un-pause a device paused elsewhere.
+    resume: bool = True
 
 
 class ToggleRequest(BaseModel):
@@ -121,14 +124,13 @@ async def subscribe(
     its new keys to the server. A brand-new device, or one coming back from
     paused, gets one confirmation push so the user sees reminders work.
     """
-    values = {
+    values: dict[str, Any] = {
         "user_id": str(user.id),
         "endpoint": payload.endpoint,
         "p256dh": payload.keys.p256dh,
         "auth": payload.keys.auth,
         "device_label": payload.device_label,
         "platform": payload.platform,
-        "enabled": True,
     }
     existing = first_row(
         user.client.table("push_subscriptions")
@@ -139,18 +141,23 @@ async def subscribe(
     )
 
     if existing:
+        was_enabled = bool(existing.get("enabled", True))
+        if payload.resume:
+            values["enabled"] = True
         row = require_row(
             user.client.table("push_subscriptions")
             .update(values)
             .eq("id", existing["id"])
             .execute()
         )
-        is_new = not existing.get("enabled", True)
+        newly_on = payload.resume and not was_enabled
     else:
+        _release_endpoint(payload.endpoint)
+        values["enabled"] = True
         row = require_row(user.client.table("push_subscriptions").insert(values).execute())
-        is_new = True
+        newly_on = True
 
-    if is_new:
+    if newly_on:
         service.send_confirmation(build_push_provider(), {**row, **values})
 
     return DataEnvelope(data=_device(user, row["id"]), request_id=request.state.request_id)
@@ -182,6 +189,19 @@ async def unsubscribe(payload: UnsubscribeRequest, user: CurrentUserDep) -> None
     user.client.table("push_subscriptions").delete().eq("endpoint", payload.endpoint).eq(
         "user_id", str(user.id)
     ).execute()
+
+
+def _release_endpoint(endpoint: str) -> None:
+    """Free an endpoint still registered to a previous user of this phone.
+
+    The endpoint is the browser's address, so it belongs to whoever is signed in
+    now. Sign-out normally removes it, but not if that request failed (offline),
+    and the unique index would then refuse the new owner. RLS hides the old row
+    from the new user, so this one delete runs on the service client.
+    """
+    from app.infrastructure.supabase.client import service_client
+
+    service_client().table("push_subscriptions").delete().eq("endpoint", endpoint).execute()
 
 
 def _require_own(user: CurrentUserDep, subscription_id: UUID) -> Row:

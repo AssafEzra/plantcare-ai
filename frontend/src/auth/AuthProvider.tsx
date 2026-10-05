@@ -19,6 +19,7 @@ import type { Session } from '@supabase/supabase-js'
 import { useQueryClient } from '@tanstack/react-query'
 import { supabase } from '../lib/supabase'
 import { leaveViewAs } from '../lib/viewAs'
+import { forgetThisDevice } from '../api/push'
 import { AuthContext, type AuthContextValue } from './context'
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -70,6 +71,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const signOut = useCallback(async () => {
+    try {
+      // Before the session goes: the request needs it. A shared phone must stop
+      // receiving this account's reminders the moment the account leaves.
+      await forgetThisDevice()
+    } catch {
+      /* Offline or never subscribed; the next owner's registration frees it. */
+    }
     try {
       await supabase.auth.signOut()
     } catch {

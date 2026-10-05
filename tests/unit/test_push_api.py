@@ -43,8 +43,11 @@ def push(env, monkeypatch):
     from app.api.routers import push
 
     recorder = Recorder()
+    released: list[str] = []
     monkeypatch.setattr(push, "build_push_provider", lambda: recorder)
+    monkeypatch.setattr(push, "_release_endpoint", released.append)
     push.recorder = recorder  # type: ignore[attr-defined]
+    push.released = released  # type: ignore[attr-defined]
     return push
 
 
@@ -162,6 +165,44 @@ async def test_the_device_list_never_returns_the_encryption_keys(push):
     dumped = listed.data[0].model_dump()
     assert "p256dh" not in dumped and "auth" not in dumped
     assert listed.data[0].endpoint == body().endpoint
+
+
+async def test_reopening_the_app_does_not_unpause_a_device_paused_elsewhere(push):
+    """The app re-sends its subscription on open with resume=false. Pausing the
+    phone from the laptop must survive the phone being opened."""
+    from app.api.routers.push import ToggleRequest
+
+    db = db_with_timestamps()
+    created = await push.subscribe(_Request(), body(), _User(db))
+    await push.toggle(_Request(), created.data.id, ToggleRequest(enabled=False), _User(db))
+
+    resynced = await push.subscribe(_Request(), body(resume=False), _User(db))
+
+    assert resynced.data.enabled is False
+    assert len(push.recorder.sent) == 1  # only the first registration's confirmation
+
+
+async def test_turning_a_paused_device_back_on_from_the_phone_confirms_it(push):
+    from app.api.routers.push import ToggleRequest
+
+    db = db_with_timestamps()
+    created = await push.subscribe(_Request(), body(), _User(db))
+    await push.toggle(_Request(), created.data.id, ToggleRequest(enabled=False), _User(db))
+
+    resumed = await push.subscribe(_Request(), body(), _User(db))
+
+    assert resumed.data.enabled is True
+    assert len(push.recorder.sent) == 2
+
+
+async def test_a_new_owner_of_a_phone_takes_over_its_address(push):
+    """A previous user's row can survive a sign-out that failed offline; the new
+    owner's registration frees that endpoint first instead of hitting the index."""
+    db = db_with_timestamps()
+
+    await push.subscribe(_Request(), body("https://push.example/shared"), _User(db, STRANGER))
+
+    assert push.released == ["https://push.example/shared"]
 
 
 def test_an_endpoint_must_be_https(push):

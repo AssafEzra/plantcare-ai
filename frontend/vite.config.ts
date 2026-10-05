@@ -17,7 +17,13 @@ export default defineConfig({
       // `prompt`, not `autoUpdate`: a care task the user just marked done must not be
       // wiped by a service worker reloading the page underneath them. Section 41 asks
       // for installability, not aggressive caching.
-      includeAssets: ['favicon.svg', 'apple-touch-icon.png'],
+      includeAssets: [
+        'favicon.svg',
+        'apple-touch-icon.png',
+        'notify-today.png',
+        'notify-late.png',
+        'notify-badge.png',
+      ],
       manifest: {
         name: 'PlantCare AI',
         short_name: 'PlantCare',
@@ -47,6 +53,10 @@ export default defineConfig({
         // fails and the UI says so, which is honest.
         globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
         navigateFallbackDenylist: [/^\/v1\//],
+        // Push and notification-click handlers live in public/push-sw.js. Imported
+        // rather than switching to injectManifest, so the generated caching stays as
+        // it is and the push code is one plain file.
+        importScripts: ['push-sw.js'],
       },
       devOptions: { enabled: false },
     }),

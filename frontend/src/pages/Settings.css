@@ -130,3 +130,43 @@
 .pc-settings .pc-intensitywarn > ul > li {
   margin-block-end: var(--pc-space-3);
 }
+
+/* Reminders. Today green, late red - the same tokens as the email and the
+   notification icons, so the colours mean one thing everywhere. */
+.pc-remind-today {
+  color: var(--pc-success);
+  font-weight: 600;
+}
+
+.pc-remind-late {
+  color: var(--pc-danger);
+  font-weight: 600;
+}
+
+.pc-push-sub {
+  margin-block: var(--pc-space-4) var(--pc-space-2);
+  font-size: var(--pc-h5);
+}
+
+.pc-thisdevice,
+.pc-install {
+  margin-block-end: var(--pc-space-3);
+}
+
+.pc-install ol {
+  margin: var(--pc-space-2) 0 0;
+  padding-inline-start: var(--pc-space-5);
+}
+
+.pc-devices {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pc-devices li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--pc-space-3);
+}

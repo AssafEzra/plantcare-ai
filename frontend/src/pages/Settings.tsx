@@ -28,7 +28,19 @@ import {
   usePreferences,
   useUpdatePreferences,
   type NotificationDelivery,
+  type NotificationPreferences,
 } from '../api/notifications'
+import {
+  usePushConfig,
+  usePushDevices,
+  useRegisterThisDevice,
+  useRemoveDevice,
+  useThisEndpoint,
+  useToggleDevice,
+  type PushDevice,
+} from '../api/push'
+import { isIOS, isPhoneOrTablet, isStandalone, pushSupported } from '../lib/push'
+import { formatDate } from '../lib/dates'
 import { formatStamp } from '../lib/dates'
 import { useIsReadOnly } from '../lib/viewAs'
 import { ApiError } from '../lib/errors'
@@ -69,9 +81,14 @@ export default function Settings() {
 
       <Async query={preferences} loadingLabel="טוען העדפות…">
         {preferences.data && (
-          <RemindersForm preferences={preferences.data} readOnly={readOnly} />
+          <>
+            <RemindersCard preferences={preferences.data} readOnly={readOnly} />
+            <EmailCard preferences={preferences.data} readOnly={readOnly} />
+          </>
         )}
       </Async>
+
+      <PushCard readOnly={readOnly} />
 
       <Deliveries />
     </section>
@@ -386,105 +403,285 @@ function DaySelect({
 
 /* --- reminders ------------------------------------------------------------ */
 
-/** `HH:MM:SS` from Postgres; `<input type="time">` wants `HH:MM`. */
-function clock(value: string): string {
-  return (value || '08:00').slice(0, 5)
+/* Each control saves on change: a switch that needs a separate Save button is a
+   switch that looks on and is not. */
+
+const DUE_DAY_OPTIONS = [
+  { value: 0, label: 'לא להזכיר' },
+  { value: 1, label: 'יום אחד' },
+  { value: 2, label: 'יומיים' },
+  { value: 3, label: '3 ימים' },
+]
+
+function SaveState({ update }: { update: ReturnType<typeof useUpdatePreferences> }) {
+  if (update.error) {
+    return (
+      <p className="pc-formerror" role="alert">
+        {update.error instanceof ApiError ? update.error.message : 'השינוי לא נשמר.'}
+      </p>
+    )
+  }
+  if (update.isSuccess && !update.isPending) {
+    return (
+      <p className="pc-formnotice" role="status">
+        נשמר.
+      </p>
+    )
+  }
+  return null
 }
 
-function RemindersForm({
+/**
+ * What the reminders say and when. The time is fixed at 07:30 for now - stored per
+ * user so it can become a choice later, but not offered yet.
+ */
+function RemindersCard({
   preferences,
   readOnly,
 }: {
-  preferences: NonNullable<ReturnType<typeof usePreferences>['data']>
+  preferences: NotificationPreferences
   readOnly: boolean
 }) {
-  const [emailEnabled, setEmailEnabled] = useState(preferences.email_enabled)
-  const [time, setTime] = useState(clock(preferences.preferred_time_local))
-  const [digest, setDigest] = useState(preferences.daily_digest)
-  const [nothing, setNothing] = useState(false)
   const update = useUpdatePreferences()
 
-  function submit() {
-    setNothing(false)
-    const changes: Record<string, unknown> = {}
-    if (emailEnabled !== preferences.email_enabled) changes.email_enabled = emailEnabled
-    if (digest !== preferences.daily_digest) changes.daily_digest = digest
-    if (time !== clock(preferences.preferred_time_local)) changes.preferred_time_local = time
-
-    if (!Object.keys(changes).length) {
-      setNothing(true)
-      return
-    }
-    update.mutate(changes)
-  }
-
   return (
-    <form
-      className="pc-card"
-      onSubmit={(event) => {
-        event.preventDefault()
-        submit()
-      }}
-    >
+    <div className="pc-card">
+      <p className="pc-placeholder-note">
+        כל בוקר ב-07:30 נשלחות{' '}
+        <span className="pc-remind-today">המשימות של היום</span> ובנפרד{' '}
+        <span className="pc-remind-late">המשימות שבאיחור</span>, רק כשיש מה לספר.
+      </p>
+
+      <label className="pc-field">
+        <span>להזכיר על משימה שבאיחור</span>
+        <select
+          value={preferences.due_reminder_days}
+          disabled={readOnly || update.isPending}
+          onChange={(event) =>
+            update.mutate({ due_reminder_days: Number(event.target.value) })
+          }
+        >
+          {DUE_DAY_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+        <small>כמה ימים אחרי מועד המשימה עוד להזכיר עליה.</small>
+      </label>
+
       <label className="pc-toggle">
         <input
           type="checkbox"
-          checked={emailEnabled}
-          onChange={(event) => setEmailEnabled(event.target.checked)}
+          checked={preferences.evening_enabled}
+          disabled={readOnly || update.isPending}
+          onChange={(event) => update.mutate({ evening_enabled: event.target.checked })}
+        />
+        <span>תזכורת ערב ב-19:00 על משימות היום שעדיין פתוחות (בטלפון בלבד)</span>
+      </label>
+
+      <SaveState update={update} />
+    </div>
+  )
+}
+
+function EmailCard({
+  preferences,
+  readOnly,
+}: {
+  preferences: NotificationPreferences
+  readOnly: boolean
+}) {
+  const update = useUpdatePreferences()
+
+  return (
+    <div className="pc-card">
+      <h2>מייל</h2>
+      <label className="pc-toggle">
+        <input
+          type="checkbox"
+          checked={preferences.email_enabled}
+          disabled={readOnly || update.isPending}
+          onChange={(event) => update.mutate({ email_enabled: event.target.checked })}
         />
         <span>תזכורות במייל</span>
       </label>
+      <p className="pc-placeholder-note">
+        {preferences.email_enabled
+          ? 'מייל אחד בבוקר, עם המשימות של היום ועם המשימות שבאיחור.'
+          : 'התזכורות במייל כבויות. המשימות עדיין מופיעות במסך הבית.'}
+      </p>
+      <SaveState update={update} />
+    </div>
+  )
+}
 
-      <label className="pc-field">
-        <span>שעה מועדפת</span>
-        <input
-          type="time"
-          step={1800}
-          value={time}
-          onChange={(event) => setTime(event.target.value)}
+/* --- push ------------------------------------------------------------------ */
+
+/**
+ * Phone and tablet notifications.
+ *
+ * Turning reminders on has to happen on the phone itself: only its browser can ask
+ * for permission. After that the server holds the registration, so the device list
+ * - on every device, desktop included - can pause, resume or remove it.
+ */
+function PushCard({ readOnly }: { readOnly: boolean }) {
+  const config = usePushConfig()
+  const devices = usePushDevices()
+  const thisEndpoint = useThisEndpoint()
+
+  const onPhone = isPhoneOrTablet()
+  const list = devices.data ?? []
+  const thisDevice = list.find((device) => device.endpoint === thisEndpoint.data)
+  const others = list.filter((device) => device !== thisDevice)
+
+  return (
+    <div className="pc-card pc-push">
+      <h2>התראות בטלפון</h2>
+
+      {config.data && !config.data.configured && (
+        <p className="pc-placeholder-note">ההתראות בטלפון עדיין לא הופעלו בשרת.</p>
+      )}
+
+      {onPhone ? (
+        <ThisDevice
+          device={thisDevice}
+          publicKey={config.data?.public_key ?? null}
+          readOnly={readOnly}
         />
-        {/* A10 made visible. The rule says when a task is due; this says when we are
-            allowed to write. The two being confusable is exactly the ambiguity the
-            specification left open. */}
-        <small>השעה שבה נשלח לך את התזכורת. זמני הטיפול עצמם נקבעים בתוכנית הטיפול.</small>
-      </label>
+      ) : (
+        list.length === 0 && (
+          <p className="pc-placeholder-note">
+            ההתראות זמינות בטלפון ובטאבלט. פתחו שם את האפליקציה והפעילו אותן.
+          </p>
+        )
+      )}
 
+      {others.length > 0 && (
+        <>
+          <h3 className="pc-push-sub">{onPhone ? 'מכשירים נוספים' : 'המכשירים שלך'}</h3>
+          <ul className="pc-devices">
+            {others.map((device) => (
+              <DeviceRow key={device.id} device={device} readOnly={readOnly} />
+            ))}
+          </ul>
+        </>
+      )}
+    </div>
+  )
+}
+
+function ThisDevice({
+  device,
+  publicKey,
+  readOnly,
+}: {
+  device: PushDevice | undefined
+  publicKey: string | null
+  readOnly: boolean
+}) {
+  const register = useRegisterThisDevice()
+  const toggle = useToggleDevice()
+  const permission = typeof Notification === 'undefined' ? 'default' : Notification.permission
+
+  /* iPhone: push exists only in the app installed to the home screen. A button
+     here could never work, so the steps take its place. */
+  if (isIOS() && !isStandalone()) {
+    return (
+      <div className="pc-install">
+        <p>כדי לקבל תזכורות באייפון, צריך להוסיף את האפליקציה למסך הבית:</p>
+        <ol>
+          <li>
+            לחצו על כפתור השיתוף <span aria-hidden="true">⬆️</span> בתחתית Safari
+          </li>
+          <li>בחרו „הוספה למסך הבית"</li>
+          <li>פתחו את PlantCare מהאייקון החדש וחזרו לכאן</li>
+        </ol>
+      </div>
+    )
+  }
+
+  if (!pushSupported()) {
+    return <p className="pc-placeholder-note">הדפדפן הזה לא תומך בהתראות. נסו Chrome.</p>
+  }
+
+  if (permission === 'denied') {
+    return (
+      <p className="pc-placeholder-note">
+        ההתראות חסומות במכשיר הזה. כדי לאפשר אותן: הגדרות הטלפון ← PlantCare (או הדפדפן) ←
+        התראות.
+      </p>
+    )
+  }
+
+  if (device) {
+    return (
+      <div className="pc-thisdevice">
+        <label className="pc-toggle">
+          <input
+            type="checkbox"
+            checked={device.enabled}
+            disabled={readOnly || toggle.isPending}
+            onChange={(event) => toggle.mutate({ id: device.id, enabled: event.target.checked })}
+          />
+          <span>תזכורות במכשיר הזה ({device.device_label ?? 'המכשיר הזה'})</span>
+        </label>
+      </div>
+    )
+  }
+
+  return (
+    <div className="pc-thisdevice">
+      <button
+        type="button"
+        className="pc-btn"
+        disabled={readOnly || !publicKey || register.isPending}
+        onClick={() => publicKey && register.mutate(publicKey)}
+      >
+        {register.isPending ? 'מפעילים…' : 'הפעלת תזכורות במכשיר הזה'}
+      </button>
+      <p className="pc-placeholder-note">הטלפון יבקש אישור להציג התראות.</p>
+      {register.error ? (
+        <p className="pc-formerror" role="alert">
+          {register.error instanceof Error && register.error.message === 'denied'
+            ? 'לא ניתן אישור. אפשר לשנות זאת בהגדרות הטלפון.'
+            : 'ההפעלה לא הצליחה. נסו שוב.'}
+        </p>
+      ) : null}
+    </div>
+  )
+}
+
+function DeviceRow({ device, readOnly }: { device: PushDevice; readOnly: boolean }) {
+  const toggle = useToggleDevice()
+  const remove = useRemoveDevice()
+  const busy = toggle.isPending || remove.isPending
+
+  return (
+    <li>
       <label className="pc-toggle">
         <input
           type="checkbox"
-          checked={digest}
-          onChange={(event) => setDigest(event.target.checked)}
+          checked={device.enabled}
+          disabled={readOnly || busy}
+          onChange={(event) => toggle.mutate({ id: device.id, enabled: event.target.checked })}
         />
-        <span>סיכום יומי</span>
+        <span>
+          {device.device_label ?? 'מכשיר'}{' '}
+          <small className="pc-num">· נוסף {formatDate(device.created_at)}</small>
+        </span>
       </label>
-      <p className="pc-placeholder-note">הודעה אחת עם כל משימות היום, במקום הודעה לכל משימה.</p>
-
-      {update.error ? (
-        <p className="pc-formerror" role="alert">
-          {update.error instanceof ApiError ? update.error.message : 'ההעדפות לא נשמרו.'}
-        </p>
-      ) : null}
-      {update.isSuccess && (
-        <p className="pc-formnotice" role="status">
-          הגדרות התזכורות נשמרו.
-        </p>
-      )}
-      {nothing && <p className="pc-placeholder-note">אין שינויים לשמור.</p>}
-
       {!readOnly && (
-        <button type="submit" className="pc-btn" disabled={update.isPending}>
-          {update.isPending ? 'שומרים…' : 'שמירת התזכורות'}
+        <button
+          type="button"
+          className="pc-btn pc-btn-sm pc-btn-quiet"
+          disabled={busy}
+          onClick={() => remove.mutate({ id: device.id, endpoint: device.endpoint })}
+        >
+          הסרה
         </button>
       )}
-
-      {!emailEnabled && (
-        /* Said plainly rather than left to be inferred from a switch: a user who turned
-           reminders off should know the work is still tracked in the app. */
-        <p className="pc-placeholder-note">
-          התזכורות במייל כבויות. המשימות עדיין מופיעות במסך הבית.
-        </p>
-      )}
-    </form>
+    </li>
   )
 }
 
