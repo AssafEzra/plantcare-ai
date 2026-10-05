@@ -139,7 +139,7 @@ def build(client: Client, *, plant_id: UUID) -> tuple[CareContext, KnowledgeOrig
         current_health_status=plant.get("current_health_status"),
         health_history=_health_history(client, plant_id),
         care_history=_care_history(client, plant_id),
-        user_preferences=_preferences(client),
+        user_preferences=_preferences(client, plant["user_id"]),
         timezone=(profile or {}).get("timezone") or get_settings().default_timezone,
     )
     assert origin is not None  # set on both branches above
@@ -262,10 +262,18 @@ def _care_history(client: Client, plant_id: UUID) -> list[dict[str, Any]]:
     ]
 
 
-def _preferences(client: Client) -> dict[str, Any]:
+def _preferences(client: Client, user_id: str) -> dict[str, Any]:
+    """The plant owner's preferences.
+
+    Filtered by owner explicitly rather than left to RLS. Plans queued by a knowledge
+    publication run on the service client (`execute_proposal_as_service`), which
+    bypasses RLS - and an unfiltered `limit(1)` there returned whichever user's row
+    came first, putting one user's settings into another user's plan.
+    """
     row = first_row(
         client.table("notification_preferences")
         .select("email_enabled, preferred_time_local, daily_digest")
+        .eq("user_id", str(user_id))
         .limit(1)
         .execute()
     )
