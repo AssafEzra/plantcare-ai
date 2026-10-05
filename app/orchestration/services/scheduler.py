@@ -155,17 +155,11 @@ def _next_occurrence(
     from the plan's activation, so an approved plan starts reminding today or
     tomorrow rather than after a full interval.
     """
-    last = first_row(
-        client.table("care_events")
-        .select("event_type, event_at, care_task_id")
-        .eq("plant_id", plan_version["plant_id"])
-        .in_(
-            "event_type",
-            [CareEventType.DONE.value, CareEventType.SKIPPED.value, CareEventType.MISSED.value],
-        )
-        .order("event_at", desc=True)
-        .limit(1)
-        .execute()
+    last = _last_event_for_action(
+        client,
+        plant_id=str(plan_version["plant_id"]),
+        action_type=str(rule_row["action_type"]),
+        event_types=[CareEventType.DONE, CareEventType.SKIPPED, CareEventType.MISSED],
     )
 
     if last is None:
@@ -190,6 +184,54 @@ def _next_occurrence(
     # Never materialise an occurrence the sweep would retire on sight: that pair
     # of behaviours is a loop that writes a MISSED event on every tick.
     return recurrence.catch_up(domain_rule, due, now_utc=now_utc)
+
+
+def _last_event_for_action(
+    client: Client,
+    *,
+    plant_id: str,
+    action_type: str,
+    event_types: list[CareEventType],
+) -> Row | None:
+    """The latest event of these types for one *kind* of care on one plant.
+
+    Scoped by action type, not by plant. The original query took the plant's latest
+    event of any kind, so a watering re-anchored the feeding rule: fed on 1 October
+    and watered on the 12th, the monthly feeding came due on 11 November rather than
+    31 October - and with weekly watering it never came within the horizon at all.
+
+    Not scoped by rule id either. Every plan version has new rule ids, so a rule-id
+    filter would see no history after any plan change and schedule a watering for
+    today on a plant watered yesterday. The action type is what carries across
+    versions: watering is still watering in version 4.
+    """
+    tasks = rows(
+        client.table("care_tasks").select("id, care_rule_id").eq("plant_id", plant_id).execute()
+    )
+    if not tasks:
+        return None
+
+    rule_ids = sorted({str(task["care_rule_id"]) for task in tasks if task.get("care_rule_id")})
+    matching = {
+        str(rule["id"])
+        for rule in rows(
+            client.table("care_rules").select("id, action_type").in_("id", rule_ids).execute()
+        )
+        if rule.get("action_type") == action_type
+    }
+    task_ids = [str(task["id"]) for task in tasks if str(task.get("care_rule_id")) in matching]
+    if not task_ids:
+        return None
+
+    return first_row(
+        client.table("care_events")
+        .select("event_type, event_at, care_task_id")
+        .in_("care_task_id", task_ids)
+        .in_("event_type", [event_type.value for event_type in event_types])
+        .order("event_at", desc=True)
+        .limit(1)
+        .execute()
+    )
 
 
 def _active_rules(client: Client, *, user_id: str | None = None) -> list[tuple[Row, Row, Row]]:
