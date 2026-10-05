@@ -11,7 +11,10 @@ call was not made; only a real one confirms the row is not there. And what count
 as "authoritative" differs per agent, which is why this is four cases and not a
 parametrised loop:
 
-* **Identification** — no species, and the plant unchanged.
+* **Identification** — no species and no candidates. The plant itself is archived,
+  the second documented exception: the row exists only to hold an identification,
+  so one that failed leaves a placeholder nobody can finish. The user restores it
+  if they want to retry, and nothing claims to know what the plant is.
 * **Knowledge** — no published version; the draft is marked FAILED and stays
   retriable, and the plants waiting on it keep waiting rather than stranding.
 * **Care** — no version, no rules, and the previously active plan untouched.
@@ -37,7 +40,23 @@ pytestmark = pytest.mark.integration
 UNUSABLE = 3
 
 
-def test_identification_failure_leaves_the_plant_unidentified(api, account, admin_sdk, script):
+def test_identification_failure_archives_the_plant_and_names_no_species(
+    api, account, admin_sdk, script
+):
+    """The documented exception on this screen, alongside Health's.
+
+    §25 forbids an authoritative record, and the record it means is the *answer*:
+    no species, no candidates, nothing a later reader could mistake for a result.
+    The plant itself is archived, which is a decision about a placeholder rather
+    than a claim about the plant - a row created to hold an identification that
+    then failed leaves nothing anyone can finish, and before this it sat in
+    הצמחים שלי forever (`identification.py:_archive_abandoned`).
+
+    It is reversible by the user through `POST /v1/plants/{id}/restore`, and
+    narrow: only a plant still PENDING_IDENTIFICATION, never one whose result is
+    merely waiting to be confirmed, so a failed *re*-identification of an
+    established plant leaves it untouched.
+    """
     user = account()
     plant_id = add_plant(api, user.auth)
     image_id = upload(api, user.auth, plant_id)
@@ -51,22 +70,40 @@ def test_identification_failure_leaves_the_plant_unidentified(api, account, admi
     assert started.status_code == 202
 
     plant = api.get(f"/v1/plants/{plant_id}", headers=user.auth).json()["data"]
+    # What §25 actually protects: no species was written from output that failed.
     assert plant["species_id"] is None
-    assert plant["status"] == PlantStatus.PENDING_IDENTIFICATION.value
+    assert plant["status"] == PlantStatus.ARCHIVED.value
+    assert plant["archived_at"] is not None
 
-    # The failure is visible rather than silent — but it is the *identification*
-    # that failed, not the request. The run completed and recorded an honest
-    # FAILED result, which is what `FINAL §25` means by a graceful failure: the
-    # user is told, and can try again with better photographs.
+    # The failure is visible rather than silent: the request itself is FAILED and
+    # carries the code, which is what the screen polls and shows.
     request = api.get(
         f"/v1/agent-requests/{started.json()['data']['agent_request_id']}", headers=user.auth
     ).json()["data"]
-    identification = api.get(
-        f"/v1/identifications/{request['output_summary']['identification_id']}", headers=user.auth
-    ).json()["data"]
+    assert request["status"] == "FAILED"
+    assert request["error_code"]
 
+    # And the identification row is an honest record of the same thing. Read
+    # through the admin client rather than through the request: `mark_failed`
+    # writes no `output_summary`, so unlike a success the request does not carry
+    # the identification's id. Worth knowing when reading the two side by side -
+    # the row exists and is reachable by plant, just not from the request.
+    identification = (
+        admin_sdk.table("identifications")
+        .select("id, status")
+        .eq("plant_id", plant_id)
+        .execute()
+        .data[0]
+    )
     assert identification["status"] == "FAILED"
-    assert identification["candidates"] == []
+
+    candidates = (
+        admin_sdk.table("identification_candidates")
+        .select("id")
+        .eq("identification_id", identification["id"])
+        .execute()
+    )
+    assert candidates.data == []
 
 
 def test_knowledge_failure_publishes_nothing_and_strands_no_plant(api, account, admin_sdk, script):

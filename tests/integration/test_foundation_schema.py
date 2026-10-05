@@ -327,7 +327,8 @@ def test_expected_enum_count(db: psycopg.Connection):
         where n.nspname = 'public'
         """
     ).fetchone()[0]
-    assert count == 24, f"expected 24 enums, found {count}"
+    # 25 since migration 0021 added `care_intensity` (HIGH / MEDIUM / LOW).
+    assert count == 25, f"expected 25 enums, found {count}"
 
 
 def test_uuid_generation_is_available(db: psycopg.Connection):

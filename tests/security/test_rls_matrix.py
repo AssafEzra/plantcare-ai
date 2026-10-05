@@ -301,6 +301,7 @@ TABLES = [
     "knowledge_reports",
     "agent_requests",
     "notification_deliveries",
+    "push_subscriptions",
     "system_events",
 ]
 

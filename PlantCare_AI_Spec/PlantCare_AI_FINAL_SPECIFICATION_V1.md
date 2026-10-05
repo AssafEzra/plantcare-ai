@@ -387,6 +387,15 @@ Failure states:
 
 No failed AI result becomes an authoritative identification.
 
+**Implemented deviation (§37).** A failed identification also *archives the plant*,
+which §25 would otherwise forbid as a record written by a failed call. The reasoning:
+the row exists only to hold an identification, so one that failed leaves a placeholder
+nobody can finish, and before this those accumulated in הצמחים שלי. No species and no
+candidates are written, so nothing claims to know what the plant is; the archive is
+reversible by the user through `POST /v1/plants/{id}/restore`. It applies only to a
+plant still `PENDING_IDENTIFICATION` and never to one whose result is merely waiting to
+be confirmed, so a failed re-identification of an established plant changes nothing.
+
 ---
 
 # 10. Knowledge Base
