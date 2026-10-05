@@ -485,7 +485,12 @@ function CareSection({
               )
             }
           />
-        ) : proposals.length === 0 ? (
+        ) : /* `open_proposals` as well as the list, because the list arrives after it:
+              the dashboard says there is a proposal, and only that enables the query
+              that fetches it. For the render in between, `proposals` is still empty -
+              and this branch would put the button back for exactly as long as it takes
+              one request to return, which is long enough to press. */
+        proposals.length === 0 && plant.open_proposals === 0 ? (
           <div className="pc-card">
             {waiting ? (
               <p role="status">מכינים הצעה לתוכנית טיפול…</p>
