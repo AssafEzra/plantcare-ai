@@ -74,6 +74,13 @@ export default function AgentTray() {
   const dragging = useRef<Point | null>(null)
   const onPointerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     if (!canDrag()) return
+
+    /* Not when the press landed on a control. `setPointerCapture` sends every
+       later pointer event for this gesture to the capturing element - and the
+       click with them - so capturing here swallowed the collapse and close
+       buttons entirely: they sit inside the grip, and neither ever fired. */
+    if ((event.target as HTMLElement).closest('button')) return
+
     const box = event.currentTarget.parentElement?.getBoundingClientRect()
     if (!box) return
     dragging.current = { x: event.clientX - box.left, y: event.clientY - box.top }
@@ -86,9 +93,12 @@ export default function AgentTray() {
     setPosition({ x: event.clientX - grab.x, y: event.clientY - grab.y })
   }, [])
 
-  const onPointerUp = useCallback(() => {
+  const onPointerUp = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     if (!dragging.current) return
     dragging.current = null
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId)
+    }
     setPosition((current) => {
       if (current) {
         try {
