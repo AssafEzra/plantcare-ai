@@ -104,13 +104,19 @@ export default function AgentTray() {
 
   if (rows.length === 0) return null
 
-  const style = position ? { insetInlineStart: `${position.x}px`, insetBlockStart: `${position.y}px`, insetInlineEnd: 'auto', insetBlockEnd: 'auto' } : undefined
+  /* Physical `left`/`top`, not the logical properties the stylesheet uses for the
+     resting corner. `<html dir="rtl">`, so `inset-inline-start` is the RIGHT edge
+     while `clientX` counts from the left - setting one from the other sent the
+     panel the opposite way across the screen on every drag. The resting position
+     stays logical, because there it should follow the writing direction. */
+  const style = position ? { left: `${position.x}px`, top: `${position.y}px` } : undefined
+  const dragged = position ? ' is-dragged' : ''
 
   if (collapsed) {
     return (
       <button
         type="button"
-        className="pc-tray-pill"
+        className={`pc-tray-pill${dragged}`}
         style={style}
         onClick={() => setCollapsed(false)}
         aria-label={busy ? `${rows.length} פעולות סוכן, אחת או יותר פעילות` : `${rows.length} פעולות סוכן הסתיימו`}
@@ -122,7 +128,7 @@ export default function AgentTray() {
   }
 
   return (
-    <section className="pc-tray" style={style} aria-label="פעולות הסוכנים" role="status">
+    <section className={`pc-tray${dragged}`} style={style} aria-label="פעולות הסוכנים" role="status">
       <div
         className={`pc-tray-grip${canDrag() ? ' is-draggable' : ''}`}
         onPointerDown={onPointerDown}
@@ -183,8 +189,16 @@ function TrayLine({ row, onOpen }: { row: TrayRow; onOpen: (to: string) => void 
     </>
   )
 
+  /* Knowledge belongs to a species, not a plant, and there is no species screen to
+     send anyone to. Rendered as plain text rather than as a button that does
+     nothing - an inert button is indistinguishable from a broken one, which is
+     exactly how it was read the first time this ran. */
   if (!row.plantId) {
-    return <li className="pc-tray-row">{body}</li>
+    return (
+      <li className="pc-tray-row is-static" title="מחקר על המין - אין מסך לפתוח">
+        {body}
+      </li>
+    )
   }
 
   return (

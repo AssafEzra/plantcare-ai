@@ -14,6 +14,16 @@
   inset-block-end: calc(var(--pc-bottomnav-h) + env(safe-area-inset-bottom) + var(--pc-space-3));
 }
 
+/* Dragged: the resting corner is expressed in logical properties so it follows the
+   writing direction, but a pointer reports physical coordinates. In RTL
+   `inset-inline-start` is the right edge, so positioning from `clientX` through it
+   sent the panel the wrong way. Clearing every inset here lets the inline
+   `left`/`top` be the only thing placing it. */
+.pc-tray.is-dragged,
+.pc-tray-pill.is-dragged {
+  inset: auto;
+}
+
 .pc-tray {
   inline-size: min(260px, calc(100vw - var(--pc-space-4) * 2));
   background: var(--pc-surface);
@@ -91,6 +101,12 @@
 
 .pc-tray-row.is-link {
   cursor: pointer;
+}
+
+/* Reads as a line of text, so nobody presses it expecting to go somewhere. */
+.pc-tray-row.is-static {
+  color: var(--pc-text-muted);
+  cursor: default;
 }
 
 .pc-tray-row.is-link:hover {

@@ -209,6 +209,12 @@ export function useTrayRows(): { rows: TrayRow[]; clear: () => void; busy: boole
         .fetchQuery({
           queryKey: scoped(userId, ['agent-request', row.id]),
           queryFn: () => api.get<AgentRequest>(`/v1/agent-requests/${row.id}`),
+          // Never from cache. The screens that draw progress poll this same key,
+          // so the cached value at this exact moment is the last poll before the
+          // run settled - PROCESSING - and the global staleTime of 30s is long
+          // enough for `fetchQuery` to hand it straight back. The row then never
+          // reached a tick or a cross, which left the panel permanently unclosable.
+          staleTime: 0,
         })
         .then((settled) => {
           setSeen((current) =>
