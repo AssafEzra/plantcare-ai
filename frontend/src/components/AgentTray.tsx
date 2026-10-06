@@ -27,10 +27,13 @@ const AGENT_NAMES: Record<string, string> = {
 
 type Point = { x: number; y: number }
 
-/* Desktop only. On a phone the tray sits above the bottom bar: there is no room
-   worth dragging it around in, and a draggable overlay fights the scroll. */
-function canDrag(): boolean {
-  return window.matchMedia?.('(min-width: 900px)').matches ?? false
+/* The width at which the sidebar replaces the bottom bar (AppShell.css). Below it
+   the popup docks above the bar and is not draggable: there is no room worth moving
+   it around in, and a draggable overlay fights the scroll. */
+const WIDE = '(min-width: 900px)'
+
+function isWide(): boolean {
+  return window.matchMedia?.(WIDE).matches ?? false
 }
 
 function readPosition(): Point | null {
@@ -62,18 +65,42 @@ export default function AgentTray() {
   const { rows, clear, busy } = useTrayRows()
   const [collapsed, setCollapsed] = useState(false)
   const [position, setPosition] = useState<Point | null>(null)
+  const [wide, setWide] = useState(isWide)
 
   useEffect(() => {
-    if (!canDrag()) return
     const stored = readPosition()
-    if (stored && onScreen(stored)) setPosition(stored)
+    if (stored && isWide() && onScreen(stored)) setPosition(stored)
+  }, [])
+
+  /* The layout is state, not a question asked once while rendering. `canDrag()` was
+     called during render and never again, so a popup dragged on a wide window kept
+     those coordinates when the window was narrowed - and they were off-screen. The
+     bottom bar appeared, the popup did not, and it had been rendering the whole
+     time just outside the viewport.
+
+     Below the breakpoint the stylesheet owns the position and the stored point is
+     ignored rather than forgotten, so widening again puts it back where it was
+     left. Above it, a point that stops fitting after a resize falls back to the
+     docked corner instead of disappearing. */
+  useEffect(() => {
+    const query = window.matchMedia(WIDE)
+    const onChange = () => {
+      setWide(query.matches)
+      if (query.matches) setPosition((current) => (current && !onScreen(current) ? null : current))
+    }
+    query.addEventListener('change', onChange)
+    window.addEventListener('resize', onChange)
+    return () => {
+      query.removeEventListener('change', onChange)
+      window.removeEventListener('resize', onChange)
+    }
   }, [])
 
   /* Dragging, on pointer events so a mouse and a trackpad behave the same. The
      offset is captured on grab so the panel does not jump to centre on the cursor. */
   const dragging = useRef<Point | null>(null)
   const onPointerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
-    if (!canDrag()) return
+    if (!isWide()) return
 
     /* Not when the press landed on a control. `setPointerCapture` sends every
        later pointer event for this gesture to the capturing element - and the
@@ -118,8 +145,11 @@ export default function AgentTray() {
      while `clientX` counts from the left - setting one from the other sent the
      panel the opposite way across the screen on every drag. The resting position
      stays logical, because there it should follow the writing direction. */
-  const style = position ? { left: `${position.x}px`, top: `${position.y}px` } : undefined
-  const dragged = position ? ' is-dragged' : ''
+  // Only the wide layout honours a dragged position. Narrow, the popup docks above
+  // the bottom bar and nothing inline competes with the stylesheet.
+  const placed = wide ? position : null
+  const style = placed ? { left: `${placed.x}px`, top: `${placed.y}px` } : undefined
+  const dragged = placed ? ' is-dragged' : ''
 
   if (collapsed) {
     return (
@@ -139,7 +169,7 @@ export default function AgentTray() {
   return (
     <section className={`pc-tray${dragged}`} style={style} aria-label="פעולות הסוכנים" role="status">
       <div
-        className={`pc-tray-grip${canDrag() ? ' is-draggable' : ''}`}
+        className={`pc-tray-grip${wide ? ' is-draggable' : ''}`}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}

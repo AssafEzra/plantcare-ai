@@ -520,8 +520,19 @@ def knowledge_state(client: Client, version: Row) -> dict[str, Any]:
     if not draft_id:
         return {"knowledge_review": "reviewed"}
 
+    # Through the service role, and the owner policy is exactly why. A plant owner
+    # may read drafts in READY_FOR_REVIEW and no other status (migration 0007), so
+    # the moment an administrator approved one the row became invisible to the very
+    # people whose screens report on it - `first_row` returned None, `status` was
+    # None, and the fall-through below said "pending". Approving the research was
+    # what made the warning permanent, and only for owners: an administrator sees
+    # every draft and could not reproduce it.
+    #
+    # The caller's client still proves they may see this version. What crosses here
+    # is one status string about a draft their own plan already cites, never its
+    # content - the same limit `plant_detail._knowledge_status` works under.
     draft = first_row(
-        client.table("knowledge_drafts").select("id, status").eq("id", draft_id).execute()
+        service_client().table("knowledge_drafts").select("id, status").eq("id", draft_id).execute()
     )
     status = (draft or {}).get("status")
 
