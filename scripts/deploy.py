@@ -98,6 +98,12 @@ SECRETS = {
     "SUPABASE_SERVICE_ROLE_KEY": "supabase-service-role-key",
     "INTERNAL_TICK_SECRET": "internal-tick-secret",
     "GOOGLE_API_KEY": "google-api-key",
+    # Neither is used while every agent is set to google, and each is skipped
+    # entirely when its value is absent from .env. Listed so switching a provider
+    # is one edit there, not a deploy that fails at runtime on a key that was
+    # never shipped.
+    "ANTHROPIC_API_KEY": "anthropic-api-key",
+    "OPENAI_API_KEY": "openai-api-key",
     "RESEND_API_KEY": "resend-api-key",
     "VAPID_PRIVATE_KEY": "vapid-private-key",
 }

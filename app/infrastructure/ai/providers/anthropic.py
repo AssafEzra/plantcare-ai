@@ -50,8 +50,10 @@ class AnthropicProvider:
     API_KEY_SETTING = "anthropic_api_key"
 
     # USD per million tokens, verified against Anthropic's pricing page on
-    # 2026-09-08. A model absent here still runs; its cost records as unknown.
+    # 2026-09-08, and again on 2026-10-06 when 5.5 was added. A model absent here
+    # still runs; its cost records as unknown.
     PRICES: ClassVar[dict[str, ModelSpec]] = {
+        "claude-opus-5-5": ModelSpec(input=4.00, output=20.00),
         "claude-opus-5": ModelSpec(input=5.00, output=25.00),
         "claude-sonnet-5": ModelSpec(input=2.00, output=10.00),
         "claude-haiku-4-5": ModelSpec(input=1.00, output=5.00),
