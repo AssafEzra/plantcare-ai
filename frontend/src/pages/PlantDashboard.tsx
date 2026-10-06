@@ -43,6 +43,7 @@ import {
 import { useAssessment, useHealthHistory, useStartHealthCheck } from '../api/health'
 import { useAgentRequest } from '../api/identification'
 import { useIsAgentBusy } from '../api/agentRequests'
+import { useRetryResearch } from '../api/knowledge'
 import { isDue } from '../api/careTasks'
 import { useIsReadOnly } from '../lib/viewAs'
 import { statusStyle, trendStyle, PLANT_STATUS_LABELS } from '../lib/status'
@@ -199,6 +200,7 @@ function Loaded({ plantId, plant }: { plantId: string; plant: Dashboard }) {
             <h2>מידע מקצועי על המין</h2>
           </div>
           <div className="pc-card">
+            <ResearchState plant={plant} plantId={plantId} canEdit={canEdit} />
             <KnowledgePanel speciesId={plant.species.id} plantId={plantId} />
           </div>
         </section>
@@ -347,6 +349,70 @@ function Details({
 
 /* --- care: tasks, proposals, the plan -------------------------------------- */
 
+
+/**
+ * Why a plant is still waiting for its species research, and the way out.
+ *
+ * KNOWLEDGE_PENDING rendered as "אוסף מידע" and nothing else, identically whether
+ * the research was running, had failed, or had never started. A plant whose run hit
+ * a 503 therefore waited indefinitely, saying nothing, while the care section beside
+ * it offered a plan that could not be built - and the only remedy was an admin tab
+ * filtered, by default, to drafts in a different state.
+ */
+function ResearchState({
+  plant,
+  plantId,
+  canEdit,
+}: {
+  plant: Dashboard
+  plantId: string
+  canEdit: boolean
+}) {
+  const retry = useRetryResearch(plantId)
+  const busy = useIsAgentBusy(plantId, 'KNOWLEDGE')
+
+  if (plant.status !== 'KNOWLEDGE_PENDING') return null
+
+  const failed = plant.knowledge_status === 'FAILED'
+  const researching = plant.knowledge_status === 'RESEARCHING' || busy
+
+  return (
+    <div className="pc-researchstate">
+      {researching ? (
+        <p role="status">אוספים מידע מקצועי על המין. זה יכול לקחת כמה דקות.</p>
+      ) : failed ? (
+        <p className="pc-formerror" role="alert">
+          המחקר על המין נכשל, ולכן אין עדיין מידע מקצועי ואי אפשר להכין תוכנית טיפול.
+        </p>
+      ) : (
+        /* REJECTED, or no draft at all. Both are an administrator's business: the
+           first is their judgement to revisit, the second means research was never
+           started, and neither is something the owner can or should fix by pressing
+           a button. Said plainly rather than offered falsely. */
+        <p className="pc-formnotice">עדיין אין מידע מקצועי על המין. אנחנו מטפלים בזה.</p>
+      )}
+
+      {retry.error && (
+        <p className="pc-formerror" role="alert">
+          {retry.error instanceof ApiError ? retry.error.message : 'לא הצלחנו להתחיל מחקר מחדש.'}
+        </p>
+      )}
+
+      {canEdit && failed && !researching && (
+        <button
+          type="button"
+          className="pc-btn pc-btn-sm"
+          disabled={retry.isPending}
+          onClick={() => retry.mutate()}
+        >
+          {retry.isPending ? 'מתחילים…' : 'מחקר מחדש'}
+        </button>
+      )}
+    </div>
+  )
+}
+
+
 function CareSection({
   plantId,
   plant,
@@ -376,6 +442,12 @@ function CareSection({
      started or adopted from the payload; `careBusy` is the shell's watcher, which
      does not depend on the payload having been fetched since the run began. */
   const careBusy = useIsAgentBusy(plantId, 'CARE')
+
+  /* No published knowledge means no plan is possible, whatever the research is
+     doing - running, failed, or rejected. The species section above carries the
+     explanation and the way out; this section only has to stop offering work that
+     `care_context.build` will refuse. */
+  const blockedOnKnowledge = plant.status === 'KNOWLEDGE_PENDING'
   const waiting =
     careBusy || (Boolean(watching) && settled !== 'SUCCEEDED' && settled !== 'FAILED')
 
@@ -500,7 +572,14 @@ function CareSection({
               one request to return, which is long enough to press. */
         proposals.length === 0 && plant.open_proposals === 0 ? (
           <div className="pc-card">
-            {waiting ? (
+            {/* The Care Agent plans from the species' published knowledge, so a plant
+                still waiting for research has nothing to plan from: `care_context.build`
+                refuses it, and because that happens in the background after the 202, the
+                card showed only "אפשר לנסות שוב" - inviting the user to repeat something
+                that cannot work. The reason is said here instead, before it is pressed. */}
+            {blockedOnKnowledge ? (
+              <p className="pc-formnotice">אין עדיין מידע מקצועי עבור המין הזה.</p>
+            ) : waiting ? (
               <p role="status">מכינים הצעה לתוכנית טיפול…</p>
             ) : settled === 'FAILED' ? (
               <p className="pc-formerror" role="alert">
@@ -523,7 +602,7 @@ function CareSection({
               </p>
             )}
 
-            {canEdit && !waiting && (
+            {canEdit && !waiting && !blockedOnKnowledge && (
               <button
                 type="button"
                 className="pc-btn"

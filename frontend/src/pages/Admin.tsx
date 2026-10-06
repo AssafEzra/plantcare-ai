@@ -281,10 +281,22 @@ function Draft({ draft }: { draft: KnowledgeDraft }) {
   return (
     <li className="pc-card">
       <div className="pc-adminrowhead">
-        <h3 className="pc-ltr">{draft.species_id.slice(0, 8)}</h3>
+        {/* The species, not its id. A list of drafts is a list of plants waiting,
+            and eight hex characters identify none of them. The id stays reachable
+            on hover, because it is what gets pasted into a query. */}
+        <h3 title={draft.species_id}>
+          {draft.species_common_name ?? draft.species_scientific_name ?? (
+            <span className="pc-ltr">{draft.species_id.slice(0, 8)}</span>
+          )}
+        </h3>
         {badge && <StatusBadge label={badge.label} tone={badge.tone as Tone} glyph="·" />}
       </div>
       <p className="pc-placeholder-note">
+        {draft.species_common_name && draft.species_scientific_name && (
+          <>
+            <span className="pc-ltr">{draft.species_scientific_name}</span> ·{' '}
+          </>
+        )}
         שפה: {draft.language} · עודכן <span className="pc-num">{formatStamp(draft.updated_at)}</span>
       </p>
 

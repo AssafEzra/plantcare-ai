@@ -30,8 +30,9 @@ from app.common.errors import ValidationFailedError
 from app.infrastructure.storage import plant_images as storage
 from app.orchestration.services import care_intensity, plant_history, scheduler
 from app.orchestration.workflows import care as care_workflow
+from app.orchestration.workflows import knowledge as knowledge_workflow
 from app.repositories import plants as repo
-from app.repositories.base import first_row, rows
+from app.repositories.base import Row, first_row, rows
 from supabase import Client
 
 router = APIRouter(prefix="/plants", tags=["plants"])
@@ -120,6 +121,12 @@ class PlantDashboardResponse(BaseModel):
     # Which schedule this plant follows and what it would cost (care intensity):
     # override, owner_intensity, effective, care_days, warnings.
     care_schedule: dict[str, Any] | None = None
+    # Why a plant is still KNOWLEDGE_PENDING: RESEARCHING, FAILED, REJECTED, or
+    # null when there is nothing to say. Without it that status renders as "אוסף
+    # מידע" whether the research is running, has failed, or was never started - so
+    # a plant whose research failed waits for ever and says nothing, and the care
+    # button beside it offers work that `care_context.build` will refuse.
+    knowledge_status: str | None = None
 
 
 class HistoryEntryResponse(BaseModel):
@@ -214,6 +221,31 @@ def _pending_identification(client: Client, plant: dict[str, Any]) -> PendingIde
     )
 
 
+def _knowledge_status(plant: Row) -> str | None:
+    """Why this plant is still waiting, when it is.
+
+    Read with the service client, and deliberately so. The owner policy on
+    `knowledge_drafts` (migration 0007) admits READY_FOR_REVIEW only, because that
+    is the content a plant owner is allowed to read; a FAILED or RESEARCHING draft
+    is invisible to them, which is correct for its *content* and useless for the
+    one question they need answered. Widening the policy would expose the body of
+    drafts an administrator has rejected, so only the status crosses - one short
+    string, never content, and only for a plant the caller already owns.
+    """
+    if plant.get("status") != PlantStatus.KNOWLEDGE_PENDING.value or not plant.get("species_id"):
+        return None
+
+    from app.config.settings import get_settings
+    from app.infrastructure.supabase.client import service_client
+
+    draft = knowledge_workflow.newest_draft(
+        service_client(),
+        species_id=UUID(str(plant["species_id"])),
+        language=get_settings().default_content_language,
+    )
+    return str(draft["status"]) if draft else None
+
+
 @router.get("/{plant_id}/dashboard", response_model=DataEnvelope[PlantDashboardResponse])
 async def get_plant_dashboard(
     request: Request, plant_id: UUID, user: CurrentUserDep
@@ -232,6 +264,7 @@ async def get_plant_dashboard(
             species = SpeciesSummary(**found)
 
     pending = _pending_identification(user.client, plant) if species is None else None
+    knowledge_status = _knowledge_status(plant)
 
     images = repo.list_images(user.client, plant_id)
     signed = storage.signed_urls(
@@ -298,6 +331,7 @@ async def get_plant_dashboard(
             open_proposals=len(proposals),
             care_request_id=(in_flight or {}).get("id"),
             care_schedule=care_schedule,
+            knowledge_status=knowledge_status,
         ),
         request_id=request.state.request_id,
     )
