@@ -11,7 +11,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { useTrayRows, type TrayRow } from '../api/agentRequests'
 import { usePlants, plantName } from '../api/plants'
 import './AgentTray.css'
@@ -62,7 +62,6 @@ export default function AgentTray() {
   const { rows, clear, busy } = useTrayRows()
   const [collapsed, setCollapsed] = useState(false)
   const [position, setPosition] = useState<Point | null>(null)
-  const navigate = useNavigate()
 
   useEffect(() => {
     if (!canDrag()) return
@@ -161,14 +160,14 @@ export default function AgentTray() {
 
       <ul className="pc-tray-list">
         {rows.map((row) => (
-          <TrayLine key={row.id} row={row} onOpen={(to) => navigate(to)} />
+          <TrayLine key={row.id} row={row} />
         ))}
       </ul>
     </section>
   )
 }
 
-function TrayLine({ row, onOpen }: { row: TrayRow; onOpen: (to: string) => void }) {
+function TrayLine({ row }: { row: TrayRow }) {
   // The plant's name, from the list the app already holds. Knowledge runs carry no
   // plant - they belong to a species - so that row names the agent alone.
   const { data: plants } = usePlants()
@@ -201,11 +200,15 @@ function TrayLine({ row, onOpen }: { row: TrayRow; onOpen: (to: string) => void 
     )
   }
 
+  /* A real link, not a button calling `navigate`. This is navigation, so it should
+     be an anchor: it survives anything that swallows a synthetic click, it shows
+     its destination on hover, and it can be opened in a new tab. The button
+     version did nothing when pressed and gave no way to see why. */
   return (
     <li>
-      <button type="button" className="pc-tray-row is-link" onClick={() => onOpen(`/plants/${row.plantId}`)}>
+      <Link className="pc-tray-row is-link" to={`/plants/${row.plantId}`}>
         {body}
-      </button>
+      </Link>
     </li>
   )
 }

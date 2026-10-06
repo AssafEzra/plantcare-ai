@@ -101,6 +101,7 @@
 
 .pc-tray-row.is-link {
   cursor: pointer;
+  text-decoration: none;
 }
 
 /* Reads as a line of text, so nobody presses it expecting to go somewhere. */
