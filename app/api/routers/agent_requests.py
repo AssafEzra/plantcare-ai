@@ -46,6 +46,30 @@ class AgentRequestResponse(BaseModel):
     updated_at: datetime
 
 
+@router.get("", response_model=DataEnvelope[list[AgentRequestResponse]])
+async def list_open_agent_requests(
+    request: Request, user: CurrentUserDep
+) -> DataEnvelope[list[AgentRequestResponse]]:
+    """Everything of mine that has not finished yet.
+
+    Declared before `/{request_id}` so the empty path is not read as an id.
+
+    One call answers "is anything running, and what" for the whole app. Before it,
+    the only way to know was to hold a request id in a component's state, which
+    meant work announced itself to one screen and only while the user stayed on
+    it. The client polls this while the list is non-empty and stops when it
+    empties, so an idle app makes no requests at all.
+
+    Same exposure as the single read below, and the same justification: the
+    caller's own client, RLS, identifiers and statuses only.
+    """
+    found = service.open_for_user(user.client)
+    return DataEnvelope(
+        data=[AgentRequestResponse.model_validate(row) for row in found],
+        request_id=request.state.request_id,
+    )
+
+
 @router.get("/{request_id}", response_model=DataEnvelope[AgentRequestResponse])
 async def get_agent_request(
     request: Request, request_id: UUID, user: CurrentUserDep

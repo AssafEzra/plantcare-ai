@@ -29,7 +29,7 @@ from app.common.enums import (
     CarePlanVersionStatus,
     KnowledgeDraftStatus,
 )
-from app.common.errors import NotFoundError, ValidationFailedError
+from app.common.errors import ConflictError, NotFoundError, ValidationFailedError
 from app.config.logging import get_logger
 from app.infrastructure.supabase.client import service_client
 from app.orchestration.services import agent_requests as requests_service
@@ -77,6 +77,15 @@ def start_proposal(
         # Two open proposals for one plant is a choice the user did not ask to
         # make, and approving one would silently orphan the other.
         raise ValidationFailedError("כבר קיימת הצעה שממתינה לאישור עבור הצמח הזה.")
+
+    if requests_service.in_flight(client, plant_id, AgentType.CARE):
+        # A run already going. Distinct from the check above: that one is about a
+        # proposal waiting for an answer, this one about a model call in progress,
+        # and during a run there is no proposal yet - which is why pressing the
+        # button mid-run used to fail with a message about something the user
+        # could not see. `ConflictError` rather than `ValidationFailedError`:
+        # nothing the user sent is wrong, the state is.
+        raise ConflictError(requests_service.AGENT_BUSY)
 
     return requests_service.create_or_replay(
         client,
@@ -717,16 +726,13 @@ def request_in_flight(client: Client, plant_id: str) -> Row | None:
     dashboard asks as the user, so the screen can say a proposal is on its way
     instead of offering a button that the guard in `start_proposal` will refuse.
     RLS answers the second correctly - a user sees their own requests.
+
+    The query itself moved to `requests_service.in_flight`, which takes the agent
+    type rather than assuming CARE, so health and identification can ask the same
+    question. This name stays because the tick and the dashboard both use it and
+    neither cares where it lives.
     """
-    return first_row(
-        client.table("agent_requests")
-        .select("id")
-        .eq("plant_id", plant_id)
-        .eq("agent_type", AgentType.CARE.value)
-        .in_("status", ["QUEUED", "PROCESSING"])
-        .limit(1)
-        .execute()
-    )
+    return requests_service.in_flight(client, plant_id, AgentType.CARE)
 
 
 def queue_initial_plans(species_id: UUID, *, executor, agent: CareAgent) -> int:

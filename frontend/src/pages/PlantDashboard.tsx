@@ -42,6 +42,7 @@ import {
 } from '../api/carePlan'
 import { useAssessment, useHealthHistory, useStartHealthCheck } from '../api/health'
 import { useAgentRequest } from '../api/identification'
+import { useIsAgentBusy } from '../api/agentRequests'
 import { isDue } from '../api/careTasks'
 import { useIsReadOnly } from '../lib/viewAs'
 import { statusStyle, trendStyle, PLANT_STATUS_LABELS } from '../lib/status'
@@ -370,7 +371,13 @@ function CareSection({
   const [watching, setWatching] = useState<string | null>(null)
   const watched = useAgentRequest(watching)
   const settled = watched.data?.status
-  const waiting = Boolean(watching) && settled !== 'SUCCEEDED' && settled !== 'FAILED'
+
+  /* Two sources, either enough. `watching` is this screen's own record of a run it
+     started or adopted from the payload; `careBusy` is the shell's watcher, which
+     does not depend on the payload having been fetched since the run began. */
+  const careBusy = useIsAgentBusy(plantId, 'CARE')
+  const waiting =
+    careBusy || (Boolean(watching) && settled !== 'SUCCEEDED' && settled !== 'FAILED')
 
   /* Adopt a proposal this page did not start. Approving an identification publishes
      the species' research, which queues an INITIAL_PLAN for every plant waiting on it —
@@ -383,6 +390,7 @@ function CareSection({
   useEffect(() => {
     if (inFlight) setWatching((current) => current ?? inFlight)
   }, [inFlight])
+
 
   const shown = proposals.find((proposal) => proposal.id === openProposal)
   const upcoming = plant.upcoming_tasks.slice(0, 5)
@@ -571,7 +579,13 @@ function HealthSection({
   const start = useStartHealthCheck(plantId)
   const watched = useAgentRequest(watching)
   const status = watched.data?.status
-  const running = Boolean(watching) && status !== 'SUCCEEDED' && status !== 'FAILED'
+  /* `watching` is this screen's own record and dies with it. The shell's watcher
+     is the one that survives navigating away and coming back, which is why a
+     health check in progress used to offer its own button again on return. There
+     is no `health_request_id` on the payload and now there needs to be none. */
+  const healthBusy = useIsAgentBusy(plantId, 'HEALTH')
+  const running =
+    healthBusy || (Boolean(watching) && status !== 'SUCCEEDED' && status !== 'FAILED')
 
   /* The plant's own verdict, not the agent request's — `status` above is the run. */
   const health = statusStyle(plant.health.current_status)

@@ -18,6 +18,8 @@ import { resyncThisDevice } from '../api/push'
 import { useIsReadOnly } from '../lib/viewAs'
 import Header from './Header'
 import ViewAsBanner from './ViewAsBanner'
+import AgentTray from '../components/AgentTray'
+import { useRefreshOnReturn } from '../api/agentRequests'
 import './AppShell.css'
 
 const COLLAPSED_KEY = 'pc.sidebar.collapsed'
@@ -40,6 +42,12 @@ export default function AppShell() {
   useEffect(() => {
     if (!readOnly) resyncThisDevice().catch(() => undefined)
   }, [readOnly])
+
+  /* The one thing that catches work the browser had no part in - the 07:30 tick
+     materialising tasks, the sweep marking them overdue. One cheap question when
+     the app comes back, at most once a minute, and nothing refetches when the
+     answer is "nothing changed". `refetchOnWindowFocus` stays off (main.tsx). */
+  useRefreshOnReturn()
 
   /* Which entries exist is a courtesy, never the control: every admin route is gated
      server-side and every admin table has its own RLS policy. `navFor` explains why an
@@ -93,6 +101,10 @@ export default function AppShell() {
           ))}
         </ul>
       </nav>
+
+      {/* Last, and outside main: it is fixed to the viewport and has to sit above
+          the bottom bar on a phone. Renders nothing when no agent has run. */}
+      <AgentTray />
     </div>
   )
 }

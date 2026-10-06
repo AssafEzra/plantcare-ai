@@ -428,15 +428,16 @@ async def reject_knowledge_draft(
             reason=payload.admin_note,
             language=draft["language"],
         )
-        BackgroundTasksExecutor(background).submit(
-            workflow.execute_research,
-            request_id=run.request_id,
-            draft_id=run.draft_id,
-            species_id=run.species_id,
-            language=run.language,
-            reason=payload.admin_note,
-            agent=agent,
-        )
+        if not run.already_running:
+            BackgroundTasksExecutor(background).submit(
+                workflow.execute_research,
+                request_id=run.request_id,
+                draft_id=run.draft_id,
+                species_id=run.species_id,
+                language=run.language,
+                reason=payload.admin_note,
+                agent=agent,
+            )
 
     return DataEnvelope(data=DraftResponse(**draft), request_id=request.state.request_id)
 
@@ -470,18 +471,27 @@ async def retry_knowledge_research(
         language=draft["language"],
     )
 
-    BackgroundTasksExecutor(background).submit(
-        workflow.execute_research,
-        request_id=run.request_id,
-        draft_id=run.draft_id,
-        species_id=run.species_id,
-        language=run.language,
-        reason=payload.reason,
-        agent=agent,
-    )
+    # Only when this is a new run. `start_research` replays the one already going
+    # rather than starting a second, and submitting here anyway would execute the
+    # agent a second time against the same draft - billing twice and racing the
+    # first result into the same row, which is what the replay exists to prevent.
+    if not run.already_running:
+        BackgroundTasksExecutor(background).submit(
+            workflow.execute_research,
+            request_id=run.request_id,
+            draft_id=run.draft_id,
+            species_id=run.species_id,
+            language=run.language,
+            reason=payload.reason,
+            agent=agent,
+        )
 
     return DataEnvelope(
-        data={"draft_id": str(run.draft_id), "agent_request_id": str(run.request_id)},
+        data={
+            "draft_id": str(run.draft_id),
+            "agent_request_id": str(run.request_id),
+            "already_running": run.already_running,
+        },
         request_id=request.state.request_id,
     )
 
@@ -537,18 +547,27 @@ async def research_published_species(
         language=language,
     )
 
-    BackgroundTasksExecutor(background).submit(
-        workflow.execute_research,
-        request_id=run.request_id,
-        draft_id=run.draft_id,
-        species_id=run.species_id,
-        language=run.language,
-        reason=payload.reason,
-        agent=agent,
-    )
+    # Only when this is a new run. `start_research` replays the one already going
+    # rather than starting a second, and submitting here anyway would execute the
+    # agent a second time against the same draft - billing twice and racing the
+    # first result into the same row, which is what the replay exists to prevent.
+    if not run.already_running:
+        BackgroundTasksExecutor(background).submit(
+            workflow.execute_research,
+            request_id=run.request_id,
+            draft_id=run.draft_id,
+            species_id=run.species_id,
+            language=run.language,
+            reason=payload.reason,
+            agent=agent,
+        )
 
     return DataEnvelope(
-        data={"draft_id": str(run.draft_id), "agent_request_id": str(run.request_id)},
+        data={
+            "draft_id": str(run.draft_id),
+            "agent_request_id": str(run.request_id),
+            "already_running": run.already_running,
+        },
         request_id=request.state.request_id,
     )
 

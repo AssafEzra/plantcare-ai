@@ -54,6 +54,12 @@ class ResearchRun:
     request_id: UUID
     species_id: UUID
     language: str
+    #: True when this is the run that was already going rather than a new one.
+    #: Replaying is the right answer - a second research call bills twice and its
+    #: result would race the first into the same draft - but saying nothing made
+    #: the admin screen look as though it had started something. The caller tells
+    #: the user instead.
+    already_running: bool = False
 
     def as_summary(self) -> dict[str, str]:
         return {
@@ -104,6 +110,7 @@ def start_research(
             request_id=UUID(draft["research_request_id"]),
             species_id=species_id,
             language=lang,
+            already_running=True,
         )
 
     # Before the write, not after. DRAFT, REJECTED, FAILED and READY_FOR_REVIEW
