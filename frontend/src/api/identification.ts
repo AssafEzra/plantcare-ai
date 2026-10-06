@@ -108,6 +108,11 @@ export function useStartIdentification() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: scoped(userId, ['plants']) })
+      /* Explicitly, because this is the one agent start whose result is reshaped:
+         it returns `requestId`, so the rule in main.tsx that watches for
+         `agent_request_id` does not see it. Without this the tray misses exactly
+         the run the user is most likely to walk away from. */
+      queryClient.invalidateQueries({ queryKey: scoped(userId, ['agent-requests', 'open']) })
     },
   })
 }
