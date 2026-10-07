@@ -1,0 +1,48 @@
+/* The update prompt. Pinned to the bottom, above the bottom bar on a phone, and
+   deliberately quieter than the agent popup beside it: this is an offer, not a
+   report on work in progress. */
+
+.pc-updateprompt {
+  position: fixed;
+  z-index: 70;
+  inset-inline: var(--pc-space-4);
+  inset-block-end: calc(var(--pc-bottomnav-h) + env(safe-area-inset-bottom) + var(--pc-space-3));
+
+  display: flex;
+  align-items: center;
+  gap: var(--pc-space-3);
+  padding: var(--pc-space-3);
+  background: var(--pc-primary-soft);
+  border: 1px solid var(--pc-primary);
+  border-radius: var(--pc-radius-card);
+  box-shadow: var(--pc-shadow-raised);
+  font-size: 0.875rem;
+  color: var(--pc-text);
+}
+
+.pc-updateprompt > span {
+  flex: 1;
+}
+
+.pc-updateprompt-later {
+  min-inline-size: 28px;
+  min-block-size: 28px;
+  border: 0;
+  background: transparent;
+  color: var(--pc-text-muted);
+  border-radius: var(--pc-radius-sm);
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+/* Above the agent popup, which sits in the same corner: the popup reports on work
+   that is already happening, this asks for a decision. Two of them at once is rare
+   and brief, and the one needing an answer should be the one in front. */
+@media (min-width: 900px) {
+  .pc-updateprompt {
+    inset-inline: auto var(--pc-space-5);
+    inset-block-end: var(--pc-space-5);
+    max-inline-size: 320px;
+  }
+}
