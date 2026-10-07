@@ -1,0 +1,25 @@
+/* The version card. Deliberately the quietest thing on the page: it is reference
+   information, consulted when something is wrong and ignored otherwise. */
+
+.pc-version {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--pc-space-2);
+}
+
+.pc-version-line {
+  margin: 0;
+  color: var(--pc-text-muted);
+  font-size: 0.875rem;
+}
+
+/* The commit is an identifier to read character by character and paste, so it gets
+   a monospace face and left-to-right isolation like every other id in the app. */
+.pc-version-commit {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.pc-version > p {
+  margin: 0;
+}

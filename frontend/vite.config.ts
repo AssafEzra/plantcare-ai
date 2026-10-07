@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
+import { execSync } from 'node:child_process'
 
 // The API is a separate service (DEPLOYMENT section 3). In development it runs on
 // loopback:8000 and the dev server proxies `/v1` to it, so the browser sees one
@@ -9,7 +10,31 @@ import { VitePWA } from 'vite-plugin-pwa'
 // from an env var rather than hard-coded here.
 const API_TARGET = process.env.VITE_DEV_API_TARGET ?? 'http://127.0.0.1:8000'
 
+/* Which build this is, baked in rather than fetched.
+ *
+ * The question the version line answers is "what code is this browser running",
+ * and asking the server cannot answer it: a stale service worker serves an old
+ * bundle from a current server, which is exactly the confusion that made this
+ * worth building. So the commit is read here, at build time, and travels inside
+ * the bundle it describes.
+ *
+ * Never fails the build. A tree without git, or an export of the source, has no
+ * commit to report and says so. */
+function buildCommit(): string {
+  try {
+    return execSync('git rev-parse --short HEAD', { stdio: ['ignore', 'pipe', 'ignore'] })
+      .toString()
+      .trim()
+  } catch {
+    return 'unknown'
+  }
+}
+
 export default defineConfig({
+  define: {
+    __APP_COMMIT__: JSON.stringify(buildCommit()),
+    __APP_BUILT_AT__: JSON.stringify(new Date().toISOString()),
+  },
   plugins: [
     react(),
     VitePWA({

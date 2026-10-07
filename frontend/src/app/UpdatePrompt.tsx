@@ -12,39 +12,27 @@
  * the staleness of no update mechanism at all.
  *
  * This is the missing half. The worker still never activates by itself; it activates
- * when the user says so, which is the whole point of the setting.
+ * when the user says so, which is the whole point of the setting. Settings has a
+ * button that asks for the same thing on demand; both go through `lib/appUpdate`, so
+ * the worker is registered once.
  */
 
 import { useEffect, useState } from 'react'
-import { registerSW } from 'virtual:pwa-register'
+import { applyUpdate, onUpdateWaiting, updateWaiting } from '../lib/appUpdate'
 import './UpdatePrompt.css'
 
 export default function UpdatePrompt() {
-  const [ready, setReady] = useState(false)
-  const [update, setUpdate] = useState<(() => Promise<void>) | null>(null)
+  const [ready, setReady] = useState(updateWaiting)
+  const [dismissed, setDismissed] = useState(false)
 
-  useEffect(() => {
-    /* `registerSW` returns the function that tells the waiting worker to take over
-       and reloads the page. Held in state rather than called here - the user
-       decides when, which is the entire reason this component exists.
+  useEffect(() => onUpdateWaiting(() => setReady(true)), [])
 
-       Stored through a setter callback because React treats a bare function passed
-       to setState as an updater and would call it immediately, activating the
-       update the moment one was found. */
-    const updateSW = registerSW({
-      onNeedRefresh() {
-        setUpdate(() => () => updateSW(true))
-        setReady(true)
-      },
-    })
-  }, [])
-
-  if (!ready || !update) return null
+  if (!ready || dismissed) return null
 
   return (
     <div className="pc-updateprompt" role="status">
       <span>יש גרסה חדשה של האפליקציה.</span>
-      <button type="button" className="pc-btn pc-btn-sm" onClick={() => void update()}>
+      <button type="button" className="pc-btn pc-btn-sm" onClick={() => void applyUpdate()}>
         רענון
       </button>
       {/* Dismissable, because "later" is a legitimate answer. The worker stays in
@@ -53,7 +41,7 @@ export default function UpdatePrompt() {
       <button
         type="button"
         className="pc-updateprompt-later"
-        onClick={() => setReady(false)}
+        onClick={() => setDismissed(true)}
         aria-label="לא עכשיו"
       >
         ×

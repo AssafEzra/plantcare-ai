@@ -47,6 +47,7 @@ import { ApiError } from '../lib/errors'
 import Async from '../components/Async'
 import './Settings.css'
 import PageHero from '../components/PageHero'
+import VersionCard from './VersionCard'
 
 export default function Settings() {
   const profile = useMe()
@@ -91,6 +92,12 @@ export default function Settings() {
       <PushCard readOnly={readOnly} />
 
       <Deliveries />
+
+      <div className="pc-sectionhead">
+        <h2>גרסה</h2>
+      </div>
+
+      <VersionCard />
     </section>
   )
 }
