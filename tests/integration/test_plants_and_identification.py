@@ -108,11 +108,23 @@ def test_species_variants_collide_on_one_row(db: psycopg.Connection):
 
 
 def test_genus_is_derived_when_absent(db: psycopg.Connection):
-    db.execute("insert into public.species (scientific_name) values ('Ficus elastica')")
-    genus = db.execute(
-        "select genus from public.species where normalized_name = 'ficus elastica'"
+    """The trigger fills `genus` from the binomial when the caller omits it.
+
+    The name is generated, like every other species name in this file. It used to be
+    the literal "Ficus elastica", which passed until somebody added a rubber plant to
+    DEV - then the insert hit `species_normalized_name_key` and this test failed for
+    ever, on every branch, for a reason that has nothing to do with deriving a genus.
+    A test that asserts something about *any* binomial must not claim a real one.
+    """
+    name = unique_species_name()
+    genus, _ = name.split()
+
+    db.execute("insert into public.species (scientific_name) values (%s)", (name,))
+    found = db.execute(
+        "select genus from public.species where normalized_name = %s", (name.lower(),)
     ).fetchone()[0]
-    assert genus == "ficus"
+
+    assert found == genus.lower()
 
 
 # --- upsert_species() ---------------------------------------------------------
