@@ -207,6 +207,16 @@ def _build(conn: psycopg.Connection, user_id: uuid.UUID) -> dict[str, Row]:
         "%s, %s",
         (user_id, f"digest:{user_id}:{uuid.uuid4().hex[:8]}"),
     )
+    world["push_subscriptions"] = one(
+        "push_subscriptions",
+        "user_id, endpoint, p256dh, auth",
+        "%s, %s, %s, %s",
+        # The endpoint carries a unique index and a `https://%` check, so it has to
+        # be distinct per row and look real. A device address is as owner-scoped as
+        # anything in this file: another account reading it learns where to send
+        # this person's notifications.
+        (user_id, f"https://fcm.googleapis.com/fcm/send/{uuid.uuid4().hex}", "p256dh", "auth"),
+    )
     world["system_events"] = one(
         "system_events",
         "user_id, plant_id, event_type",

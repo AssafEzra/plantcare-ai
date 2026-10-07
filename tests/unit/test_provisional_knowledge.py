@@ -171,6 +171,27 @@ def test_the_agent_sees_the_same_shape_either_way(env):
 # --- what the screens are told --------------------------------------------------
 
 
+def review_of(monkeypatch, version, *, drafts=None, owner_sees=None):
+    """`knowledge_state` with the draft where production actually finds it.
+
+    The three cases below used to hand the same client both roles, and that is why
+    they all passed while the badge was wrong in the product. The fake enforces no
+    RLS, so an approved draft was readable here and invisible there: the owner
+    policy on `knowledge_drafts` admits READY_FOR_REVIEW alone, and a lookup that
+    returned nothing fell through to "pending". Approving the research was what made
+    the warning permanent.
+
+    `owner_sees` is what the caller's own client can read - empty by default, which
+    is what RLS gives a plant owner for a draft in any other status.
+    """
+    from app.orchestration.workflows import care
+
+    monkeypatch.setattr(
+        care, "service_client", lambda: Client(store(knowledge_drafts=drafts or []))
+    )
+    return care.knowledge_state(Client(store(knowledge_drafts=owner_sees or [])), version)
+
+
 def test_a_plan_from_a_published_version_is_reviewed(env):
     from app.orchestration.workflows import care
 
@@ -179,33 +200,32 @@ def test_a_plan_from_a_published_version_is_reviewed(env):
     assert state == {"knowledge_review": "reviewed"}
 
 
-def test_a_plan_from_a_waiting_draft_is_pending(env):
-    from app.orchestration.workflows import care
-
-    client = Client(store(knowledge_drafts=[draft()]))
-    state = care.knowledge_state(client, {"knowledge_draft_id": "draft-1"})
+def test_a_plan_from_a_waiting_draft_is_pending(env, monkeypatch):
+    state = review_of(monkeypatch, {"knowledge_draft_id": "draft-1"}, drafts=[draft()])
 
     assert state == {"knowledge_review": "pending"}
 
 
-def test_a_plan_whose_draft_was_rejected_says_so(env):
+def test_a_plan_whose_draft_was_rejected_says_so(env, monkeypatch):
     """The plan keeps running - leaving the plant with no schedule at all is
     worse - but the user is told, and a corrected version is on the way."""
-    from app.orchestration.workflows import care
-
-    client = Client(store(knowledge_drafts=[draft(status="REJECTED")]))
-    state = care.knowledge_state(client, {"knowledge_draft_id": "draft-1"})
+    state = review_of(
+        monkeypatch, {"knowledge_draft_id": "draft-1"}, drafts=[draft(status="REJECTED")]
+    )
 
     assert state == {"knowledge_review": "rejected"}
 
 
-def test_an_approved_draft_stops_being_provisional(env):
+def test_an_approved_draft_stops_being_provisional(env, monkeypatch):
     """Provenance is immutable, so the plan still cites the draft. Nothing about
     the *content* is provisional any more, and a badge that stayed would be
-    telling the user something untrue."""
-    from app.orchestration.workflows import care
+    telling the user something untrue.
 
-    client = Client(store(knowledge_drafts=[draft(status="APPROVED")]))
-    state = care.knowledge_state(client, {"knowledge_draft_id": "draft-1"})
+    The owner's own client is given nothing here, deliberately: approving a draft is
+    exactly what removes it from their view, and reading it through them is what
+    made this badge permanent in the product while this test passed."""
+    state = review_of(
+        monkeypatch, {"knowledge_draft_id": "draft-1"}, drafts=[draft(status="APPROVED")]
+    )
 
     assert state == {"knowledge_review": "reviewed"}

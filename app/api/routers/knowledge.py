@@ -32,9 +32,11 @@ from app.common.errors import ConflictError, NotFoundError, ValidationFailedErro
 from app.config.settings import get_settings
 from app.domain.services import knowledge_content
 from app.infrastructure.ai.gateway import AIGateway
+from app.infrastructure.supabase.client import service_client
 from app.orchestration.services.agent_requests import BackgroundTasksExecutor
 from app.orchestration.workflows import care as care_workflow
 from app.orchestration.workflows import knowledge as workflow
+from app.repositories import plants as plants_repo
 from app.repositories.base import first_row, rows
 
 router = APIRouter(tags=["knowledge"])
@@ -96,6 +98,11 @@ class KnowledgeResponse(BaseModel):
 class DraftResponse(BaseModel):
     id: UUID
     species_id: UUID
+    # The names, so a list of drafts reads as a list of plants rather than a column
+    # of UUIDs. Decorated by the routes below; `knowledge_drafts` deliberately does
+    # not duplicate them, because the species table owns them.
+    species_scientific_name: str | None = None
+    species_common_name: str | None = None
     language: str
     status: KnowledgeDraftStatus
     research_request_id: UUID | None = None
@@ -351,8 +358,9 @@ async def list_knowledge_drafts(
     drafts = workflow.list_drafts(
         admin.client, status=status_filter.value if status_filter else None, limit=limit
     )
+    named = workflow.name_species(admin.client, drafts)
     return DataEnvelope(
-        data=[DraftResponse(**draft) for draft in drafts], request_id=request.state.request_id
+        data=[DraftResponse(**draft) for draft in named], request_id=request.state.request_id
     )
 
 
@@ -361,6 +369,7 @@ async def get_knowledge_draft(
     request: Request, draft_id: UUID, admin: AdminDep
 ) -> DataEnvelope[DraftResponse]:
     draft = workflow.get_draft(admin.client, draft_id)
+    draft = workflow.name_species(admin.client, [draft])[0]
     return DataEnvelope(data=DraftResponse(**draft), request_id=request.state.request_id)
 
 
@@ -428,15 +437,16 @@ async def reject_knowledge_draft(
             reason=payload.admin_note,
             language=draft["language"],
         )
-        BackgroundTasksExecutor(background).submit(
-            workflow.execute_research,
-            request_id=run.request_id,
-            draft_id=run.draft_id,
-            species_id=run.species_id,
-            language=run.language,
-            reason=payload.admin_note,
-            agent=agent,
-        )
+        if not run.already_running:
+            BackgroundTasksExecutor(background).submit(
+                workflow.execute_research,
+                request_id=run.request_id,
+                draft_id=run.draft_id,
+                species_id=run.species_id,
+                language=run.language,
+                reason=payload.admin_note,
+                agent=agent,
+            )
 
     return DataEnvelope(data=DraftResponse(**draft), request_id=request.state.request_id)
 
@@ -470,18 +480,27 @@ async def retry_knowledge_research(
         language=draft["language"],
     )
 
-    BackgroundTasksExecutor(background).submit(
-        workflow.execute_research,
-        request_id=run.request_id,
-        draft_id=run.draft_id,
-        species_id=run.species_id,
-        language=run.language,
-        reason=payload.reason,
-        agent=agent,
-    )
+    # Only when this is a new run. `start_research` replays the one already going
+    # rather than starting a second, and submitting here anyway would execute the
+    # agent a second time against the same draft - billing twice and racing the
+    # first result into the same row, which is what the replay exists to prevent.
+    if not run.already_running:
+        BackgroundTasksExecutor(background).submit(
+            workflow.execute_research,
+            request_id=run.request_id,
+            draft_id=run.draft_id,
+            species_id=run.species_id,
+            language=run.language,
+            reason=payload.reason,
+            agent=agent,
+        )
 
     return DataEnvelope(
-        data={"draft_id": str(run.draft_id), "agent_request_id": str(run.request_id)},
+        data={
+            "draft_id": str(run.draft_id),
+            "agent_request_id": str(run.request_id),
+            "already_running": run.already_running,
+        },
         request_id=request.state.request_id,
     )
 
@@ -537,18 +556,27 @@ async def research_published_species(
         language=language,
     )
 
-    BackgroundTasksExecutor(background).submit(
-        workflow.execute_research,
-        request_id=run.request_id,
-        draft_id=run.draft_id,
-        species_id=run.species_id,
-        language=run.language,
-        reason=payload.reason,
-        agent=agent,
-    )
+    # Only when this is a new run. `start_research` replays the one already going
+    # rather than starting a second, and submitting here anyway would execute the
+    # agent a second time against the same draft - billing twice and racing the
+    # first result into the same row, which is what the replay exists to prevent.
+    if not run.already_running:
+        BackgroundTasksExecutor(background).submit(
+            workflow.execute_research,
+            request_id=run.request_id,
+            draft_id=run.draft_id,
+            species_id=run.species_id,
+            language=run.language,
+            reason=payload.reason,
+            agent=agent,
+        )
 
     return DataEnvelope(
-        data={"draft_id": str(run.draft_id), "agent_request_id": str(run.request_id)},
+        data={
+            "draft_id": str(run.draft_id),
+            "agent_request_id": str(run.request_id),
+            "already_running": run.already_running,
+        },
         request_id=request.state.request_id,
     )
 
@@ -745,3 +773,76 @@ def _audit(admin: AdminDep, action: str, target_id: str, payload: dict[str, Any]
             "payload": payload,
         }
     ).execute()
+
+
+@router.post(
+    "/plants/{plant_id}/knowledge/research",
+    response_model=DataEnvelope[dict],
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def retry_research_for_my_plant(
+    request: Request,
+    plant_id: UUID,
+    user: CurrentUserDep,
+    background: BackgroundTasks,
+    agent: KnowledgeAgentDep,
+) -> DataEnvelope[dict]:
+    """Research this plant's species again, after a run that failed.
+
+    The only research route that is not admin-only, and the reason is that a failed
+    run strands a plant in KNOWLEDGE_PENDING with nothing on the screen admitting
+    it: the owner waits indefinitely on an administrator noticing a draft in a tab
+    filtered to something else. One 503 from the vendor should not cost a day.
+
+    Narrow on purpose, so it cannot become a way to spend research calls at will:
+
+    * the plant is the caller's own, read through their client, and is actually
+      waiting - a plant that is ACTIVE has its knowledge already;
+    * the newest draft for that species is FAILED. Not RESEARCHING, which is
+      already going and would be replayed rather than restarted; not REJECTED,
+      which is an administrator's judgement about the content and theirs to
+      revisit; not APPROVED, which means the plant should not have been waiting.
+
+    The run itself is the same one the admin tab starts, so the species' other
+    waiting plants are released by it too.
+    """
+    plant = plants_repo.get(user.client, plant_id, owner_id=user.id)
+    language = get_settings().default_content_language
+
+    # The draft is read with the service role: the owner policy on `knowledge_drafts`
+    # admits READY_FOR_REVIEW only, which is right for its content and leaves a
+    # failed one invisible to the person waiting on it. Nothing from the draft
+    # reaches the response - it decides the refusal and nothing else.
+    draft = (
+        workflow.newest_draft(
+            service_client(), species_id=UUID(str(plant["species_id"])), language=language
+        )
+        if plant.get("species_id")
+        else None
+    )
+    workflow.check_owner_may_retry(plant, draft)
+    species_id = plant["species_id"]
+
+    run = workflow.start_research(
+        species_id=UUID(str(species_id)), initiated_by=user.id, reason=None, language=language
+    )
+
+    if not run.already_running:
+        BackgroundTasksExecutor(background).submit(
+            workflow.execute_research,
+            request_id=run.request_id,
+            draft_id=run.draft_id,
+            species_id=run.species_id,
+            language=run.language,
+            reason=None,
+            agent=agent,
+        )
+
+    return DataEnvelope(
+        data={
+            "draft_id": str(run.draft_id),
+            "agent_request_id": str(run.request_id),
+            "already_running": run.already_running,
+        },
+        request_id=request.state.request_id,
+    )

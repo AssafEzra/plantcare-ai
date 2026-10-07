@@ -81,7 +81,16 @@ function keyBytes(base64url: string): Uint8Array<ArrayBuffer> {
 
 export async function currentSubscription(): Promise<PushSubscription | null> {
   if (!pushSupported()) return null
-  const registration = await navigator.serviceWorker.ready
+
+  /* `getRegistration`, not `ready`. `navigator.serviceWorker.ready` resolves only
+     once a worker is active and otherwise waits for ever - it has no rejection and
+     no timeout. The dev server registers none (`devOptions.enabled: false` in
+     vite.config.ts), so on localhost this call never settled, and because sign-out
+     forgets the device before it does anything else, pressing "יציאה" hung there
+     silently and left the user signed in. `getRegistration` resolves with
+     `undefined` when there is nothing, which is an answer rather than a wait. */
+  const registration = await navigator.serviceWorker.getRegistration()
+  if (!registration) return null
   return registration.pushManager.getSubscription()
 }
 

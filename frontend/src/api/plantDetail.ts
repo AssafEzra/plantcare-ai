@@ -130,6 +130,10 @@ export type PlantDashboard = {
   /** A care proposal already queued or running, raised by anything, including the tick. */
   care_request_id: string | null
   care_schedule: CareScheduleSummary | null
+  /* Why the plant is still KNOWLEDGE_PENDING: 'RESEARCHING', 'FAILED', 'REJECTED',
+     or null when there is nothing to say. The status alone renders identically for
+     all three, so a plant whose research failed waits silently for ever. */
+  knowledge_status: string | null
 }
 
 export type HistoryEntry = {

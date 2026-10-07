@@ -56,6 +56,8 @@ export type KnowledgeSection = { text?: string; confidence?: number }
 export type KnowledgeDraft = {
   id: string
   species_id: string
+  species_scientific_name: string | null
+  species_common_name: string | null
   language: string
   status: DraftStatus
   research_request_id: string | null

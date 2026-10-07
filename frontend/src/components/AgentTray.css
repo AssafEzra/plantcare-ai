@@ -1,0 +1,199 @@
+/* The agent tray. Small enough to ignore, readable enough to be worth having.
+ *
+ * Fixed to the viewport rather than placed in the layout: it has to be visible on
+ * every screen, including while a long page is scrolled. On a phone it sits above
+ * the bottom bar, which is why the offset is the nav height plus the safe area
+ * rather than a number.
+ */
+
+.pc-tray,
+.pc-tray-pill {
+  position: fixed;
+  z-index: 60;
+  inset-inline-end: var(--pc-space-4);
+  inset-block-end: calc(var(--pc-bottomnav-h) + env(safe-area-inset-bottom) + var(--pc-space-3));
+}
+
+/* Dragged: the resting corner is expressed in logical properties so it follows the
+   writing direction, but a pointer reports physical coordinates. In RTL
+   `inset-inline-start` is the right edge, so positioning from `clientX` through it
+   sent the panel the wrong way. Clearing every inset here lets the inline
+   `left`/`top` be the only thing placing it. */
+.pc-tray.is-dragged,
+.pc-tray-pill.is-dragged {
+  inset: auto;
+}
+
+.pc-tray {
+  inline-size: min(260px, calc(100vw - var(--pc-space-4) * 2));
+  background: var(--pc-surface);
+  border: 1px solid var(--pc-border);
+  border-radius: var(--pc-radius-card);
+  box-shadow: var(--pc-shadow-raised);
+  overflow: hidden;
+}
+
+.pc-tray-grip {
+  display: flex;
+  align-items: center;
+  gap: var(--pc-space-2);
+  padding: var(--pc-space-2) var(--pc-space-3);
+  background: var(--pc-surface-alt);
+  border-block-end: 1px solid var(--pc-border);
+}
+
+.pc-tray-grip.is-draggable {
+  cursor: grab;
+  touch-action: none;
+}
+
+.pc-tray-grip.is-draggable:active {
+  cursor: grabbing;
+}
+
+.pc-tray-title {
+  flex: 1;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--pc-text-muted);
+}
+
+.pc-tray-ctrl {
+  min-inline-size: 28px;
+  min-block-size: 28px;
+  border: 0;
+  background: transparent;
+  color: var(--pc-text-muted);
+  border-radius: var(--pc-radius-sm);
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.pc-tray-ctrl:hover:not(:disabled) {
+  background: var(--pc-surface);
+}
+
+.pc-tray-ctrl:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.pc-tray-list {
+  margin: 0;
+  padding: var(--pc-space-1);
+  list-style: none;
+}
+
+.pc-tray-row {
+  inline-size: 100%;
+  display: flex;
+  align-items: center;
+  gap: var(--pc-space-2);
+  padding: var(--pc-space-2) var(--pc-space-3);
+  border: 0;
+  background: transparent;
+  border-radius: var(--pc-radius-sm);
+  font-size: 0.875rem;
+  color: var(--pc-text);
+  text-align: start;
+}
+
+.pc-tray-row.is-link {
+  cursor: pointer;
+  text-decoration: none;
+}
+
+/* Reads as a line of text, so nobody presses it expecting to go somewhere. */
+.pc-tray-row.is-static {
+  color: var(--pc-text-muted);
+  cursor: default;
+}
+
+.pc-tray-row.is-link:hover {
+  background: var(--pc-surface-alt);
+}
+
+.pc-tray-label {
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+/* The plant's name is the part that can be long, so it is the part that truncates. */
+.pc-tray-plant {
+  color: var(--pc-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pc-tray-mark {
+  flex: none;
+  inline-size: 18px;
+  block-size: 18px;
+  display: grid;
+  place-items: center;
+  font-size: 0.8125rem;
+  line-height: 1;
+}
+
+.pc-tray-mark.is-done {
+  color: var(--pc-success);
+}
+
+.pc-tray-mark.is-failed {
+  color: var(--pc-danger);
+}
+
+/* --- the collapsed pill -------------------------------------------------- */
+
+.pc-tray-pill {
+  display: flex;
+  align-items: center;
+  gap: var(--pc-space-2);
+  padding: var(--pc-space-2) var(--pc-space-3);
+  background: var(--pc-surface);
+  border: 1px solid var(--pc-border);
+  border-radius: var(--pc-radius-pill);
+  box-shadow: var(--pc-shadow-raised);
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--pc-text);
+  cursor: pointer;
+}
+
+/* --- the spinner --------------------------------------------------------- */
+
+.pc-tray-spinner {
+  inline-size: 14px;
+  block-size: 14px;
+  border: 2px solid var(--pc-primary-soft);
+  border-block-start-color: var(--pc-primary);
+  border-radius: 50%;
+  animation: pc-tray-spin 0.8s linear infinite;
+}
+
+@keyframes pc-tray-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Honour the system setting: a permanently spinning overlay is exactly the kind of
+   motion this preference exists to stop. The border stays, so the row still reads
+   as "in progress" rather than looking finished. */
+@media (prefers-reduced-motion: reduce) {
+  .pc-tray-spinner {
+    animation: none;
+  }
+}
+
+/* The bottom bar is gone at this width, so the tray drops to the corner and
+   becomes draggable (AgentTray.tsx decides that at the same breakpoint). */
+@media (min-width: 900px) {
+  .pc-tray,
+  .pc-tray-pill {
+    inset-block-end: var(--pc-space-5);
+    inset-inline-end: var(--pc-space-5);
+  }
+}

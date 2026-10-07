@@ -30,10 +30,13 @@ import Health from './pages/Health'
 import AddPlant from './pages/AddPlant'
 import More from './pages/More'
 import { useMe } from './api/profile'
+import UpdatePrompt from './app/UpdatePrompt'
 
 export default function App() {
   return (
-    <Routes>
+    <>
+      <UpdatePrompt />
+      <Routes>
       <Route path="/auth" element={<Auth />} />
 
       <Route element={<RequireAuth />}>
@@ -52,7 +55,8 @@ export default function App() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       </Route>
-    </Routes>
+      </Routes>
+    </>
   )
 }
 

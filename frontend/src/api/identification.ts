@@ -108,6 +108,11 @@ export function useStartIdentification() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: scoped(userId, ['plants']) })
+      /* Explicitly, because this is the one agent start whose result is reshaped:
+         it returns `requestId`, so the rule in main.tsx that watches for
+         `agent_request_id` does not see it. Without this the tray misses exactly
+         the run the user is most likely to walk away from. */
+      queryClient.invalidateQueries({ queryKey: scoped(userId, ['agent-requests', 'open']) })
     },
   })
 }
@@ -128,7 +133,6 @@ export function useStartIdentification() {
  */
 export function useAgentRequest(requestId: string | null) {
   const { userId } = useAuth()
-  const queryClient = useQueryClient()
   const query = useQuery({
     queryKey: scoped(userId, ['agent-request', requestId]),
     queryFn: () => api.get<AgentRequest>(`/v1/agent-requests/${requestId}`),
@@ -150,29 +154,19 @@ export function useAgentRequest(requestId: string | null) {
     return () => clearInterval(timer)
   }, [requestId, settled])
 
-  /* An agent that succeeded wrote something this tab is now showing a stale copy of —
-     a species on a plant, a draft of research, a proposal awaiting approval, a health
-     assessment. A mutation invalidates what it touched because the tab made the change
-     and knows what it was; work that finishes on the server has nobody to do that, so
-     until now the result appeared only on the next reload.
+  /* The refresh that used to live here has moved to `useOpenAgentRequests`
+     (api/agentRequests.ts), which is mounted once in the shell.
 
-     Here rather than in each screen: every agent is polled through this hook, so one
-     invalidation covers identification, knowledge, care and health, and a fifth agent
-     would be covered the day it is added. Scoped to the acting identity, so a
-     view-as switch does not refetch the administrator's own data.
+     It was right about what to invalidate and wrong about where to do it. This
+     hook runs only while a component is mounted holding a request id in local
+     state, so the refresh reached the screen that started the work and nowhere
+     else: navigate away from Add Plant mid-identification and the species, the
+     status change and the archive-on-failure never arrived. The watcher in the
+     shell asks "what of mine is still running" instead, so it does not matter
+     where the user is standing when the answer changes.
 
-     Once per request, by the ref: `invalidateQueries` triggers refetches, those settle,
-     the effect runs again with the same SUCCEEDED status, and without the guard it
-     would invalidate again. The request itself is left out - its answer is final. */
-  const refreshed = useRef<string | null>(null)
-  useEffect(() => {
-    if (!requestId || status !== 'SUCCEEDED' || refreshed.current === requestId) return
-    refreshed.current = requestId
-    void queryClient.invalidateQueries({
-      queryKey: scoped(userId, []),
-      predicate: (entry) => !entry.queryKey.includes('agent-request'),
-    })
-  }, [requestId, status, queryClient, userId])
+     What is left here is what this hook is actually for: one request's status and
+     stage, for the screen that wants to draw its progress. */
 
   return query
 }

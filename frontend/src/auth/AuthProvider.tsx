@@ -74,7 +74,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       // Before the session goes: the request needs it. A shared phone must stop
       // receiving this account's reminders the moment the account leaves.
-      await forgetThisDevice()
+      //
+      // Bounded, because signing out must not depend on anything here finishing.
+      // `currentSubscription` used to await `navigator.serviceWorker.ready`, which
+      // never settles when no worker is registered, and this await was the first
+      // thing sign-out did - so "יציאה" hung for ever and the user stayed signed
+      // in. That specific hang is fixed in lib/push.ts; the ceiling stays, because
+      // a request that is slow or a worker that is wedged must cost a moment, not
+      // the ability to leave the account.
+      await Promise.race([
+        forgetThisDevice(),
+        new Promise((resolve) => setTimeout(resolve, 3000)),
+      ])
     } catch {
       /* Offline or never subscribed; the next owner's registration frees it. */
     }

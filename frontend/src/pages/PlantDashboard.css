@@ -175,3 +175,19 @@
   align-items: flex-start;
   gap: var(--pc-space-3);
 }
+
+/* The research state, above the species article. Separated by a rule rather than a
+   card of its own: it is a note about the section it sits in, not a second section. */
+.pc-researchstate {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--pc-space-2);
+  margin-block-end: var(--pc-space-3);
+  padding-block-end: var(--pc-space-3);
+  border-block-end: 1px solid var(--pc-border);
+}
+
+.pc-researchstate > p {
+  margin: 0;
+}

@@ -14,6 +14,10 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'prompt',
+      /* Null, because `src/app/UpdatePrompt.tsx` imports `virtual:pwa-register` and
+         registers the worker itself. Left on 'auto' the plugin also injects its own
+         registerSW.js, and the worker is registered twice. */
+      injectRegister: null,
       // `prompt`, not `autoUpdate`: a care task the user just marked done must not be
       // wiped by a service worker reloading the page underneath them. Section 41 asks
       // for installability, not aggressive caching.

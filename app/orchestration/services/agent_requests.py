@@ -150,6 +150,57 @@ def get_for_user(client: Client, request_id: UUID) -> Row:
     return found
 
 
+#: What the user is told when they ask for a run that is already going. One
+#: sentence, in one place, because the same thing happening to identification,
+#: care and health should not read as three different problems.
+AGENT_BUSY = "הסוכן כבר פועל, נסו שוב בעוד רגע."
+
+#: Statuses that mean "this is still going". Everything else has settled.
+OPEN_STATUSES = (AgentRequestStatus.QUEUED.value, AgentRequestStatus.PROCESSING.value)
+
+#: A ceiling, not a page size. Nobody can legitimately have this many runs open at
+#: once; the limit exists so a stuck queue cannot hand the client an unbounded list.
+OPEN_LIMIT = 20
+
+
+def open_for_user(client: Client) -> list[Row]:
+    """Every run of this user's that has not settled yet.
+
+    Read through the **caller's** client, so RLS scopes it to their own rows - the
+    same argument `get_for_user` makes above, and the same exception
+    DATABASE_SCHEMA grants for "minimal request status for the request owner".
+
+    This is what lets one watcher replace the per-screen ones. Work used to
+    announce itself only to the component that started it and only while that
+    component stayed mounted, so leaving a page meant the result never arrived.
+    """
+    return rows(
+        client.table("agent_requests")
+        .select(REQUEST_COLUMNS)
+        .in_("status", list(OPEN_STATUSES))
+        .order("created_at", desc=False)
+        .limit(OPEN_LIMIT)
+        .execute()
+    )
+
+
+def in_flight(client: Client, plant_id: UUID | str, agent_type: AgentType) -> Row | None:
+    """A run of this type already queued or processing for this plant.
+
+    Per agent type on purpose: a care proposal being prepared must not stop the
+    user asking for a health check, and the two touch nothing in common.
+    """
+    return first_row(
+        client.table("agent_requests")
+        .select("id")
+        .eq("plant_id", str(plant_id))
+        .eq("agent_type", agent_type.value)
+        .in_("status", list(OPEN_STATUSES))
+        .limit(1)
+        .execute()
+    )
+
+
 # --- background-side updates --------------------------------------------------
 #
 # These run after the response has been sent, so there is no user JWT in scope.

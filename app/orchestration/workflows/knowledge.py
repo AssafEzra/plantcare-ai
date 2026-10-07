@@ -54,6 +54,12 @@ class ResearchRun:
     request_id: UUID
     species_id: UUID
     language: str
+    #: True when this is the run that was already going rather than a new one.
+    #: Replaying is the right answer - a second research call bills twice and its
+    #: result would race the first into the same draft - but saying nothing made
+    #: the admin screen look as though it had started something. The caller tells
+    #: the user instead.
+    already_running: bool = False
 
     def as_summary(self) -> dict[str, str]:
         return {
@@ -104,6 +110,7 @@ def start_research(
             request_id=UUID(draft["research_request_id"]),
             species_id=species_id,
             language=lang,
+            already_running=True,
         )
 
     # Before the write, not after. DRAFT, REJECTED, FAILED and READY_FOR_REVIEW
@@ -386,6 +393,41 @@ def get_draft(client: Client, draft_id: UUID) -> Row:
 # --- admin review and publication ----------------------------------------------
 
 
+def name_species(client: Client, drafts: list[Row]) -> list[Row]:
+    """Attach each draft's species names, in one lookup for the whole page.
+
+    A draft is identified to an administrator by the plant it will unblock, not by
+    a UUID - and `knowledge_drafts` holds only `species_id`, because the species
+    table owns the names and duplicating them is how the two drift apart. Joined
+    here rather than in the query so the column list stays one string, and so a
+    species that has since been deleted leaves the names null instead of dropping
+    the draft out of the list.
+    """
+    ids = {str(draft["species_id"]) for draft in drafts if draft.get("species_id")}
+    if not ids:
+        return drafts
+
+    found = {
+        row["id"]: row
+        for row in rows(
+            client.table("species")
+            .select("id, scientific_name, common_name")
+            .in_("id", list(ids))
+            .execute()
+        )
+    }
+    return [
+        {
+            **draft,
+            "species_scientific_name": found.get(str(draft["species_id"]), {}).get(
+                "scientific_name"
+            ),
+            "species_common_name": found.get(str(draft["species_id"]), {}).get("common_name"),
+        }
+        for draft in drafts
+    ]
+
+
 def list_drafts(client: Client, *, status: str | None = None, limit: int = 50) -> list[Row]:
     """Drafts awaiting attention, newest activity first.
 
@@ -449,6 +491,50 @@ def publish(client: Client, *, draft_id: UUID, admin_note: str | None = None) ->
         # lets an administrator see rather than what the transaction did.
         "active_plants": len(released),
     }
+
+
+def check_owner_may_retry(plant: Row, draft: Row | None) -> None:
+    """May this plant's owner start research again? Raises if not.
+
+    Research costs money and is shared by every plant of the species, so the only
+    case this opens up is the one that otherwise strands people: a run that failed.
+    Stated here rather than inside the route so the rule is one thing, tested
+    directly, rather than a shape a test has to re-describe to check.
+
+    * not waiting - an ACTIVE plant has its knowledge already, a pending one has no
+      species yet, and neither is stuck;
+    * RESEARCHING - already going, and `start_research` would replay it, so the
+      button would appear to act and do nothing;
+    * REJECTED - an administrator's judgement about the content, theirs to revisit;
+    * APPROVED, or no draft at all - the plant should not be waiting, or research
+      was never queued. Both are different faults, and starting a run here would
+      hide them.
+    """
+    if plant.get("status") != PlantStatus.KNOWLEDGE_PENDING.value:
+        raise ValidationFailedError("הצמח הזה לא ממתין למחקר.")
+    if not plant.get("species_id"):
+        raise ValidationFailedError("לצמח הזה עדיין אין מין מזוהה.")
+    if draft is None or str(draft["status"]) != KnowledgeDraftStatus.FAILED.value:
+        raise ValidationFailedError("אין מחקר שנכשל עבור המין הזה.")
+
+
+def newest_draft(client: Client, *, species_id: UUID, language: str) -> Row | None:
+    """The latest draft for this species and language, whatever state it is in.
+
+    Unlike `open_draft`, which answers "is one still in play", this answers "what
+    happened last" - including FAILED and APPROVED. It is what the plant screen
+    needs to tell a waiting owner whether their research is running, has failed, or
+    was never started, three situations that look identical as KNOWLEDGE_PENDING.
+    """
+    return first_row(
+        client.table("knowledge_drafts")
+        .select("id, status, language, created_at, updated_at")
+        .eq("species_id", str(species_id))
+        .eq("language", language)
+        .order("created_at", desc=True)
+        .limit(1)
+        .execute()
+    )
 
 
 def is_newest_draft(client: Client, *, draft_id: UUID) -> bool:

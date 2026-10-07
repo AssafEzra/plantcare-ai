@@ -32,7 +32,7 @@ from app.common.enums import (
     PlantStatus,
     SystemEventType,
 )
-from app.common.errors import NotFoundError, ValidationFailedError
+from app.common.errors import ConflictError, NotFoundError, ValidationFailedError
 from app.config.logging import get_logger
 from app.domain.rules.knowledge_lifecycle import is_open
 from app.domain.rules.plant_lifecycle import (
@@ -96,6 +96,13 @@ def start(
     )
     if len(owned) != len(set(image_ids)):
         raise ValidationFailedError("חלק מהתמונות אינן שייכות לצמח הזה.")
+
+    if requests_service.in_flight(client, plant_id, AgentType.IDENTIFICATION):
+        # Already running for this plant. The user pressed twice, or came back to
+        # a screen that had not yet heard the first one start. Told plainly rather
+        # than queued: a second identification call costs money and its answer would race the
+        # first into the same rows.
+        raise ConflictError(requests_service.AGENT_BUSY)
 
     return requests_service.create_or_replay(
         client,
