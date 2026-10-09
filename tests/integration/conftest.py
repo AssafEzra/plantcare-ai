@@ -23,6 +23,10 @@ from collections.abc import Iterator
 import psycopg
 import pytest
 
+# The trigger lists live with the purge script. See the teardown section below for
+# why they are shared rather than copied.
+from scripts.purge_dev_test_accounts import CONSTRAINT_TRIGGERS, IMMUTABLE_TRIGGERS
+
 SUPABASE_REF = "ckwvjyxeennrknwjsujl"
 POOLER_HOST = "aws-0-eu-central-1.pooler.supabase.com"
 
@@ -154,41 +158,110 @@ def unique_epithet(name: str) -> str:
 # Immutability is the rule that should win: FINAL §21 anonymises accounts rather
 # than deleting them, so the product never walks this path. What it broke was
 # teardown, which wrapped the failure in `contextlib.suppress(Exception)` and
-# left 1,375 accounts behind - roughly a quarter of them administrators.
+# left 1,375 accounts behind - roughly a quarter of them administrators. Reporting
+# the failure instead of swallowing it made the problem visible, and then the count
+# climbed again: 282 accounts in three days, because every run still stranded its
+# whole set.
 #
-# Two things follow, and this helper does both.
+# So teardown stopped asking the Auth API, which cannot do this, and does what
+# `scripts/purge_dev_test_accounts.py` already proved works: disable the
+# immutability triggers for the length of one transaction, delete, switch them back
+# on. The trigger list is imported from that script rather than copied, because a
+# teardown that knew about one trigger fewer would fail on exactly the trigger the
+# other list knew about.
 #
-# **Stop after the first structural failure.** Every subsequent account fails
-# identically, and each attempt is an Auth admin API call against a rate limit
-# the suite already strains. One call learns the answer; 1,374 more waste quota
-# the next test will need.
-#
-# **Say so.** The whole point is that the old code was silent. What could not be
-# removed is counted and reported in the terminal summary, with the script that
-# can remove it.
+# This is a superuser connection doing something the application may never do, and
+# that is the point: the rule protects the product, not the test harness. It runs
+# against DEV only - `_dsn()` is hard-coded to the DEV project ref above.
 
-_deletion_is_possible = True
 _undeleted: list[str] = []
+
+#: Why each failed batch failed, in the order it happened. The summary used to state
+#: the cause from memory - "system_events is append-only" - which was true of the
+#: teardown that asked the Auth API and is false of this one, which disables exactly
+#: that trigger. So a leftover account was explained by a cause that could not have
+#: produced it. Whatever refuses next is by definition something nobody predicted,
+#: and the only way to learn it is to keep the message.
+_reasons: list[str] = []
+
+#: One connection for the whole session. Teardown runs once per test module, and
+#: opening a pooled Postgres connection each time is slower than the delete.
+_purge_conn: psycopg.Connection | None = None
+
+
+def _purge_connection() -> psycopg.Connection | None:
+    global _purge_conn
+
+    if _purge_conn is None or _purge_conn.closed:
+        value = _dsn()
+        if not value:
+            return None
+        _purge_conn = psycopg.connect(value, connect_timeout=20, autocommit=True)
+    return _purge_conn
 
 
 def delete_accounts(admin_sdk, user_ids: list[str]) -> None:
-    """Best-effort cleanup that reports what it could not do."""
-    global _deletion_is_possible
+    """Remove these accounts, immutable history and all.
 
-    for user_id in user_ids:
-        if not _deletion_is_possible:
-            _undeleted.append(user_id)
-            continue
-        try:
-            admin_sdk.auth.admin.delete_user(user_id)
-        except Exception as exc:  # the SDK's error type is not public here
-            _undeleted.append(user_id)
-            # A database error is structural - the append-only trigger - and will
-            # recur for every account. A rate limit is transient and worth
-            # retrying on the next call, so it does not disable the attempt.
-            if "database error" in str(exc).lower():
-                _deletion_is_possible = False
+    `admin_sdk` is accepted and ignored. Every caller has one to hand and the
+    signature is what fifteen test modules already pass; the Auth admin API is
+    simply not the thing that can do this.
+    """
+    ids = [str(user_id) for user_id in user_ids]
+    if not ids:
+        return
+
+    conn = _purge_connection()
+    if conn is None:
+        _record(ids, "no database connection: SUPABASE_DB_PASSWORD is not available")
+        return
+
+    try:
+        with conn.transaction():
+            for table, trigger in IMMUTABLE_TRIGGERS + CONSTRAINT_TRIGGERS:
+                conn.execute(f"alter table public.{table} disable trigger {trigger}")
+
+            # The one foreign key the cascade cannot order around on its own;
+            # `scripts/purge_dev_test_accounts.py` explains how it was found.
+            conn.execute(
+                """
+                delete from public.health_assessment_images
+                 where health_assessment_id in (
+                   select id from public.health_assessments where user_id = any(%s)
+                 )
+                """,
+                (ids,),
+            )
+
+            conn.execute("delete from auth.users where id = any(%s)", (ids,))
+
+            # No `finally` around the delete, deliberately. Postgres aborts the
+            # whole transaction on the first error, so re-enabling here would raise
+            # `InFailedSqlTransaction` and that exception would replace the real
+            # one. `ALTER TABLE ... DISABLE TRIGGER` is transactional, so a
+            # rollback restores them anyway.
+            for table, trigger in IMMUTABLE_TRIGGERS + CONSTRAINT_TRIGGERS:
+                conn.execute(f"alter table public.{table} enable trigger {trigger}")
+    except Exception as error:
+        # Still reported rather than swallowed - that silence is what let this
+        # reach 1,375 accounts the first time. The message travels with the count,
+        # because a number on its own sent the last investigation to the wrong
+        # trigger.
+        _record(ids, f"{type(error).__name__}: {error}")
+
+
+def _record(ids: list[str], reason: str) -> None:
+    """Remember the accounts and the one-line reason they survived."""
+    _undeleted.extend(ids)
+    # First line only, and bounded: a psycopg error carries a DETAIL/HINT block that
+    # would push the test summary off the screen, which is where this has to be read.
+    _reasons.append(reason.strip().splitlines()[0][:200])
 
 
 def undeleted_accounts() -> list[str]:
     return list(_undeleted)
+
+
+def undeleted_reasons() -> list[str]:
+    """The distinct reasons, most recent batch last, each kept once."""
+    return list(dict.fromkeys(_reasons))

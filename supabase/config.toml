@@ -259,7 +259,17 @@ anonymous_users = 30
 # Number of sessions that can be refreshed in a 5 minute interval per IP address.
 token_refresh = 150
 # Number of sign up and sign-in requests that can be made in a 5 minute interval per IP address (excludes anonymous users).
-sign_in_sign_ups = 30
+#
+# 150, not the default 30. A full integration run signs in about 144 times, which
+# averages right at the default and bursts far past it - test_plants_api alone does
+# 57 - so the suite has never once completed: it 429s partway through, and the
+# failures look like application bugs. Raising the ceiling fixes it without making
+# every test share an account, which is what the alternative costs.
+#
+# DEV only, where this is 6 real accounts and no users. PROD must keep the default:
+# there the limit is load-bearing, and a legitimate client hitting it wants backoff
+# rather than a higher ceiling.
+sign_in_sign_ups = 150
 # Number of OTP / Magic link verifications that can be made in a 5 minute interval per IP address.
 token_verifications = 30
 # Number of Web3 logins that can be made in a 5 minute interval per IP address.

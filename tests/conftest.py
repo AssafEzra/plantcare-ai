@@ -156,7 +156,7 @@ def pytest_terminal_summary(terminalreporter) -> None:
     the count goes in the summary with the script that can act on it.
     """
     try:
-        from tests.integration.conftest import undeleted_accounts
+        from tests.integration.conftest import undeleted_accounts, undeleted_reasons
     except ImportError:  # pragma: no cover - unit-only runs
         return
 
@@ -165,10 +165,14 @@ def pytest_terminal_summary(terminalreporter) -> None:
         return
 
     terminalreporter.write_sep("-", "test accounts left behind")
-    terminalreporter.write_line(
-        f"{len(left)} account(s) could not be deleted: system_events is append-only, "
-        "so the cascade from auth.users is refused (FINAL 1.5)."
-    )
+    terminalreporter.write_line(f"{len(left)} account(s) could not be deleted:")
+    # The reason is reported rather than asserted. This line used to name
+    # `system_events` being append-only, which was the cause while teardown went
+    # through the Auth API and cannot be the cause now that teardown disables that
+    # trigger itself - so the one account a full run left behind was explained by
+    # something that could not have refused it. Print what actually raised.
+    for reason in undeleted_reasons():
+        terminalreporter.write_line(f"  {reason}")
     terminalreporter.write_line(
         "Remove them with: uv run python scripts/purge_dev_test_accounts.py --delete"
     )
