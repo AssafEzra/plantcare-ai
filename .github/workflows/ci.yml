@@ -42,7 +42,7 @@ jobs:
         run: uv run pytest -m "not live and not integration and not e2e"
 
   interface:
-    name: interface · lint · types · build
+    name: interface · lint · types · tests · build
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -61,6 +61,14 @@ jobs:
 
       - name: Oxlint
         run: npm run lint
+
+      # Pure functions only - no jsdom, nothing rendered. A second or so, and it
+      # cannot flake, so there is no reason for it to live outside the gate. What
+      # it does *not* cover is anything a browser does: this project has no
+      # browser tests since the Streamlit suite was deleted, and a green run here
+      # says nothing about whether a button works.
+      - name: Unit tests
+        run: npm test
 
       # `npm run build` is `tsc -b && vite build`, so this is the type check as
       # well as the build. Both matter here: the container builds the bundle the

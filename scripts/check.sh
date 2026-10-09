@@ -30,13 +30,32 @@ run "mypy"   uv run mypy app
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 run "tests" env -C "${TMPDIR:-/tmp}" uv run --project "$root" pytest -q   -c "$root/pyproject.toml" --rootdir "$root" -m "not integration and not live" "$root/tests"
 
+# The interface's own tests. Pure functions, about a second, and they cannot
+# flake - a test outside the gate is a test nobody runs, which this repository has
+# already proved once with the integration suite.
+#
+# Skipped rather than failed when node is absent: this script is run by people
+# working on the backend alone, and refusing to report on Python because npm is
+# missing would make them stop running it.
+if command -v npm > /dev/null 2>&1; then
+  run "frontend" npm --prefix "$root/frontend" test
+else
+  printf '  %-8s SKIP (npm not found)\n' "frontend"
+fi
+
 if [ "${1:-}" = "--integration" ]; then
   run "integration" uv run pytest -q -m integration
 fi
 
 # `--browser` used to run `tests/browser`, which drove a real Chromium against the
 # running Streamlit and a live model. Both the suite and the interface it drove are
-# gone, and nothing has replaced them: the interface has no test runner. See
+# gone, and nothing has replaced them.
+#
+# The `frontend` step above is not that replacement and must not be read as one. It
+# runs pure functions in node - decision tables, comparators - and never opens a
+# page. Nothing automated checks that a button responds, that a drag lands where it
+# says it will, or that a screen renders at all; those are found by looking, and
+# three of them reached a user in one feature by not being looked at. See
 # TESTING_STRATEGY for what that leaves uncovered.
 
 rm -f /tmp/pc_check.log
