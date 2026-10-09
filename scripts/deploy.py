@@ -298,15 +298,25 @@ def main() -> int:
     tag = git("rev-parse", "--short", "HEAD") or datetime.now(UTC).strftime("%Y%m%d%H%M")
     dirty = git("status", "--porcelain")
 
+    # What the deployed code will say it is, in the app's version line and in the
+    # admin panel. Not the image tag: that has to stay tag-safe, and this carries a
+    # `-dirty` suffix when there were uncommitted changes - which matters precisely
+    # because `builds submit` uploads the working tree rather than the commit, so a
+    # clean sha would be a false claim about what is running.
+    commit = f"{tag}-dirty" if dirty else tag
+    pairs["APP_COMMIT"] = commit
+
     print(f"\nproject {PROJECT} · region {REGION} · service {SERVICE}")
     print(f"image   {IMAGE}:{tag}\n")
 
     supabase = (env.get("SUPABASE_URL") or "").strip()
     print(f"Supabase project this will talk to:\n  {supabase}\n")
 
-    print("Settings from .env:")
+    print("Settings the service will run with:")
     for key, value in sorted(pairs.items()):
         mark = "  (override)" if key in OVERRIDES else ""
+        if key == "APP_COMMIT":
+            mark = "  (computed here, not from .env)"
         print(f"  {key:34} {value}{mark}")
 
     print("\nSecrets (referenced by name, values never shown):")
@@ -335,7 +345,8 @@ def main() -> int:
             "--config=cloudbuild.yaml",
             f"--project={PROJECT}",
             f"--region={REGION}",
-            f"--substitutions=_SUPABASE_URL={supabase},_SUPABASE_ANON_KEY={anon},SHORT_SHA={tag}",
+            f"--substitutions=_SUPABASE_URL={supabase},_SUPABASE_ANON_KEY={anon}"
+            f",SHORT_SHA={tag},_APP_COMMIT={commit}",
             ".",
         ],
     )

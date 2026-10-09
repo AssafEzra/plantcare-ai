@@ -22,7 +22,7 @@ than a breach.
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Query, Request
@@ -33,6 +33,8 @@ from app.api.schemas.common import DataEnvelope
 from app.common.enums import AgentRequestStatus, AgentType
 from app.common.errors import NotFoundError, ValidationFailedError
 from app.config.logging import get_logger
+from app.config.settings import get_settings
+from app.infrastructure import build, upstream_version
 from app.infrastructure.supabase.client import service_client
 from app.repositories.base import first_row, require_row, rows
 
@@ -114,6 +116,50 @@ class OverviewResponse(BaseModel):
     # failed after the model had already generated and been billed. Both used to
     # record $0.00, which is why the reported spend disagreed with the invoice.
     executions_missing_cost: int = 0
+
+
+class BuildInfo(BaseModel):
+    """What one process reports about the code it is running."""
+
+    #: Short sha, possibly with a `-dirty` suffix, or `"unknown"` when it could not
+    #: be established. Frozen at process start - see `app/infrastructure/build.py`.
+    commit: str
+    started_at: datetime | None = None
+    #: When the interface this process serves was built. The only quantity a browser
+    #: and a server both carry that can be *ordered*, which is what separates "this
+    #: browser is behind" from "production was rolled back".
+    bundle_built_at: datetime | None = None
+    #: The Cloud Run revision, when there is one. Admin-only: it names the service
+    #: and a counter, so it stays out of the public `/version` payload.
+    revision: str | None = None
+
+
+class VersionsResponse(BaseModel):
+    """The three versions the admin panel shows side by side.
+
+    `role` is stated rather than inferred from which fields are null. A development
+    machine with no `PRODUCTION_BASE_URL` would otherwise be indistinguishable from
+    production itself, and would label its own commit as the deployed one - which is
+    the default configuration of every checkout.
+    """
+
+    role: Literal["production", "local"]
+    production: BuildInfo | None = None
+    #: `self` when this process *is* production; `unconfigured` and `unreachable`
+    #: are kept apart because they call for different things from the reader.
+    production_status: Literal["self", "ok", "unreachable", "unconfigured"]
+    #: Commits the local tree has that production does not, and the reverse. The
+    #: reverse is not hypothetical: deploying and then resetting produces it, and it
+    #: matters more than being behind. None when git cannot resolve one of them.
+    production_behind: int | None = None
+    production_ahead: int | None = None
+    #: None exactly when `role` is production - there is no second server then, and
+    #: that is what renders the "not applicable" cell.
+    server: BuildInfo | None = None
+    #: What the working tree's HEAD is right now, read fresh. Comparing it with
+    #: `server.commit` is the only way to tell a stale API process from a stale
+    #: bundle: two differing shas alone never say which is older.
+    head: str | None = None
 
 
 class KnowledgeReportResponse(BaseModel):
@@ -254,6 +300,101 @@ async def get_overview(
             agent_stats=stats,
             total_estimated_cost=round(sum(s.estimated_cost for s in stats), 4),
             executions_missing_cost=sum(1 for e in executions if e.get("estimated_cost") is None),
+        ),
+        request_id=request.state.request_id,
+    )
+
+
+def _own_build() -> BuildInfo:
+    return BuildInfo(
+        commit=build.commit(),
+        started_at=build.STARTED_AT,
+        bundle_built_at=build.bundle_built_at(),
+        revision=build.revision(),
+    )
+
+
+@router.get("/versions", response_model=DataEnvelope[VersionsResponse])
+def get_versions(request: Request, admin: AdminDep) -> DataEnvelope[VersionsResponse]:
+    """What production, this server and - by the client's own comparison - this
+    browser are running.
+
+    Deliberately `def` rather than `async def`, and the only handler here that is.
+    It runs git subprocesses and one synchronous outbound request; inside a
+    coroutine those block the event loop for their whole duration, which would
+    stall every concurrent request including `/readyz`. Starlette runs a sync
+    handler in a threadpool instead.
+
+    Its own route rather than a field on the overview, for three reasons: it is the
+    only request in this panel that leaves the machine, production scales to zero so
+    that request can land on a cold start, and the version question must be
+    re-askable without dragging five Supabase queries behind it.
+
+    Everything is optional and nothing raises. A diagnostic that fails when the
+    thing it diagnoses is broken is worse than no diagnostic, so an answer that
+    cannot be established is reported as absent rather than guessed.
+    """
+    del admin  # The dependency is the authorisation; nothing here reads the client.
+
+    own = _own_build()
+
+    if build.is_cloud_run():
+        # This *is* production. Nothing to ask, and `production_base_url` is ignored
+        # even if something set it - the single instance must not fetch itself.
+        return DataEnvelope(
+            data=VersionsResponse(
+                role="production",
+                production=own,
+                production_status="self",
+                server=None,
+                head=None,
+            ),
+            request_id=request.state.request_id,
+        )
+
+    head = build.head_commit()
+    base_url = get_settings().production_base_url
+
+    if not base_url:
+        return DataEnvelope(
+            data=VersionsResponse(
+                role="local",
+                production=None,
+                production_status="unconfigured",
+                server=own,
+                head=head,
+            ),
+            request_id=request.state.request_id,
+        )
+
+    deployed = upstream_version.current(base_url)
+    if deployed is None:
+        return DataEnvelope(
+            data=VersionsResponse(
+                role="local",
+                production=None,
+                production_status="unreachable",
+                server=own,
+                head=head,
+            ),
+            request_id=request.state.request_id,
+        )
+
+    behind, ahead = build.offsets(deployed.commit, head) if head else (None, None)
+
+    return DataEnvelope(
+        data=VersionsResponse(
+            role="local",
+            production=BuildInfo(
+                commit=deployed.commit,
+                started_at=deployed.started_at,
+                bundle_built_at=deployed.bundle_built_at,
+            ),
+            production_status="ok",
+            production_behind=behind,
+            production_ahead=ahead,
+            server=own,
+            head=head,
         ),
         request_id=request.state.request_id,
     )

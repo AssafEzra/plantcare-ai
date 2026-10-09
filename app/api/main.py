@@ -44,6 +44,7 @@ from app.api.spa import mount_spa
 from app.common.errors import AppError, ForbiddenError, NotFoundError, ValidationFailedError
 from app.config.logging import configure_logging, get_logger
 from app.config.settings import get_settings
+from app.infrastructure import build
 from app.infrastructure.supabase.client import anon_client
 
 #: The verbs a "view as user" request may use. HEAD and OPTIONS are included
@@ -90,7 +91,18 @@ async def _tick_loop(interval_seconds: int) -> None:
 async def lifespan(app: FastAPI):
     settings = get_settings()
     configure_logging(environment=settings.app_env, debug=settings.app_debug)
-    log.info("api.startup", environment=settings.app_env, debug=settings.app_debug)
+
+    # Resolving the commit here, at startup, is the whole mechanism. `build.commit`
+    # caches for the life of the process, so this call decides only the *timing* -
+    # and asked later it would read whatever HEAD had become by then, meaning a
+    # server left running across a commit would report itself current while serving
+    # the old code. That false "ok" is what the version block exists to prevent.
+    log.info(
+        "api.startup",
+        environment=settings.app_env,
+        debug=settings.app_debug,
+        commit=build.commit(),
+    )
 
     timer: asyncio.Task[None] | None = None
     interval = settings.internal_tick_interval_seconds
@@ -272,6 +284,38 @@ def create_app() -> FastAPI:
                 content={"status": "unavailable", "checks": {"database": "failed"}},
             )
         return JSONResponse(status_code=200, content={"status": "ok", "checks": {"database": "ok"}})
+
+    @app.get("/version", include_in_schema=False)
+    async def version() -> JSONResponse:
+        """Which build is answering. Separate from `/livez`, and public.
+
+        A new route rather than extra fields on the probe, for two reasons. The
+        probe's contract is its body - `tests/api/test_auth_and_envelopes.py` asserts
+        it exactly - and its `dict[str, str]` annotation is also its response model,
+        so a timestamp or a null in there would raise `ResponseValidationError` and
+        turn the liveness check into a 500. A probe's job is to be the one thing that
+        cannot fail.
+
+        Public because of who needs to read it: a development machine holds no
+        production credential, and the admin panel's version block compares what is
+        deployed against what is running locally. There is no CORS anywhere in
+        `app/` - the SPA and `/v1` share an origin by design - so the local API reads
+        this server to server. What it discloses is a short commit sha and two
+        timestamps. The Cloud Run revision name is deliberately not here; it is
+        admin-only, through `/v1/admin/versions`.
+
+        `no-store`, because a cached answer to "what is running right now" is the
+        bug this is meant to detect.
+        """
+        built = build.bundle_built_at()
+        return JSONResponse(
+            content={
+                "commit": build.commit(),
+                "started_at": build.STARTED_AT.isoformat(),
+                "bundle_built_at": built.isoformat() if built is not None else None,
+            },
+            headers={"Cache-Control": "no-store"},
+        )
 
     app.include_router(profile.router, prefix="/v1")
     app.include_router(plants.router, prefix="/v1")

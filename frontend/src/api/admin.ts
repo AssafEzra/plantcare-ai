@@ -43,6 +43,26 @@ export type Overview = {
   executions_missing_cost: number
 }
 
+export type BuildInfo = {
+  commit: string
+  started_at: string | null
+  bundle_built_at: string | null
+  revision: string | null
+}
+
+export type Versions = {
+  role: 'production' | 'local'
+  production: BuildInfo | null
+  production_status: 'self' | 'ok' | 'unreachable' | 'unconfigured'
+  production_behind: number | null
+  production_ahead: number | null
+  /* Null exactly when this *is* production: there is no second server to report. */
+  server: BuildInfo | null
+  /* The working tree's HEAD right now. Comparing it against the running commit is
+     what tells a stale API process from a stale bundle. */
+  head: string | null
+}
+
 export type DraftStatus =
   | 'DRAFT'
   | 'RESEARCHING'
@@ -267,6 +287,13 @@ function useLiveQuery<T>(key: readonly unknown[], path: string, params: Record<s
     enabled: Boolean(userId),
     staleTime: 0,
   })
+}
+
+export function useVersions() {
+  /* Live, like the other two: it reports on processes outside this panel, and the
+     entire question is what is true *now*. From a cache it would go on saying the
+     API process is stale after it had been restarted. */
+  return useLiveQuery<Versions>(['versions'], '/v1/admin/versions', {})
 }
 
 export function useAgentExecutions(failuresOnly: boolean) {

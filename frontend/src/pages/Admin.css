@@ -14,6 +14,53 @@
   padding-inline: var(--pc-space-4);
 }
 
+/* --- the version block --------------------------------------------------- */
+
+/* Quiet by design: reference information, read when something is already
+   suspected and ignored the rest of the time. The label column is sized to its
+   content so the commits line up with each other, which is the comparison the
+   whole block exists to make. */
+.pc-versions {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--pc-h5);
+  margin-block-end: var(--pc-space-4);
+}
+
+.pc-versions th,
+.pc-versions td {
+  padding: var(--pc-space-2) 0;
+  padding-inline-end: var(--pc-space-4);
+  text-align: start;
+  vertical-align: baseline;
+  font-weight: 400;
+  white-space: nowrap;
+}
+
+.pc-versions th {
+  color: var(--pc-text-muted);
+  width: 1%;
+}
+
+/* The button column takes the slack, so the three notes stay next to the commits
+   they describe rather than drifting to the far edge. */
+.pc-versions td:last-child {
+  width: auto;
+  padding-inline-end: 0;
+}
+
+.pc-versions-ok {
+  color: var(--pc-success);
+}
+
+.pc-versions-warn {
+  color: var(--pc-warning);
+}
+
+.pc-versions-muted {
+  color: var(--pc-text-muted);
+}
+
 /* --- overview ------------------------------------------------------------ */
 
 .pc-metrics {

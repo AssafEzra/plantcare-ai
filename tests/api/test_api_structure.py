@@ -128,6 +128,38 @@ def test_liveness_does_not_touch_the_database(client: TestClient, monkeypatch):
     assert client.get("/livez").status_code == 200
 
 
+# --- which build is answering --------------------------------------------------
+
+
+def test_version_is_public_and_serialisable(client: TestClient):
+    """Unauthenticated by necessity: a development machine holds no production
+    credential, and this is what the admin version block reads across origins.
+
+    "Serialisable" is the real assertion. The reason this is not extra fields on
+    `/livez` is that `livez()`'s `-> dict[str, str]` annotation is also its response
+    model, so a timestamp or a null in that body raises `ResponseValidationError` and
+    turns the liveness probe into a 500. This body has both.
+    """
+    response = client.get("/version")
+
+    assert response.status_code == 200
+
+    body = response.json()
+    assert isinstance(body["commit"], str) and body["commit"]
+    assert isinstance(body["started_at"], str)
+    assert "bundle_built_at" in body
+
+
+def test_version_is_never_cached(client: TestClient):
+    """A cached answer to "what is running right now" is the bug being detected."""
+    assert "no-store" in client.get("/version").headers.get("Cache-Control", "")
+
+
+def test_version_is_not_in_the_public_schema(client: TestClient):
+    """Operational, like the probes - not part of the v1 contract."""
+    assert "/version" not in client.get("/openapi.json").json()["paths"]
+
+
 # --- throttling ---------------------------------------------------------------
 
 
@@ -193,6 +225,11 @@ def test_method_not_allowed_uses_the_envelope(client: TestClient):
 
 
 def test_every_response_carries_a_request_id(client: TestClient):
-    for path, method in [("/livez", "get"), ("/readyz", "get"), ("/v1/me", "get")]:
+    for path, method in [
+        ("/livez", "get"),
+        ("/readyz", "get"),
+        ("/version", "get"),
+        ("/v1/me", "get"),
+    ]:
         response = getattr(client, method)(path)
         assert response.headers.get("X-Request-ID"), f"{path} lost the request id"

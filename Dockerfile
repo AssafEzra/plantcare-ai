@@ -36,9 +36,17 @@ ARG VITE_SUPABASE_ANON_KEY
 # Empty on purpose: same-origin, relative `/v1`. Declared so a build cannot
 # inherit a stray value from the environment.
 ARG VITE_API_BASE_URL=""
+# Which commit this bundle is. `vite.config.ts` reads the commit from git, and
+# there is no `.git` here - only `frontend/` is copied in - so every image built
+# before this ARG existed baked `'unknown'` into the version line, and the card in
+# Settings showed no commit in production. Empty rather than `unknown`, because
+# vite treats both as absent and falls back to git, which is what should happen for
+# a local `docker build` in a real checkout.
+ARG APP_COMMIT=""
 ENV VITE_SUPABASE_URL=$VITE_SUPABASE_URL \
     VITE_SUPABASE_ANON_KEY=$VITE_SUPABASE_ANON_KEY \
-    VITE_API_BASE_URL=$VITE_API_BASE_URL
+    VITE_API_BASE_URL=$VITE_API_BASE_URL \
+    APP_COMMIT=$APP_COMMIT
 
 RUN npm run build
 
@@ -101,7 +109,15 @@ ENV SPA_DIST_DIR=/home/user/plantcare/static
 # deployment's setting and for a concrete reason: Cloud Run scales to zero, and a
 # timer in a process that does not exist runs no sweep. Cloud Scheduler calls
 # `POST /v1/internal/tick` instead - see docs/DEPLOY_CLOUD_RUN.md.
-ENV PORT=8080 \
+# The same commit again, for the API process rather than the bundle, so
+# `GET /version` and the bundle it serves cannot disagree. A second `ARG` because
+# build arguments are scoped to one stage, and *here*, after every `COPY` and
+# `RUN`: declared earlier it would change a layer on every commit and invalidate
+# `uv sync`, reinstalling FastAPI on every deploy.
+ARG APP_COMMIT=""
+
+ENV APP_COMMIT=$APP_COMMIT \
+    PORT=8080 \
     INTERNAL_TICK_INTERVAL_SECONDS=0
 
 EXPOSE 8080

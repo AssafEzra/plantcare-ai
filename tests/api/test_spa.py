@@ -127,6 +127,18 @@ def test_the_probes_answer_at_their_own_paths(client: TestClient):
     assert response.json() == {"status": "ok"}
 
 
+def test_version_is_reserved_from_the_shell(client: TestClient):
+    """`/version` is read by another server, not by a browser, so a path under it
+    must fail as an API call rather than return a page of HTML that a JSON parser
+    would then misreport."""
+    assert client.get("/version").status_code == 200
+
+    response = client.get("/version/nonsense")
+
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "NOT_FOUND"
+
+
 def test_the_openapi_schema_is_not_the_application(client: TestClient):
     response = client.get("/openapi.json")
 

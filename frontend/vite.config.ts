@@ -18,9 +18,20 @@ const API_TARGET = process.env.VITE_DEV_API_TARGET ?? 'http://127.0.0.1:8000'
  * worth building. So the commit is read here, at build time, and travels inside
  * the bundle it describes.
  *
+ * `APP_COMMIT` comes first because the container build has no git to ask. Only
+ * `frontend/` is copied into the image's web stage, so `git rev-parse` there fails
+ * and every deployed bundle reported `'unknown'` - the version card shipped blank
+ * in production. The Dockerfile declares the value and cloudbuild passes the
+ * commit being built; see `ARG APP_COMMIT` there.
+ *
  * Never fails the build. A tree without git, or an export of the source, has no
  * commit to report and says so. */
 function buildCommit(): string {
+  // Both empty and the literal `unknown` count as absent, so a Dockerfile default
+  // or an unset substitution falls through to git rather than silently winning.
+  const declared = process.env.APP_COMMIT?.trim()
+  if (declared && declared !== 'unknown') return declared
+
   try {
     return execSync('git rev-parse --short HEAD', { stdio: ['ignore', 'pipe', 'ignore'] })
       .toString()

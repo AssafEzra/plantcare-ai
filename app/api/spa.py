@@ -37,7 +37,7 @@ from app.common.errors import NotFoundError
 #: Paths that belong to the API and must never be answered with the application
 #: shell. A request under one of these that matches no route is a 404 in the
 #: API_CONTRACTS envelope, exactly as it was before the SPA shared the origin.
-RESERVED = ("/v1", "/livez", "/readyz", "/docs", "/openapi.json")
+RESERVED = ("/v1", "/livez", "/readyz", "/version", "/docs", "/openapi.json")
 
 #: Vite hashes everything it emits into `assets/` (`index-OjgYu6z4.js`), so the
 #: name changes whenever the content does and a stale copy is never asked for

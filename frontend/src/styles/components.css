@@ -49,6 +49,14 @@
   margin: 0;
 }
 
+/* A commit sha: an identifier to read character by character and paste, so it gets
+   a monospace face like every other id in the app. Pair it with `.pc-ltr`. Lives
+   here rather than beside one page because two now show one - the version card in
+   Settings and the three lines in the admin panel. */
+.pc-commit {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
 /* --- buttons ------------------------------------------------------------- */
 
 .pc-btn {

@@ -14,11 +14,8 @@
   font-size: 0.875rem;
 }
 
-/* The commit is an identifier to read character by character and paste, so it gets
-   a monospace face and left-to-right isolation like every other id in the app. */
-.pc-version-commit {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-}
+/* The monospace commit itself is `.pc-commit` in styles/components.css: the admin
+   panel's version block shows one too, and two copies of the rule would drift. */
 
 .pc-version > p {
   margin: 0;

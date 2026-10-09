@@ -59,6 +59,7 @@ import { ApiError } from '../lib/errors'
 import { enterViewAs } from '../lib/viewAs'
 import type { Tone } from '../lib/status'
 import Async from '../components/Async'
+import AdminVersions from './AdminVersions'
 import StatusBadge from '../components/StatusBadge'
 import './Admin.css'
 import PageHero from '../components/PageHero'
@@ -133,7 +134,8 @@ function OverviewTab() {
   const data = query.data
 
   return (
-    <Async query={query} loadingLabel="טוען…">
+    <>
+      <Async query={query} loadingLabel="טוען…">
       {data && (
         <>
           {/* Ordered by what would make someone act: failures, then things waiting
@@ -199,7 +201,19 @@ function OverviewTab() {
           )}
         </>
       )}
-    </Async>
+      </Async>
+
+      {/* Outside the `Async` above, deliberately. The version block has its own
+          request, and it has to answer even when the overview cannot - an admin
+          whose panel is failing is exactly the person asking which code is
+          running. Last on the tab because the tab is ordered by what would make
+          someone act, and this is reference, consulted when something is already
+          suspected. */}
+      <div className="pc-sectionhead">
+        <h2>גרסאות</h2>
+      </div>
+      <AdminVersions />
+    </>
   )
 }
 

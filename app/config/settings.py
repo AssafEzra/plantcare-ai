@@ -145,6 +145,25 @@ class Settings(BaseSettings):
     # The container sets it; nothing else does. See DEPLOYMENT §3.
     spa_dist_dir: Path | None = None
 
+    # --- Which build this is ---
+    #
+    # The commit the running code was built from, baked into the image by the
+    # Dockerfile (`ARG APP_COMMIT`) because the container has no `.git` to ask.
+    # Unset off the container, where `app/infrastructure/build.py` asks git instead.
+    app_commit: str | None = None
+
+    # Injected by Cloud Run, never written by hand and absent from `.env.example`.
+    # Its presence is how the process knows it *is* production rather than a local
+    # server, which decides what the admin panel's version block compares against
+    # and whether it is allowed to make an outbound request at all.
+    k_revision: str | None = None
+
+    # Where to ask what production is running, for the admin version block. Set on
+    # a development machine only: a Cloud Run instance must never fetch this, which
+    # `k_revision` enforces, and the value is deliberately absent from
+    # `scripts/deploy.py`'s ALLOWLIST so it cannot ship.
+    production_base_url: str | None = None
+
     # --- Rate limits for AI-triggering endpoints (A14) ---
     ai_rate_limit_per_hour: int = 10
     ai_rate_limit_per_minute: int = 3

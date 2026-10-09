@@ -28,6 +28,12 @@ substitutions:
   _REPO: plantcare
   _SUPABASE_URL: ""
   _SUPABASE_ANON_KEY: ""
+  # The commit this image is built from, for the version line in the app and the
+  # three in the admin panel. Its own substitution rather than `${SHORT_SHA}`,
+  # which is also the image tag and so has to stay tag-safe - this one carries a
+  # `-dirty` suffix when the working tree had uncommitted changes, which it often
+  # does, because `builds submit` uploads the tree rather than the commit.
+  _APP_COMMIT: ""
 
 # No `images:` block. Cloud Build pushes those only *after* every step has
 # finished, so the deploy step below would look for a tag that does not exist yet
@@ -57,6 +63,7 @@ steps:
       - build
       - --build-arg=VITE_SUPABASE_URL=${_SUPABASE_URL}
       - --build-arg=VITE_SUPABASE_ANON_KEY=${_SUPABASE_ANON_KEY}
+      - --build-arg=APP_COMMIT=${_APP_COMMIT}
       - --tag=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/${_SERVICE}:${SHORT_SHA}
       - --tag=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/${_SERVICE}:latest
       - .

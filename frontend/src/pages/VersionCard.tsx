@@ -46,7 +46,7 @@ export default function VersionCard() {
       <p className="pc-version-line">
         <span>גרסה</span>{' '}
         <span className="pc-num">{buildDate()}</span>{' '}
-        <span className="pc-ltr pc-version-commit">{BUILD_COMMIT}</span>
+        <span className="pc-ltr pc-commit">{BUILD_COMMIT}</span>
       </p>
 
       {!updatesSupported() ? (
