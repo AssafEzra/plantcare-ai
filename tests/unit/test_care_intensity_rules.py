@@ -140,9 +140,16 @@ def test_it_expires_once_that_care_day_has_passed_too():
     )
 
 
-def test_high_keeps_the_original_window():
-    deadline = overdue_deadline(EVERY_TWO_DAYS, due_at_utc=local(9), schedule=HIGH)
-    assert deadline == local(11)
+def test_high_keeps_the_interval_window():
+    """No care days, so the window is the rhythm's own: `interval_days` after the
+    due day. It runs to the end of that day rather than to the due *moment* plus
+    two, because that moment stopped meaning anything once lateness became a
+    question about the calendar day."""
+    deadline = overdue_deadline(
+        EVERY_TWO_DAYS, due_at_utc=local(9), schedule=HIGH, timezone_name=JERUSALEM
+    )
+
+    assert deadline == datetime(2026, 10, 12, 0, 0, tzinfo=TZ).astimezone(UTC)
 
 
 # --- warnings -----------------------------------------------------------------------

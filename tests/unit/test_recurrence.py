@@ -244,10 +244,61 @@ def test_a_new_rule_does_not_wait_a_whole_interval():
 # --- A9: overdue, and when it stops mattering ----------------------------------
 
 
-def test_a_task_is_overdue_once_its_moment_has_passed():
-    due = local(2026, 6, 1).astimezone(UTC)
-    assert not is_overdue(due_at_utc=due, now_utc=due - timedelta(minutes=1))
-    assert is_overdue(due_at_utc=due, now_utc=due + timedelta(minutes=1))
+def test_a_task_due_today_is_not_late_later_the_same_day():
+    """Lateness is a question about the day, not about the rule's time of day.
+
+    This used to compare against `due_at_utc` itself, so a watering the care agent
+    set for 08:00 was marked late at 08:01 - before most people have looked at
+    their phone, and hours before the reminder's own purpose had been served. The
+    rule's time is a suggestion of when in the day to do the task; the day is what
+    decides whether it was missed.
+    """
+    due = local(2026, 6, 1, hour=8).astimezone(UTC)
+
+    assert not is_overdue(due_at_utc=due, now_utc=due, timezone_name=JERUSALEM)
+    assert not is_overdue(
+        due_at_utc=due,
+        now_utc=local(2026, 6, 1, hour=23, minute=59).astimezone(UTC),
+        timezone_name=JERUSALEM,
+    )
+
+
+def test_a_task_is_late_at_local_midnight():
+    due = local(2026, 6, 1, hour=8).astimezone(UTC)
+    midnight = local(2026, 6, 2, hour=0, minute=0).astimezone(UTC)
+
+    # The boundary instant belongs to the next day, matching `day_bounds_utc`.
+    assert is_overdue(due_at_utc=due, now_utc=midnight, timezone_name=JERUSALEM)
+
+
+def test_a_late_evening_task_gets_its_whole_evening():
+    """The case that makes the timezone argument necessary rather than tidy.
+
+    23:00 in Jerusalem is already past midnight in UTC, so a UTC comparison would
+    mark this task late while it was still the same evening for the person holding
+    the watering can.
+    """
+    due = local(2026, 6, 1, hour=23).astimezone(UTC)
+    half_past = local(2026, 6, 1, hour=23, minute=30).astimezone(UTC)
+
+    assert not is_overdue(due_at_utc=due, now_utc=half_past, timezone_name=JERUSALEM)
+    assert is_overdue(
+        due_at_utc=due,
+        now_utc=local(2026, 6, 2, hour=0).astimezone(UTC),
+        timezone_name=JERUSALEM,
+    )
+
+
+def test_the_boundary_follows_a_dst_change():
+    """October 2026: Israel puts its clocks back, so that local day is 25 hours
+    long. The boundary is still one midnight, because the day arithmetic is done in
+    local time rather than by adding 24 hours to an instant."""
+    due = local(2026, 10, 25, hour=8).astimezone(UTC)
+    before = local(2026, 10, 25, hour=23, minute=59).astimezone(UTC)
+    after = local(2026, 10, 26, hour=0, minute=1).astimezone(UTC)
+
+    assert not is_overdue(due_at_utc=due, now_utc=before, timezone_name=JERUSALEM)
+    assert is_overdue(due_at_utc=due, now_utc=after, timezone_name=JERUSALEM)
 
 
 def test_a_daily_task_expires_after_its_own_interval():
@@ -264,8 +315,32 @@ def test_a_yearly_task_expires_at_the_ceiling_not_a_year_later():
     rule = Rule(interval_days=365)
     due = local(2026, 6, 1).astimezone(UTC)
 
-    assert overdue_deadline(rule, due_at_utc=due) == due + timedelta(days=MAX_OVERDUE_DAYS)
-    assert has_expired(rule, due_at_utc=due, now_utc=due + timedelta(days=MAX_OVERDUE_DAYS + 1))
+    # The end of the day `MAX_OVERDUE_DAYS` after the due day, not the due *moment*
+    # plus that many days: the window has to start where lateness now starts, or a
+    # task due at 23:00 would be written off mid-afternoon.
+    assert (
+        overdue_deadline(rule, due_at_utc=due, timezone_name=JERUSALEM)
+        == day_bounds_utc(
+            local_date(due, JERUSALEM) + timedelta(days=MAX_OVERDUE_DAYS + 1), JERUSALEM
+        )[0]
+    )
+    assert has_expired(
+        rule,
+        due_at_utc=due,
+        now_utc=due + timedelta(days=MAX_OVERDUE_DAYS + 2),
+        timezone_name=JERUSALEM,
+    )
+
+
+def test_the_expiry_window_runs_to_the_end_of_a_day():
+    """An evening task is not written off in the middle of an afternoon."""
+    rule = Rule(interval_days=2)
+    due = local(2026, 6, 1, hour=23).astimezone(UTC)
+
+    deadline = overdue_deadline(rule, due_at_utc=due, timezone_name=JERUSALEM)
+
+    assert deadline.astimezone(TZ).hour == 0
+    assert deadline.astimezone(TZ).date() == local_date(due, JERUSALEM) + timedelta(days=3)
 
 
 def test_a_monthly_task_is_still_worth_doing_a_week_late():

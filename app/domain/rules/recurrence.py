@@ -185,8 +185,30 @@ def anchor_for(
     return due_at_utc
 
 
-def is_overdue(*, due_at_utc: datetime, now_utc: datetime) -> bool:
-    return now_utc > due_at_utc
+def is_overdue(*, due_at_utc: datetime, now_utc: datetime, timezone_name: str = "UTC") -> bool:
+    """Is this task late? Late means its calendar day has ended.
+
+    Not a comparison against `due_at_utc` itself, which is what this used to be. A
+    rule carries a `preferred_time_local` - 08:00 by default, chosen by the care
+    agent - and comparing against it marked a watering late at 08:01, hours before
+    anybody had been given a chance to do it. The reminder announcing that task is
+    sent at the *user's* preferred hour, a different setting entirely (A10, see
+    `app/notifications/service.py`), so the two were never even related.
+
+    So the rule's time keeps its honest meaning - a suggestion of when in the day to
+    do this - and lateness is a question about the day. A task due today is due all
+    day and turns late at midnight.
+
+    Midnight in the **user's** zone, not UTC, which is why the timezone has to be
+    passed. For Asia/Jerusalem a task due at 23:00 is still open at 22:00 UTC the
+    following day, and getting that wrong would mark a task late while it was still
+    the same evening for the person holding the watering can. The default is UTC so
+    the pure-domain callers that have no user in hand stay callable.
+    """
+    _, end_of_day = day_bounds_utc(local_date(due_at_utc, timezone_name), timezone_name)
+    # Half-open, matching `day_bounds_utc`: the boundary instant belongs to the next
+    # day, so a task is late *at* midnight rather than a tick after it.
+    return now_utc >= end_of_day
 
 
 def overdue_deadline(
@@ -211,13 +233,19 @@ def overdue_deadline(
     one from coming too soon. Missed on that Friday too, it expires and the rhythm
     restarts.
     """
+    due_day = local_date(due_at_utc, timezone_name)
+
     if schedule is not None and schedule.groups:
-        due_day = local_date(due_at_utc, timezone_name)
         care_day = _next_care_day(due_day + timedelta(days=1), schedule.care_days)
         return day_bounds_utc(care_day, timezone_name)[1]
 
+    # Anchored to the end of the due *day*, like the care-day branch above and like
+    # `is_overdue`. Added to `due_at_utc` instead, the window would start from a
+    # moment that is no longer the point the task went late: a task due at 23:00
+    # would be written off at 23:00 some days later, in the middle of a day it was
+    # still showing as actionable.
     days = min(rule.interval_days, MAX_OVERDUE_DAYS)
-    return due_at_utc + timedelta(days=days)
+    return day_bounds_utc(due_day + timedelta(days=days), timezone_name)[1]
 
 
 def has_expired(

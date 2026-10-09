@@ -466,7 +466,20 @@ def sweep_overdue(client: Client, *, now_utc: datetime, user_id: str | None = No
 
     for task in rows(open_query.execute()):
         due = parse_timestamp(task["due_at_utc"])
-        if due is None or not recurrence.is_overdue(due_at_utc=due, now_utc=now_utc):
+        if due is None:
+            continue
+
+        # The owner is loaded *before* the lateness test, not after, because the
+        # test now needs their timezone: a task is late when its calendar day has
+        # ended where the user is. Cached per owner, so this costs one lookup for
+        # each person with open tasks rather than one per task.
+        owner_id, plant_id = str(task["user_id"]), str(task["plant_id"])
+        if owner_id not in owners:
+            owners[owner_id] = owner_settings(client, owner_id)
+
+        if not recurrence.is_overdue(
+            due_at_utc=due, now_utc=now_utc, timezone_name=owners[owner_id].timezone
+        ):
             continue
 
         rule_row = first_row(
@@ -479,9 +492,6 @@ def sweep_overdue(client: Client, *, now_utc: datetime, user_id: str | None = No
             continue
         domain_rule = _rule_of(rule_row)
 
-        owner_id, plant_id = str(task["user_id"]), str(task["plant_id"])
-        if owner_id not in owners:
-            owners[owner_id] = owner_settings(client, owner_id)
         if plant_id not in overrides:
             overrides[plant_id] = _plant_override(client, plant_id)
 
