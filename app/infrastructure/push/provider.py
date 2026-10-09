@@ -90,7 +90,16 @@ class WebPushProvider:
                 vapid_private_key=self._private_key,
                 vapid_claims=dict(self._claims),
                 ttl=TTL_SECONDS,
-                headers={"Urgency": "normal"},
+                # `high`, not `normal`, and the difference is whether the message
+                # arrives at all. The push services map this header onto their own
+                # priority: a `normal` message is held while the device is dozing and
+                # may be dropped outright. Measured on 2026-10-06 - the daily summary
+                # arrived at 07:33 because the phone was in use, and the due-task
+                # reminder sent minutes later never did; re-firing both at an awake
+                # phone delivered both. Every push this application sends is a
+                # reminder about a specific plant at a specific time, which is the
+                # case `high` exists for. It costs battery, deliberately.
+                headers={"Urgency": "high"},
             )
         except WebPushException as exc:
             status = getattr(exc.response, "status_code", None)
