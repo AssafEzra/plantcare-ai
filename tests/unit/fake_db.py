@@ -1,7 +1,7 @@
 """An in-memory stand-in for the slice of the Supabase client the scheduler uses.
 
-Enough of PostgREST's query builder - `select`, `eq`, `in_`, `order`, `limit`,
-`insert`, `update` - to run the real scheduler code against rows a test writes
+Enough of PostgREST's query builder - `select`, `eq`, `neq`, `in_`, `order`,
+`limit`, `insert`, `update` - to run the real scheduler code against rows a test writes
 by hand. It applies filters exactly and nothing else: no RLS, no constraints, no
 joins. Tests that need those belong in the integration suite.
 """
@@ -24,7 +24,12 @@ class FakeQuery:
         self.unique = unique or {}
         self.pending_delete = False
         self.filters: list[tuple[str, str, Any]] = []
-        self.ordering: tuple[str, bool] | None = None
+        #: Every `.order()` call, in the order they were made. A list rather than one
+        #: pair because PostgREST composes them - `.order("display_order")
+        #: .order("created_at", desc=True)` means "by position, newest first within a
+        #: tie" - and keeping only the last one made the fake silently disagree with
+        #: the database about exactly the tie-breaking the callers rely on.
+        self.ordering: list[tuple[str, bool]] = []
         self.max_rows: int | None = None
         self.pending_update: dict[str, Any] | None = None
         self.pending_insert: dict[str, Any] | None = None
@@ -38,12 +43,16 @@ class FakeQuery:
         self.filters.append(("eq", column, value))
         return self
 
+    def neq(self, column: str, value: Any) -> FakeQuery:
+        self.filters.append(("neq", column, value))
+        return self
+
     def in_(self, column: str, values: list[Any]) -> FakeQuery:
         self.filters.append(("in", column, [str(v) for v in values]))
         return self
 
     def order(self, column: str, desc: bool = False) -> FakeQuery:
-        self.ordering = (column, desc)
+        self.ordering.append((column, desc))
         return self
 
     def limit(self, count: int) -> FakeQuery:
@@ -67,6 +76,8 @@ class FakeQuery:
     def _matches(self, row: dict[str, Any]) -> bool:
         for kind, column, value in self.filters:
             if kind == "eq" and str(row.get(column)) != str(value):
+                return False
+            if kind == "neq" and str(row.get(column)) == str(value):
                 return False
             if kind == "in" and str(row.get(column)) not in value:
                 return False
@@ -95,9 +106,10 @@ class FakeQuery:
                 row.update(self.pending_update)
             return _Result(found)
 
-        if self.ordering:
-            column, desc = self.ordering
-            found = sorted(found, key=lambda r: str(r.get(column)), reverse=desc)
+        # Applied least significant first, which is how a stable sort composes
+        # several keys into the one PostgREST would have produced.
+        for column, desc in reversed(self.ordering):
+            found = sorted(found, key=lambda r, c=column: str(r.get(c)), reverse=desc)
         if self.max_rows is not None:
             found = found[: self.max_rows]
         return _Result([dict(row) for row in found])

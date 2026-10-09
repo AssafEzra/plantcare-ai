@@ -90,6 +90,11 @@ class PlantResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     care_intensity: CareIntensity | None = None
+    #: Position in the owner's list. Presentation only, and not unique per user -
+    #: see migration 0023 - so the client must not rely on it being a dense
+    #: sequence. The list arrives already sorted; this is here so a drag can send
+    #: the order back.
+    display_order: int = 0
 
     # The three fields `PROGRESS §10` asks the card to show. All optional and all
     # absent from a single-plant read: they are filled in by the list endpoint,

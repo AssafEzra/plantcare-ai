@@ -207,3 +207,37 @@
     padding-inline: var(--pc-space-4);
   }
 }
+
+/* --- cards or a list ------------------------------------------------------ */
+
+/* Two buttons rather than a third entry in the sort dropdown: the shape of the
+   list and the order of it are different questions, and a select that mixed them
+   would make "my order, as a list" unreachable. */
+.pc-viewtoggle {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--pc-border);
+  border-radius: var(--pc-radius-control);
+  background: var(--pc-surface);
+}
+
+.pc-viewbtn {
+  display: grid;
+  place-items: center;
+  inline-size: 34px;
+  block-size: 34px;
+  padding: 0;
+  border: 0;
+  border-radius: calc(var(--pc-radius-control) - 2px);
+  background: transparent;
+  color: var(--pc-text-muted);
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.pc-viewbtn.is-on {
+  background: var(--pc-primary);
+  color: #fff;
+}

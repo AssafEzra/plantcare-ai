@@ -1,0 +1,191 @@
+/* Logical properties only - see styles/base.css. The one exception is noted where
+   it appears. */
+
+.pc-plantslot {
+  position: relative;
+  display: flex;
+  min-inline-size: 0;
+}
+
+.pc-plantslot > .pc-plantcard {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+}
+
+/* The card being dragged. It is moved by a transform written straight to this
+   element, so nothing here may set `transform` - and nothing may transition it
+   either, or the card would lag a frame or two behind the finger, which is most of
+   what made the first version feel wrong. */
+.pc-plantslot.is-dragging {
+  z-index: 3;
+  cursor: grabbing;
+  /* Out of the way of `elementFromPoint`, so the card under the finger is the one
+     being dragged *over* rather than the one being dragged. */
+  pointer-events: none;
+}
+
+/* The handle keeps its events back. Pointer capture is specified to bypass hit
+   testing, so this is belt and braces - but the alternative is a drag that stops
+   receiving moves on the one browser that reads the spec differently. */
+.pc-plantslot.is-dragging .pc-planthandle {
+  pointer-events: auto;
+}
+
+.pc-plantslot.is-dragging > .pc-plantcard {
+  box-shadow: 0 10px 28px rgb(0 0 0 / 22%);
+  opacity: 0.92;
+  transform: scale(1.02);
+}
+
+/* Where it will land. A line down the edge it would be inserted at, rather than a
+   highlight on the whole card: "this card" and "before this card" are different
+   claims, and only the second one is true. */
+.pc-plantslot.is-drop::after {
+  content: '';
+  position: absolute;
+  inset-block: -2px;
+  inline-size: 3px;
+  border-radius: 3px;
+  background: var(--pc-primary);
+  z-index: 4;
+}
+
+.pc-plantslot.is-drop-before::after {
+  inset-inline-start: -5px;
+}
+
+.pc-plantslot.is-drop-after::after {
+  inset-inline-end: -5px;
+}
+
+/* In the single-column list the insertion is above or below, so the marker lies
+   across instead of down. */
+.pc-plantgrid-list .pc-plantslot.is-drop::after {
+  inset-inline: -2px;
+  inset-block: auto;
+  inline-size: auto;
+  block-size: 3px;
+}
+
+.pc-plantgrid-list .pc-plantslot.is-drop-before::after {
+  inset-block-start: -5px;
+}
+
+.pc-plantgrid-list .pc-plantslot.is-drop-after::after {
+  inset-block-end: -5px;
+}
+
+/* While a drag is in progress. Stops a long press selecting the name under the
+   finger, and stops the cards' own hover lift firing as the pointer crosses them. */
+.pc-plantgrid.is-arranging {
+  user-select: none;
+}
+
+.pc-plantgrid.is-arranging .pc-plantcard:hover {
+  transform: none;
+}
+
+/* --- the move controls ---------------------------------------------------- */
+
+/* Over the card's photograph, which is the one part with nothing to read in it.
+   Sits above the card's own link, so these are clickable although the whole card
+   is an anchor. */
+.pc-plantmove {
+  position: absolute;
+  inset-block-start: var(--pc-space-2);
+  inset-inline-start: var(--pc-space-2);
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border-radius: var(--pc-radius-control);
+  background: rgb(255 255 255 / 86%);
+  backdrop-filter: blur(4px);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 18%);
+}
+
+.pc-plantmove-btn,
+.pc-planthandle {
+  display: grid;
+  place-items: center;
+  inline-size: 28px;
+  block-size: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--pc-radius-control);
+  background: transparent;
+  color: var(--pc-text);
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.pc-plantmove-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.pc-plantmove-btn:not(:disabled):hover,
+.pc-planthandle:hover {
+  background: var(--pc-surface-sunken, rgb(0 0 0 / 6%));
+}
+
+.pc-planthandle {
+  cursor: grab;
+  /* Without this a touch drag scrolls the page instead of moving the plant: the
+     browser claims the gesture before the pointer events arrive. */
+  touch-action: none;
+}
+
+.pc-planthandle:active {
+  cursor: grabbing;
+}
+
+/* --- the list view ------------------------------------------------------- */
+
+/* The same card, laid on its side. A second component would drift from the first:
+   the card already decides what to show when a plant has no photograph, no species
+   and no task, and that logic is worth having once. */
+.pc-plantgrid-list {
+  grid-template-columns: 1fr;
+  gap: var(--pc-space-3);
+}
+
+@media (max-width: 639px) {
+  .pc-plantgrid-list {
+    grid-template-columns: 1fr;
+  }
+}
+
+.pc-plantgrid-list .pc-plantcard {
+  flex-direction: row;
+  align-items: stretch;
+}
+
+.pc-plantgrid-list .pc-plantthumb {
+  /* A square, and narrow enough that the words rather than the picture decide the
+     row's height. */
+  aspect-ratio: 1 / 1;
+  inline-size: 96px;
+  flex: 0 0 96px;
+}
+
+.pc-plantgrid-list .pc-plantbody {
+  padding-block: var(--pc-space-3);
+}
+
+/* The badges are sized for a 4:3 photograph. On a 96px square they cover it. */
+.pc-plantgrid-list .pc-plantbadges {
+  display: none;
+}
+
+/* Beside the name instead, where there is room for words in a row. */
+.pc-plantgrid-list .pc-plantmove {
+  position: static;
+  background: none;
+  backdrop-filter: none;
+  box-shadow: none;
+  align-self: center;
+  padding-inline-end: var(--pc-space-2);
+}

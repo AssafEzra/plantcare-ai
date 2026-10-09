@@ -11,6 +11,7 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Query, Request, status
+from pydantic import BaseModel, Field
 
 from app.api.dependencies import CurrentUserDep
 from app.api.schemas.common import DataEnvelope
@@ -27,7 +28,11 @@ from app.common.enums import (
     PlantStatus,
     SystemEventType,
 )
-from app.common.errors import InvalidTransitionError, PlantNotFoundError
+from app.common.errors import (
+    InvalidTransitionError,
+    PlantNotFoundError,
+    ValidationFailedError,
+)
 from app.domain.rules.plant_lifecycle import (
     PlantFacts,
     ensure_transition,
@@ -198,6 +203,58 @@ async def list_plants(
         health_status=health_status.value if health_status else None,
         query=q,
     )
+    decorated = _decorate_for_grid(user.client, user.access_token, found)
+    return DataEnvelope(
+        data=[PlantResponse.model_validate(row) for row in decorated],
+        request_id=request.state.request_id,
+    )
+
+
+class ReorderPlantsRequest(BaseModel):
+    """The list in its new order, as plant ids.
+
+    The whole set rather than one move, exactly as the gallery's reorder does
+    (`plant_images.py`): a drag shifts everything after the thing dragged, and
+    sending one index would make the client work out which other rows moved.
+    Renumbering from a list is also idempotent - replaying it produces the same
+    order.
+    """
+
+    model_config = {"extra": "forbid"}
+
+    plant_ids: list[UUID] = Field(min_length=1, max_length=500)
+
+
+@router.put("/order", response_model=DataEnvelope[list[PlantResponse]])
+async def reorder_plants(
+    request: Request, payload: ReorderPlantsRequest, user: CurrentUserDep
+) -> DataEnvelope[list[PlantResponse]]:
+    """Set the order of the caller's plants.
+
+    Declared **before** `/{plant_id}`: Starlette matches in registration order, so
+    the path parameter below would otherwise claim `order`, fail to parse it as a
+    uuid, and answer 422 for a route that exists.
+
+    The request must name exactly the plants the list shows - the owner's active
+    ones. A partial list would leave the unnamed plants at whatever number they
+    had, which is how a reorder silently interleaves two sets.
+    """
+    current = repo.list_for_user(user.client, owner_id=user.id)
+    known = {str(row["id"]) for row in current}
+    asked = [str(plant_id) for plant_id in payload.plant_ids]
+
+    if len(set(asked)) != len(asked):
+        raise ValidationFailedError("כל צמח יכול להופיע פעם אחת בלבד.")
+    if set(asked) != known:
+        raise ValidationFailedError(
+            "יש לציין את כל הצמחים ברשימה.",
+            details={"expected": len(known), "received": len(set(asked))},
+        )
+
+    for position, plant_id in enumerate(payload.plant_ids, start=1):
+        repo.set_plant_order(user.client, plant_id, position)
+
+    found = repo.list_for_user(user.client, owner_id=user.id)
     decorated = _decorate_for_grid(user.client, user.access_token, found)
     return DataEnvelope(
         data=[PlantResponse.model_validate(row) for row in decorated],

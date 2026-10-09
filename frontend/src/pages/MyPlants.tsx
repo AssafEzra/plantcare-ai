@@ -24,17 +24,37 @@
 
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { usePlants, plantName, type Plant } from '../api/plants'
+import { usePlants, useReorderPlants, plantName, type Plant } from '../api/plants'
 import { STATUS_SEVERITY, statusStyle, type HealthStatus } from '../lib/status'
 import { dayOffset } from '../lib/dates'
-import PlantCard from '../components/PlantCard'
+import PlantArrangement, { type PlantView } from '../components/PlantArrangement'
 import Async from '../components/Async'
 import PageHero from '../components/PageHero'
 import { useIsReadOnly } from '../lib/viewAs'
 import '../components/PlantCard.css'
 import './MyPlants.css'
 
-type Sort = 'name' | 'created' | 'health'
+/* `custom` is the user's own order, kept per user in the database, and it is the
+   default: the order a person arranged by hand beats anything derived from an
+   attribute of the row. The other three stay because nobody asked for them to go,
+   and dragging is off while one of them is in force - silently rewriting the stored
+   order behind a sort the user chose would be worse than refusing to. */
+type Sort = 'custom' | 'name' | 'created' | 'health'
+
+/* Which shape the list takes. Remembered on the device rather than on the account:
+   the *order* has to follow a person between their phone and their desktop, but how
+   they like to look at it on each need not match. */
+const VIEW_KEY = 'pc.plants.view'
+
+function storedView(): PlantView {
+  try {
+    return window.localStorage.getItem(VIEW_KEY) === 'list' ? 'list' : 'cards'
+  } catch {
+    // Private windows and blocked site data both throw here rather than returning
+    // null, and a remembered preference is not worth a blank screen.
+    return 'cards'
+  }
+}
 type Filter = '' | HealthStatus | 'PENDING'
 
 const HEALTH_ORDER: HealthStatus[] = ['CRITICAL', 'NEEDS_ATTENTION', 'UNKNOWN', 'HEALTHY']
@@ -48,8 +68,19 @@ export default function MyPlants() {
   const [q, setQ] = useState('')
   const [filter, setFilter] = useState<Filter>('')
   const [species, setSpecies] = useState('')
-  const [sort, setSort] = useState<Sort>('name')
+  const [sort, setSort] = useState<Sort>('custom')
+  const [view, setView] = useState<PlantView>(storedView)
   const readOnly = useIsReadOnly()
+  const reorder = useReorderPlants()
+
+  function chooseView(next: PlantView) {
+    setView(next)
+    try {
+      window.localStorage.setItem(VIEW_KEY, next)
+    } catch {
+      // Not remembering it is a smaller loss than failing the click.
+    }
+  }
 
   const query = usePlants({
     status: archived ? 'ARCHIVED' : undefined,
@@ -209,11 +240,33 @@ export default function MyPlants() {
           <label className="pc-field pc-filter">
             <span className="pc-sr-only">מיון</span>
             <select value={sort} onChange={(e) => setSort(e.target.value as Sort)}>
+              <option value="custom">מיון: הסדר שלי</option>
               <option value="name">מיון: שם</option>
               <option value="created">מיון: תאריך הוספה</option>
               <option value="health">מיון: מצב בריאות</option>
             </select>
           </label>
+
+          <div className="pc-viewtoggle" role="group" aria-label="תצוגה">
+            <button
+              type="button"
+              className={`pc-viewbtn${view === 'cards' ? ' is-on' : ''}`}
+              aria-pressed={view === 'cards'}
+              onClick={() => chooseView('cards')}
+            >
+              <span className="pc-sr-only">תצוגת כרטיסים</span>
+              <span aria-hidden="true">▦</span>
+            </button>
+            <button
+              type="button"
+              className={`pc-viewbtn${view === 'list' ? ' is-on' : ''}`}
+              aria-pressed={view === 'list'}
+              onClick={() => chooseView('list')}
+            >
+              <span className="pc-sr-only">תצוגת רשימה</span>
+              <span aria-hidden="true">☰</span>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -300,11 +353,22 @@ export default function MyPlants() {
           )
         }
       >
-        <div className="pc-plantgrid">
-          {shown.map((plant, i) => (
-            <PlantCard key={plant.id} plant={plant} index={i} />
-          ))}
-        </div>
+        <PlantArrangement
+          plants={shown}
+          view={view}
+          /* Only when the list on screen *is* the stored order and the whole of
+             it. A sort, a filter, a search or the archive each mean the order sent
+             back would not be the order the user is looking at - and the endpoint
+             requires the whole set, so a filtered drag would be refused anyway. */
+          reorderable={
+            sort === 'custom' &&
+            !archived &&
+            !readOnly &&
+            !hasFilters(q, species, filter) &&
+            shown.length > 1
+          }
+          onReorder={(plantIds) => reorder.mutate(plantIds)}
+        />
       </Async>
 
       <p className="pc-archivetoggle">
@@ -346,6 +410,14 @@ function hasFilters(q: string, species: string, filter: Filter): boolean {
 }
 
 function comparator(sort: Sort): (a: Plant, b: Plant) => number {
+  if (sort === 'custom') {
+    /* The endpoint already returns them in this order. Sorting again anyway keeps
+       the page correct after an optimistic reorder and after a filter, and
+       `created_at desc` is the tie-break because `display_order` is not unique per
+       user - see migration 0023. */
+    return (a, b) =>
+      a.display_order - b.display_order || b.created_at.localeCompare(a.created_at)
+  }
   if (sort === 'created') {
     return (a, b) => b.created_at.localeCompare(a.created_at)
   }

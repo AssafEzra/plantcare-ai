@@ -30,7 +30,7 @@ from supabase import Client
 
 PLANT_COLUMNS = (
     "id, user_id, name, species_id, status, current_health_status, "
-    "main_image_id, notes, archived_at, created_at, updated_at, care_intensity"
+    "main_image_id, notes, archived_at, created_at, updated_at, care_intensity, display_order"
 )
 
 IMAGE_COLUMNS = (
@@ -109,7 +109,11 @@ def list_for_user(
             return []
         builder = builder.ilike("name", f"%{safe}%")
 
-    found = rows(builder.order("created_at", desc=True).execute())
+    # The owner's own order, newest first within a tie. `display_order` is not
+    # unique per user - see migration 0023 - so the second key is what makes this
+    # deterministic, and it is `created_at desc` because that was the whole order
+    # before this column existed.
+    found = rows(builder.order("display_order").order("created_at", desc=True).execute())
 
     # Only when the caller named no status: an explicit
     # `?status=PENDING_IDENTIFICATION` still returns everything, which the admin
@@ -400,3 +404,13 @@ def set_image_order(client: Client, image_id: UUID, position: int) -> None:
     client.table("plant_images").update({"display_order": position}).eq(
         "id", str(image_id)
     ).execute()
+
+
+def set_plant_order(client: Client, plant_id: UUID, position: int) -> None:
+    """Move one plant to a position in its owner's list.
+
+    The same shape as `set_image_order`, and for the same reason: the caller sends
+    the whole list and renumbers it, so this stays a single-row write with no
+    knowledge of what else moved.
+    """
+    client.table("plants").update({"display_order": position}).eq("id", str(plant_id)).execute()
