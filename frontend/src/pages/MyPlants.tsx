@@ -108,17 +108,17 @@ export default function MyPlants() {
      rather than how many are showing. */
   const counts = useMemo(() => {
     const byStatus = new Map<string, number>()
-    let dueToday = 0
+    let careWaiting = 0
     let pending = 0
     for (const plant of visible) {
       const key = plant.status === 'ACTIVE' ? plant.current_health_status : 'UNKNOWN'
       byStatus.set(key, (byStatus.get(key) ?? 0) + 1)
-      if (isDueToday(plant)) dueToday += 1
+      if (hasCareWaiting(plant)) careWaiting += 1
       if (isPending(plant)) pending += 1
     }
     return {
       byStatus,
-      dueToday,
+      careWaiting,
       pending,
       healthy: byStatus.get('HEALTHY') ?? 0,
       attention: (byStatus.get('CRITICAL') ?? 0) + (byStatus.get('NEEDS_ATTENTION') ?? 0),
@@ -150,7 +150,22 @@ export default function MyPlants() {
   const stats: Stat[] = [
     { key: 'HEALTHY', caption: 'במצב תקין', value: counts.healthy, unit: 'צמחים', tone: 'success' },
     { to: '/health', go: 'למסך הבריאות', caption: 'דורשים תשומת לב', value: counts.attention, unit: 'צמחים', tone: 'warning' },
-    { to: '/tasks', go: 'למסך המשימות', caption: 'טיפולים להיום', value: counts.dueToday, unit: 'משימות', tone: 'primary' },
+    /* Plants, not tasks, and the label now says so. This read `טיפולים להיום` over a
+       count of `משימות` while the loop below adds one per *plant* - and `next_task` is
+       a single task, so a plant with four things due counted once. The dashboard said
+       12 where the tasks screen said 25, both from the same data.
+       The caption drops `להיום` as well: this tile deliberately folds overdue in (see
+       `hasCareWaiting`), while /tasks splits `באיחור` from `להיום` and puts 0 under
+       today. One of the two had to stop using the word for something the other
+       denies. */
+    {
+      to: '/tasks',
+      go: 'למסך המשימות',
+      caption: 'מחכים לטיפול',
+      value: counts.careWaiting,
+      unit: 'צמחים',
+      tone: 'primary',
+    },
     { key: 'PENDING', caption: 'ממתינים לזיהוי', value: counts.pending, unit: 'צמחים', tone: 'neutral' },
   ]
 
@@ -387,8 +402,12 @@ function summary(total: number, needing: number, archived: boolean): string {
   return `${needing} מהם דורשים תשומת לב`
 }
 
-/** Overdue counts as due today: it is work waiting now, not work that was missed. */
-function isDueToday(plant: Plant): boolean {
+/** Has care waiting on it now - due today or already late, which is the same job.
+ *
+ * Named for what it answers rather than for when the work was scheduled. As
+ * `isDueToday` it was read as "a task due today", and the tile above duly captioned
+ * itself `טיפולים להיום` over a number that is neither only-today nor tasks. */
+function hasCareWaiting(plant: Plant): boolean {
   if (!plant.next_task) return false
   if (plant.next_task.status === 'OVERDUE') return true
   return dayOffset(plant.next_task.due_at_utc) <= 0
