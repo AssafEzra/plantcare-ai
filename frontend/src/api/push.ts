@@ -98,14 +98,35 @@ export function useRemoveDevice() {
 }
 
 /**
- * On app open: if this device is already subscribed and allowed, send the
- * subscription again. The server updates the row in place, which is how a
- * subscription the browser quietly renewed gets its new keys there.
+ * On app open: make sure this device is registered, and registered correctly.
+ *
+ * Two jobs. The first is re-sending a subscription the browser quietly renewed, so
+ * the server gets its new keys. The second is recreating one that is gone, and that
+ * was the bug: `forgetThisDevice` destroys the browser's subscription on sign-out,
+ * this function used to give up the moment it found none, and so signing out once
+ * turned push off for good. Permission stayed `granted`, so nothing ever prompted and
+ * nothing ever failed - the server simply had no address to send to, and the daily
+ * tick reported `pushes_sent: 0` with no error beside it for three days.
+ *
+ * Recreating it needs no permission prompt: the browser already has the grant, and
+ * `pushManager.subscribe` on an existing grant resolves silently. If permission was
+ * genuinely withdrawn the first line returns and this device stays unregistered,
+ * which is the correct answer to someone who turned notifications off.
  */
 export async function resyncThisDevice(): Promise<void> {
   if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return
-  const subscription = await currentSubscription()
-  if (!subscription) return
+
+  let subscription = await currentSubscription()
+
+  if (!subscription) {
+    /* Fetched here rather than passed in, because the caller is `AppShell` on every
+       app open and has no reason to know about VAPID. One request, and only on the
+       path where a device actually has to be rebuilt. */
+    const config = await api.get<PushConfig>('/v1/push/config')
+    if (!config.configured || !config.public_key) return
+    subscription = await subscribe(config.public_key)
+  }
+
   await api.post('/v1/push/subscriptions', {
     json: { ...subscriptionBody(subscription), resume: false },
   })

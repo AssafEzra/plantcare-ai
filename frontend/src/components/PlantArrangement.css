@@ -31,6 +31,26 @@
   pointer-events: auto;
 }
 
+/* In the grid the slot is itself the handle and holds the capture, so the rule above
+   must not take its events away. Same belt and braces, one level up. */
+.pc-plantslot.is-arrangeable.is-dragging {
+  pointer-events: auto;
+}
+
+/* A card that can be picked up.
+   `touch-callout` and `user-select` both off: a long press on a link is also how a
+   phone offers to copy or preview it, and that menu appearing mid-pickup would take
+   the gesture away. `is-arranging` below does the same once a drag is under way; this
+   has to be in force *before* one starts, because the press is the drag. */
+.pc-plantslot.is-arrangeable {
+  -webkit-touch-callout: none;
+  user-select: none;
+}
+
+.pc-plantslot.is-arrangeable.is-dragging > .pc-plantcard {
+  cursor: grabbing;
+}
+
 .pc-plantslot.is-dragging > .pc-plantcard {
   box-shadow: 0 10px 28px rgb(0 0 0 / 22%);
   opacity: 0.92;

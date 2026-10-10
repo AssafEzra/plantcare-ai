@@ -20,6 +20,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { supabase } from '../lib/supabase'
 import { leaveViewAs } from '../lib/viewAs'
 import { forgetThisDevice } from '../api/push'
+import { recordSessionEnd, signingOutDeliberately } from './sessionLog'
 import { AuthContext, type AuthContextValue } from './context'
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -36,7 +37,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setLoading(false)
     })
 
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, next) => {
+    const { data: sub } = supabase.auth.onAuthStateChange((event, next) => {
+      /* The event was thrown away here, and that is why "it signed me out again" has
+         never been answerable. Supabase ends a session locally when a refresh is
+         refused, and says `SIGNED_OUT` for that in exactly the same words it uses for
+         the יציאה button. Written down, the next occurrence explains itself. */
+      if (event === 'SIGNED_OUT') recordSessionEnd(event)
       setSession(next)
       setLoading(false)
     })
@@ -71,6 +77,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const signOut = useCallback(async () => {
+    /* Claimed before anything can end the session, so the `SIGNED_OUT` that follows is
+       recorded as ours. Anything else that arrives is not. */
+    signingOutDeliberately()
     try {
       // Before the session goes: the request needs it. A shared phone must stop
       // receiving this account's reminders the moment the account leaves.

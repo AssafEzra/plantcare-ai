@@ -11,6 +11,7 @@
  */
 
 import { useState } from 'react'
+import { sessionEnds } from '../auth/sessionLog'
 import {
   BUILD_COMMIT,
   BUILD_TIME,
@@ -33,8 +34,26 @@ function buildDate(): string {
   }
 }
 
+/** Day and time, local, short enough not to wrap beside a label. */
+function endedAt(iso: string): string {
+  try {
+    return new Date(iso).toLocaleString('he-IL', {
+      day: '2-digit',
+      month: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+    })
+  } catch {
+    return iso
+  }
+}
+
 export default function VersionCard() {
   const [state, setState] = useState<State>(() => (updateWaiting() ? 'available' : 'idle'))
+
+  /* Read once. These are written by the auth listener, never during a render, and
+     re-reading storage on every render would be work for nothing. */
+  const [ends] = useState(sessionEnds)
 
   async function check() {
     setState('checking')
@@ -48,6 +67,22 @@ export default function VersionCard() {
         <span className="pc-num">{buildDate()}</span>{' '}
         <span className="pc-ltr pc-commit">{BUILD_COMMIT}</span>
       </p>
+
+      {/* Why the session ended, last few times.
+          A spontaneous sign-out leaves no trace anywhere else: the server still holds
+          the session, still refreshing, so only the device knows it happened. Shown
+          here rather than hidden behind a developer flag, because the person who can
+          say "it did it again this morning" is the one reading this screen. */}
+      {ends.length > 0 && (
+        <ul className="pc-version-ends">
+          {ends.map((end) => (
+            <li key={end.at}>
+              <span className="pc-num">{endedAt(end.at)}</span>{' '}
+              <span>{end.deliberate ? 'יציאה' : 'נותק מעצמו'}</span>
+            </li>
+          ))}
+        </ul>
+      )}
 
       {!updatesSupported() ? (
         /* No service worker, so there is nothing to check. Said plainly rather

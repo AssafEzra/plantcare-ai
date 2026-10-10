@@ -56,6 +56,18 @@ export type PlantView = 'cards' | 'list'
 /** Below this the finger has not really moved and the gesture is a press, not a drag. */
 const SLOP_PX = 6
 
+/* How long a finger must stay still on a card before the card is picked up.
+ *
+ * A touch that starts on a card is also how the page is scrolled, and the two cannot
+ * both win: claim the gesture immediately and the list becomes impossible to scroll,
+ * never claim it and the card cannot be dragged. The hold is what separates them, and
+ * it is the same thing a phone's home screen does.
+ *
+ * 650ms. Long enough that scrolling never picks a card up by accident, short enough
+ * that someone who meant to move one is not left wondering whether it is broken. A
+ * mouse has no such ambiguity, so it skips the wait entirely. */
+const LONG_PRESS_MS = 650
+
 type Drag = {
   id: string
   /** The card the pointer is over, if any. */
@@ -89,7 +101,35 @@ export default function PlantArrangement({
     moved: boolean
     /** Where every *other* card is, in page coordinates, measured once at the start. */
     targets: { id: string; left: number; top: number; right: number; bottom: number }[]
+    /** Whether the card has been picked up. False while a hold is still being waited for. */
+    armed: boolean
+    /** A mouse arms at once; a finger has to hold. Also decides whether a release counts
+        as a tap, because holding a card and letting go is not a request to open it. */
+    immediate: boolean
+    timer: number | null
+    surface: HTMLElement | null
+    pointerId: number
+    /** Where the card would land, as of the last move.
+     *
+     * The same thing `drag` holds, kept here as well because the release has to read
+     * it synchronously. `setDrag` schedules a render rather than assigning, so a
+     * pointerup arriving in the same task as the last pointermove saw the *previous*
+     * target - the card landed one slot behind where it was dropped, every time the
+     * drag ended promptly. State drives the marker; this drives the reorder. */
+    landing: { overId: string | null; side: 'before' | 'after' } | null
   } | null>(null)
+
+  /* Set when a gesture turns out to have been a drag, read by the click that the
+     browser fires afterwards. The card is an anchor, so without this every drag would
+     also open the plant it just moved. */
+  const swallowClick = useRef(false)
+
+  /* Held while a card is up, and only then.
+     `touch-action: none` cannot do this job: the value is read when the touch begins,
+     and at that moment we do not yet know whether this is a scroll or a pick-up - that
+     is the whole point of the hold. Setting it later has no effect on a gesture already
+     under way, so the scroll is refused here instead, where it can be decided late. */
+  const scrollLock = useRef<((event: TouchEvent) => void) | null>(null)
 
   function commit(next: Plant[]) {
     const before = plants.map((plant) => plant.id).join()
@@ -139,41 +179,140 @@ export default function PlantArrangement({
       })
   }
 
-  function startDrag(event: React.PointerEvent<HTMLButtonElement>, id: string) {
-    event.preventDefault()
+  function lockScroll() {
+    if (scrollLock.current) return
+    const refuse = (event: TouchEvent) => event.preventDefault()
+    scrollLock.current = refuse
+    document.addEventListener('touchmove', refuse, { passive: false })
+  }
 
-    /* Recorded before the capture is asked for, not after. `setPointerCapture`
-       throws for a pointer the browser does not consider active, and with the two
-       the other way round that exception left the gesture unrecorded - so every
-       later move was ignored and the drag silently did nothing at all. The capture
-       is an improvement to the gesture, not a precondition for it: without it the
-       drag still works as long as the pointer stays over the page. */
-    gesture.current = {
+  function unlockScroll() {
+    if (!scrollLock.current) return
+    document.removeEventListener('touchmove', scrollLock.current)
+    scrollLock.current = null
+  }
+
+  /** Give up on a gesture that turned out to be something else - usually a scroll. */
+  function abandon() {
+    const held = gesture.current
+    if (!held) return
+    if (held.timer !== null) window.clearTimeout(held.timer)
+    if (held.node) held.node.style.transform = ''
+    try {
+      held.surface?.releasePointerCapture(held.pointerId)
+    } catch {
+      // The capture may never have been taken.
+    }
+    gesture.current = null
+    unlockScroll()
+    setDrag(null)
+  }
+
+  /* Claim the rest of the gesture.
+   *
+   * Deliberately not done at pointerdown for a card. While a pointer is captured the
+   * browser fires the resulting `click` at the capture element rather than at what was
+   * under the pointer - and what is under the pointer is the anchor that opens the
+   * plant. Capturing early therefore swallowed every tap: the card could be dragged
+   * and could no longer be opened. Taken once the gesture is known to be a drag, by
+   * which point there is no click left to protect. */
+  function takeCapture(held: NonNullable<typeof gesture.current>) {
+    try {
+      held.surface?.setPointerCapture(held.pointerId)
+    } catch {
+      /* `setPointerCapture` throws for a pointer the browser no longer considers
+         active. The capture is an improvement to the gesture, not a precondition for
+         it: without it the drag still works while the pointer is over the page. */
+    }
+  }
+
+  function hold(
+    event: React.PointerEvent<HTMLElement>,
+    id: string,
+    immediate: boolean,
+    captureNow: boolean,
+  ) {
+    /* A fresh gesture, so whatever the last one decided about clicks is spent. Cleared
+       here rather than in the click handler, because a drag that ends outside the page
+       never produces the click that would have cleared it. */
+    swallowClick.current = false
+
+    const started = {
       id,
       startX: event.clientX,
       startY: event.clientY,
       node: slotOf(id),
       moved: false,
-      targets: measureTargets(id),
+      /* A mouse knows at once that it is dragging, so it can measure now. A finger
+         must not: the page may scroll under it before the hold completes, and rects
+         taken before that would all be stale. */
+      targets: immediate ? measureTargets(id) : [],
+      armed: immediate,
+      immediate,
+      timer: null as number | null,
+      surface: event.currentTarget,
+      pointerId: event.pointerId,
+      landing: null,
+    }
+    gesture.current = started
+
+    if (!immediate) {
+      started.timer = window.setTimeout(() => {
+        const held = gesture.current
+        if (!held) return
+        held.timer = null
+        held.armed = true
+        held.targets = measureTargets(held.id)
+        lockScroll()
+        takeCapture(held)
+        /* The card visibly lifts the moment it is picked up, before it has moved at
+           all. Without it the hold is invisible and indistinguishable from a tap that
+           did not register, which is what made the first handle-less attempt feel
+           broken. */
+        setDrag({ id: held.id, overId: null, side: 'before' })
+      }, LONG_PRESS_MS)
     }
 
-    try {
-      event.currentTarget.setPointerCapture(event.pointerId)
-    } catch {
-      // Not fatal; see above.
-    }
+    /* Recorded before the capture is asked for, not after: that exception used to
+       leave the gesture unrecorded, so every later move was ignored and the drag
+       silently did nothing at all. */
+    if (captureNow) takeCapture(started)
   }
 
-  function onDragMove(event: React.PointerEvent<HTMLButtonElement>) {
+  /** The list's handle: a dedicated control, so there is nothing to disambiguate. */
+  function startDrag(event: React.PointerEvent<HTMLElement>, id: string) {
+    event.preventDefault()
+    hold(event, id, true, true)
+  }
+
+  /** A card in the grid, where the same press might be a tap, a scroll or a drag. */
+  function pressCard(event: React.PointerEvent<HTMLElement>, id: string) {
+    if (!reorderable || view === 'list') return
+    // Secondary buttons open menus and must not start anything.
+    if (event.pointerType === 'mouse' && event.button !== 0) return
+    hold(event, id, event.pointerType === 'mouse', false)
+  }
+
+  function onDragMove(event: React.PointerEvent<HTMLElement>) {
     const held = gesture.current
     if (!held) return
 
     const dx = event.clientX - held.startX
     const dy = event.clientY - held.startY
 
+    /* The hold has not completed yet, and the finger has set off. It was going
+       somewhere - scrolling the list, almost always - so the card is put down and the
+       page is left to do what it was already doing. */
+    if (!held.armed) {
+      if (Math.hypot(dx, dy) >= SLOP_PX) abandon()
+      return
+    }
+
     if (!held.moved) {
       if (Math.hypot(dx, dy) < SLOP_PX) return
       held.moved = true
+      // Now it is unambiguously a drag, so the rest of the gesture is ours.
+      takeCapture(held)
     }
 
     /* Physical `translate`, not a logical offset, and written straight to the node.
@@ -193,6 +332,7 @@ export default function PlantArrangement({
        previous value produced an object with no `id` at all - nothing rendered as
        being dragged, and the release found nothing to move. */
     if (!over) {
+      held.landing = null
       setDrag((current) =>
         current && current.overId === null ? current : { id: held.id, overId: null, side: 'before' },
       )
@@ -214,6 +354,7 @@ export default function PlantArrangement({
           ? 'before'
           : 'after'
 
+    held.landing = { overId: over.id, side }
     setDrag((current) =>
       current && current.overId === over.id && current.side === side
         ? current
@@ -221,20 +362,31 @@ export default function PlantArrangement({
     )
   }
 
-  function endDrag(event: React.PointerEvent<HTMLButtonElement>) {
+  /* No event parameter: the capture is released through the element it was taken on,
+     which the gesture already holds, and a release can also arrive from a path that
+     has no event to hand. */
+  function endDrag() {
     const held = gesture.current
     if (!held) return
 
+    if (held.timer !== null) window.clearTimeout(held.timer)
     try {
-      event.currentTarget.releasePointerCapture(event.pointerId)
+      held.surface?.releasePointerCapture(held.pointerId)
     } catch {
-      // The capture may never have been taken; see `startDrag`.
+      // The capture may never have been taken; see `takeCapture`.
     }
     if (held.node) held.node.style.transform = ''
     gesture.current = null
+    unlockScroll()
 
-    const landing = drag
+    const landing = held.landing
     setDrag(null)
+
+    /* A card that was picked up does not open when it is put down, even if it landed
+       exactly where it started. The press asked for the plant to be moved, and
+       answering that with a navigation is what would make the gesture feel unsafe to
+       use. A mouse is excluded: there a press is a click until it travels. */
+    if (held.moved || (held.armed && !held.immediate)) swallowClick.current = true
 
     if (!held.moved || !landing?.overId) return
 
@@ -253,6 +405,20 @@ export default function PlantArrangement({
     commit(next)
   }
 
+  /* Where the gesture lives in each view.
+   *
+   * The list keeps the `‹ ⠿ ›` cluster: it is a row with room beside the text, and the
+   * two arrows are the only way to reorder without a pointer at all - by keyboard, or
+   * by a screen reader that never knows where anything is on screen. Deleting them
+   * everywhere would have made the feature pointer-only.
+   *
+   * The grid has no such room. The cluster sat on the photograph in the same corner as
+   * the health badge and covered it, worst at phone widths where a card is half a
+   * screen wide and `דורש תשומת לב` is most of its top edge. So in the grid the card
+   * itself is the handle, and the corner goes back to saying what state the plant is
+   * in. */
+  const byCard = reorderable && view !== 'list'
+
   return (
     <div
       className={`pc-plantgrid${view === 'list' ? ' pc-plantgrid-list' : ''}${
@@ -267,16 +433,40 @@ export default function PlantArrangement({
             key={plant.id}
             className={[
               'pc-plantslot',
+              byCard ? 'is-arrangeable' : '',
               held ? 'is-dragging' : '',
               target ? `is-drop is-drop-${drag?.side}` : '',
             ]
               .filter(Boolean)
               .join(' ')}
             data-plant-id={plant.id}
+            {...(byCard
+              ? {
+                  onPointerDown: (event: React.PointerEvent<HTMLDivElement>) =>
+                    pressCard(event, plant.id),
+                  onPointerMove: onDragMove,
+                  onPointerUp: endDrag,
+                  // Not `endDrag`: a cancel is the browser taking the gesture away,
+                  // which is not a drop and must not reorder anything.
+                  onPointerCancel: abandon,
+                  // The card is an anchor, and a browser offers to drag a link.
+                  onDragStart: (event: React.DragEvent) => event.preventDefault(),
+                  // A long press is also how a phone asks for the link menu.
+                  onContextMenu: (event: React.MouseEvent) => {
+                    if (gesture.current) event.preventDefault()
+                  },
+                  onClickCapture: (event: React.MouseEvent) => {
+                    if (!swallowClick.current) return
+                    swallowClick.current = false
+                    event.preventDefault()
+                    event.stopPropagation()
+                  },
+                }
+              : {})}
           >
             <PlantCard plant={plant} index={i} />
 
-            {reorderable && (
+            {reorderable && view === 'list' && (
               <div className="pc-plantmove" role="group" aria-label={`מקום של ${plantName(plant)}`}>
                 <button
                   type="button"

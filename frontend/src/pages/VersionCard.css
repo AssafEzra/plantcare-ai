@@ -20,3 +20,19 @@
 .pc-version > p {
   margin: 0;
 }
+
+/* The session-end list. Quiet: it is a diagnostic, and on a healthy device it is
+   empty and the card looks exactly as it did before. */
+.pc-version-ends {
+  margin: var(--pc-space-3) 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--pc-h6);
+  color: var(--pc-text-muted);
+}
+
+.pc-version-ends li {
+  display: flex;
+  gap: var(--pc-space-2);
+  padding-block: 2px;
+}
